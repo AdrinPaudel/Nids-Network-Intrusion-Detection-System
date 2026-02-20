@@ -1,0 +1,68 @@
+# ============================================================
+# NIDS Project .gitignore
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+
+# --- Virtual Environment ---
+venv/
+.venv/
+env/
+
+# --- Data files (ignore everything EXCEPT .gitkeep) ---
+# Keeps folder structure so users know where to put files
+data/raw/*
+data/combined/*
+data/preprocessed/*
+data/preprocessed_all/*
+data/simul/*
+data/default/batch/*
+data/default/batch_labeled/*
+data/all/batch/*
+data/all/batch_labeled/*
+!data/**/.gitkeep
+
+# --- Large Trained Model (6-class variant, 2.7 GB) ---
+# The 5-class trained_model/ IS included (18 MB, lets users skip training)
+trained_model_all/
+
+# --- Generated Outputs (keep folder structure) ---
+results/exploration/*
+results/preprocessing/*
+results/preprocessing_all/*
+results/training/*
+results/training_all/*
+results/testing/*
+results/testing_all/*
+reports/*
+!results/**/.gitkeep
+!reports/.gitkeep
+
+# --- CICFlowMeter Build Artifacts ---
+CICFlowMeter/build/
+CICFlowMeter/.gradle/
+CICFlowMeter/logs/
+
+# --- Backup CICFlowMeter (not needed in repo) ---
+CICFlowMeter-Original/
+
+# --- IDE / Editor ---
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# --- OS Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Personal / AI Agent Rules ---
+RULES.txt
