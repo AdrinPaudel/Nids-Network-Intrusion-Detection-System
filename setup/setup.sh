@@ -76,6 +76,50 @@ fi
 echo "✓ Dependencies installed successfully"
 
 echo ""
+echo "Step 5: Building CICFlowMeter (for live network capture)..."
+echo ""
+
+# Check if Java is installed
+if command -v java &> /dev/null; then
+    java_version=$(java -version 2>&1 | head -1)
+    echo "Found Java: $java_version"
+
+    if [ -f "CICFlowMeter/gradlew" ]; then
+        echo "Building CICFlowMeter with Gradle..."
+        pushd CICFlowMeter > /dev/null
+        chmod +x gradlew
+        ./gradlew build
+        if [ $? -eq 0 ]; then
+            echo "✓ CICFlowMeter built successfully"
+        else
+            echo "WARNING: CICFlowMeter build failed - live capture may not work"
+            echo "You can retry manually: cd CICFlowMeter && ./gradlew build && cd .."
+        fi
+        popd > /dev/null
+    else
+        echo "WARNING: CICFlowMeter/gradlew not found - skipping build"
+    fi
+else
+    echo "WARNING: Java is not installed - skipping CICFlowMeter build"
+    echo "Java 8+ is required for live capture. Install from https://adoptium.net/"
+    echo "Then build manually: cd CICFlowMeter && chmod +x gradlew && ./gradlew build && cd .."
+fi
+
+echo ""
+echo "Step 6: Checking libpcap (required for live capture)..."
+echo ""
+
+# Check if libpcap is available
+if ldconfig -p 2>/dev/null | grep -q libpcap; then
+    echo "✓ libpcap found"
+elif [ -f /usr/lib/x86_64-linux-gnu/libpcap.so ] || [ -f /usr/lib/libpcap.so ]; then
+    echo "✓ libpcap found"
+else
+    echo "WARNING: libpcap not detected"
+    echo "For live capture, install it: sudo apt-get install libpcap-dev"
+fi
+
+echo ""
 echo "================================================================================"
 echo "Setup Complete!"
 echo "================================================================================"
@@ -89,11 +133,16 @@ echo "  2. Run classification (requires sudo for packet capture):"
 echo "     sudo venv/bin/python classification.py --duration 180"
 echo ""
 echo "     OR set capabilities (one-time, allows non-sudo usage):"
-echo "     sudo setcap cap_net_raw,cap_net_admin=eip /usr/lib/jvm/java-11-openjdk-amd64/bin/java"
+echo "     sudo setcap cap_net_raw,cap_net_admin=eip \$(which java)"
 echo "     then: python classification.py --duration 180"
 echo ""
 echo "  3. Run ML model pipeline:"
 echo "     python ml_model.py --help"
+echo ""
+echo "  For live capture you also need:"
+echo "    - Java 8+ (https://adoptium.net/)"
+echo "    - libpcap-dev installed"
+echo "    - CICFlowMeter built (cd CICFlowMeter && ./gradlew build && cd ..)"
 echo ""
 echo "================================================================================"
 echo ""

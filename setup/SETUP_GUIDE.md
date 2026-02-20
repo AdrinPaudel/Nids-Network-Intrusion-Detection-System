@@ -16,9 +16,10 @@ Run each step in order — commands are copy-paste ready.
 7. [Verify CSV Files](#7-verify-csv-files)
 8. [Java Setup (For Live Capture Only)](#8-java-setup-for-live-capture-only)
 9. [Npcap Setup (For Live Capture on Windows Only)](#9-npcap-setup-for-live-capture-on-windows-only)
-10. [Configure Training Parameters (Avoid OOM)](#10-configure-training-parameters-avoid-oom)
-11. [Run It](#11-run-it)
-12. [Troubleshooting](#12-troubleshooting)
+10. [Build CICFlowMeter (For Live Capture Only)](#10-build-cicflowmeter-for-live-capture-only)
+11. [Configure Training Parameters (Avoid OOM)](#11-configure-training-parameters-avoid-oom)
+12. [Run It](#12-run-it)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
@@ -240,7 +241,56 @@ sudo setcap cap_net_raw,cap_net_admin=eip $(which java)
 
 ---
 
-## 10. Configure Training Parameters (Avoid OOM)
+## 10. Build CICFlowMeter (For Live Capture Only)
+
+> **Skip this if you only need batch classification or ML training.**
+
+The `CICFlowMeter/build/` directory is **not included in the repo** (it's gitignored). After cloning, you must build CICFlowMeter from source using the included Gradle wrapper.
+
+### Prerequisites
+
+- Java JDK 8+ must be installed and `java` must be on your PATH (see [Step 8](#8-java-setup-for-live-capture-only))
+
+### Build
+
+Run the following from the **project root**:
+
+**Windows:**
+```bash
+cd CICFlowMeter
+gradlew.bat build
+cd ..
+```
+
+**Linux/macOS:**
+```bash
+cd CICFlowMeter
+chmod +x gradlew
+./gradlew build
+cd ..
+```
+
+This downloads Gradle automatically (via the wrapper), compiles the Java source, and produces the class files under `CICFlowMeter/build/`.
+
+### Verify
+
+After building, confirm the build directory exists:
+
+```bash
+# Windows:
+dir CICFlowMeter\build\classes
+
+# Linux:
+ls CICFlowMeter/build/classes
+```
+
+You should see a `main/` folder containing compiled `.class` files.
+
+> **Note:** You only need to do this once after cloning. If you modify the CICFlowMeter Java source, re-run the build command.
+
+---
+
+## 11. Configure Training Parameters (Avoid OOM)
 
 > **⚠️ READ THIS BEFORE RUNNING THE ML PIPELINE — especially if you have ≤16 GB RAM.**
 
@@ -315,7 +365,7 @@ This uses cached/default hyperparameters and skips RandomizedSearchCV completely
 
 ---
 
-## 11. Run It
+## 12. Run It
 
 ### Batch Classification (Quickest Test — No Dataset Needed)
 
@@ -341,7 +391,7 @@ python ml_model.py --module 4 --hypercache   # Retrain with cached hyperparams (
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### "Missing required packages" / "Virtual environment not detected"
 
@@ -366,7 +416,7 @@ source venv/bin/activate
 
 ### Out of Memory during training
 
-- See [Step 10](#10-configure-training-parameters-avoid-oom) for how to reduce RAM usage
+- See [Step 11](#11-configure-training-parameters-avoid-oom) for how to reduce RAM usage
 - Or use `--hypercache` to skip tuning entirely
 
 ### "Label column not found"
@@ -392,5 +442,6 @@ source venv/bin/activate
 - [ ] *(For training)* All CSVs verified (`python setup/verify_csv_files.py`)
 - [ ] *(For training)* Training parameters adjusted in `config.py` for your RAM
 - [ ] *(For live capture)* Java 8+ installed
+- [ ] *(For live capture)* CICFlowMeter built (`cd CICFlowMeter && gradlew.bat build` / `./gradlew build`)
 - [ ] *(For live capture, Windows)* Npcap installed with WinPcap compatibility
 - [ ] *(For live capture, Linux)* `libpcap-dev` installed, Java has capture permissions
