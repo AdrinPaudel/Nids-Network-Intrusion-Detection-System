@@ -29,7 +29,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from config import (
     CLASSIFICATION_IDENTIFIER_COLUMNS, CLASSIFICATION_WIFI_KEYWORDS,
-    CLASSIFICATION_EXCLUDE_KEYWORDS,
+    CLASSIFICATION_ETHERNET_KEYWORDS, CLASSIFICATION_EXCLUDE_KEYWORDS,
     CLASSIFICATION_SUBPROCESS_TIMEOUT_LIST,
     CLASSIFICATION_SUBPROCESS_TIMEOUT_MAIN,
     CLASSIFICATION_SUBPROCESS_TIMEOUT_FORCE,
@@ -147,6 +147,11 @@ def list_interfaces():
         gradlew = os.path.join(cicflowmeter_dir, "gradlew.bat")
     else:
         gradlew = os.path.join(cicflowmeter_dir, "gradlew")
+        # Ensure gradlew is executable on Linux
+        try:
+            os.chmod(gradlew, 0o755)
+        except Exception:
+            pass
 
     try:
         result = subprocess.run(
@@ -192,10 +197,10 @@ def select_wifi_interface(interfaces):
         desc_lower = iface["description"].lower()
         name_lower = iface["name"].lower()
 
-        # Check if it matches WiFi keywords
+        # Check if it matches WiFi keywords (check both name and description)
         is_wifi = any(kw in desc_lower or kw in name_lower for kw in wifi_keywords)
         # Check it's not a virtual/excluded adapter
-        is_excluded = any(kw in desc_lower for kw in exclude_keywords)
+        is_excluded = any(kw in desc_lower or kw in name_lower for kw in exclude_keywords)
 
         if is_wifi and not is_excluded:
             return iface
@@ -203,7 +208,8 @@ def select_wifi_interface(interfaces):
     # Fallback: return any WiFi interface even if it has "virtual" in name
     for iface in interfaces:
         desc_lower = iface["description"].lower()
-        is_wifi = any(kw in desc_lower for kw in wifi_keywords)
+        name_lower = iface["name"].lower()
+        is_wifi = any(kw in desc_lower or kw in name_lower for kw in wifi_keywords)
         is_virtual = "virtual" in desc_lower or "direct" in desc_lower
         if is_wifi and not is_virtual:
             return iface
@@ -215,6 +221,7 @@ def get_wifi_interfaces(interfaces):
     """
     Get all WiFi adapters from the list of interfaces.
     Returns list of interface dicts matching WiFi keywords.
+    On Linux, interface names like wlan0, wlp2s0 are used since descriptions are N/A.
     """
     wifi_keywords = CLASSIFICATION_WIFI_KEYWORDS
     exclude_keywords = CLASSIFICATION_EXCLUDE_KEYWORDS
@@ -224,10 +231,10 @@ def get_wifi_interfaces(interfaces):
         desc_lower = iface["description"].lower()
         name_lower = iface["name"].lower()
 
-        # Check if it matches WiFi keywords
+        # Check if it matches WiFi keywords (check both name and description)
         is_wifi = any(kw in desc_lower or kw in name_lower for kw in wifi_keywords)
-        # Check it's not a virtual/excluded adapter
-        is_excluded = any(kw in desc_lower for kw in exclude_keywords)
+        # Check it's not a virtual/excluded adapter (check both name and description)
+        is_excluded = any(kw in desc_lower or kw in name_lower for kw in exclude_keywords)
 
         if is_wifi and not is_excluded:
             wifi_list.append(iface)
@@ -239,8 +246,10 @@ def get_ethernet_interfaces(interfaces):
     """
     Get all Ethernet adapters from the list of interfaces.
     Returns list of interface dicts matching Ethernet keywords.
+    On Linux, interface names like eth0, ens33, enp0s3 are used since descriptions are N/A.
     """
     wifi_keywords = CLASSIFICATION_WIFI_KEYWORDS
+    ethernet_keywords = CLASSIFICATION_ETHERNET_KEYWORDS
     exclude_keywords = CLASSIFICATION_EXCLUDE_KEYWORDS
     ethernet_list = []
 
@@ -248,13 +257,31 @@ def get_ethernet_interfaces(interfaces):
         desc_lower = iface["description"].lower()
         name_lower = iface["name"].lower()
 
-        # Check if it's NOT a WiFi adapter
+        # On Linux, descriptions are "N/A", so we rely on name-based matching.
+        # On Windows, descriptions contain useful info like "Intel(R) Ethernet".
+        # Check if it matches Ethernet keywords explicitly
+        is_ethernet = any(kw in desc_lower or kw in name_lower for kw in ethernet_keywords)
+        # Check if it's a WiFi adapter (exclude from ethernet list)
         is_wifi = any(kw in desc_lower or kw in name_lower for kw in wifi_keywords)
         # Check it's not a virtual/excluded adapter
-        is_excluded = any(kw in desc_lower for kw in exclude_keywords)
+        is_excluded = any(kw in desc_lower or kw in name_lower for kw in exclude_keywords)
 
-        if not is_wifi and not is_excluded:
+        if is_ethernet and not is_wifi and not is_excluded:
             ethernet_list.append(iface)
+
+    # Fallback: if no explicit ethernet match, include any non-wifi non-excluded interface
+    # This catches interfaces with generic descriptions (Windows) or unknown Linux names
+    if not ethernet_list:
+        for iface in interfaces:
+            desc_lower = iface["description"].lower()
+            name_lower = iface["name"].lower()
+            is_wifi = any(kw in desc_lower or kw in name_lower for kw in wifi_keywords)
+            is_excluded = any(kw in desc_lower or kw in name_lower for kw in exclude_keywords)
+            # Skip loopback by name (Linux "lo")
+            if name_lower == "lo":
+                continue
+            if not is_wifi and not is_excluded:
+                ethernet_list.append(iface)
 
     return ethernet_list
 
@@ -317,16 +344,19 @@ class CICFlowMeterSource:
             pass
 
         # Kill zombie Java/CICFlowMeter processes from previous runs.
-        # If a previous capture didn't clean up properly, the old java.exe
+        # If a previous capture didn't clean up properly, the old java process
         # may still hold the pcap handle open, causing the NEW capture to
-        # receive 0 packets (Npcap won't deliver to two handles reliably).
+        # receive 0 packets.
         self._kill_zombie_java_processes()
         
-        # CRITICAL: After killing zombies, wait for Npcap to fully release the handle.
-        # Some drivers take time to release resources, especially after a forced kill.
-        # Without this wait, the new capture may still see 0 packets.
-        print(f"{COLOR_CYAN}[CICFLOWMETER] Waiting for Npcap handle release (5s)...{COLOR_RESET}")
-        time.sleep(5)
+        # After killing zombies, wait for pcap handle release.
+        # On Windows (Npcap), drivers take time to release resources after a forced kill.
+        # On Linux, this is much faster so we use a shorter wait.
+        if _IS_WINDOWS:
+            print(f"{COLOR_CYAN}[CICFLOWMETER] Waiting for Npcap handle release (5s)...{COLOR_RESET}")
+            time.sleep(5)
+        else:
+            time.sleep(1)
 
         # Build command to run capture
         cmd = [
@@ -339,17 +369,26 @@ class CICFlowMeterSource:
         print(f"{COLOR_CYAN}[CICFLOWMETER] Starting capture on: {self.interface_name}{COLOR_RESET}")
 
         try:
-            self.process = subprocess.Popen(
-                cmd,
+            # On Linux, ensure gradlew is executable
+            if not _IS_WINDOWS:
+                os.chmod(gradlew, 0o755)
+            
+            # Build Popen kwargs
+            popen_kwargs = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,  # Need stdin to send STOP command
                 text=True,
                 bufsize=1,  # Line buffered
                 cwd=cicflowmeter_dir,
-                env={**os.environ, f"JAVA_LIBRARY_PATH": lib_path},
+                env={**os.environ, "JAVA_LIBRARY_PATH": lib_path},
                 **_SUBPROCESS_FLAGS,
             )
+            # On Linux, start in a new process group so we can kill the entire tree
+            if not _IS_WINDOWS:
+                popen_kwargs['preexec_fn'] = os.setsid
+            
+            self.process = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
             print(f"{COLOR_RED}[CICFLOWMETER] Failed to start: {e}{COLOR_RESET}")
             return False
@@ -502,16 +541,55 @@ class CICFlowMeterSource:
         print(f"{COLOR_CYAN}[CICFLOWMETER] Flow reader stopped. Total flows: {self.flow_count}{COLOR_RESET}")
 
     def _kill_zombie_java_processes(self):
-        """Kill any lingering java.exe processes from previous CICFlowMeter runs.
+        """Kill any lingering java processes from previous CICFlowMeter runs.
         
         If a previous capture session didn't clean up properly (e.g., Ctrl+C, crash),
-        the old java.exe may still hold the Npcap handle open on the interface.
-        This causes new captures to receive 0 packets because Npcap doesn't
-        reliably deliver packets to multiple handles on the same interface.
+        the old java process may still hold the pcap handle open on the interface.
+        This causes new captures to receive 0 packets.
+        Works on both Windows and Linux.
         """
-        if not _IS_WINDOWS:
-            return  # Only needed on Windows
-        
+        if _IS_WINDOWS:
+            self._kill_zombie_java_windows()
+        else:
+            self._kill_zombie_java_linux()
+
+    def _kill_zombie_java_linux(self):
+        """Kill zombie Java/CICFlowMeter processes on Linux using pgrep/pkill."""
+        try:
+            # Find java processes with CICFlowMeter/LiveCapture in their command line
+            result = subprocess.run(
+                ['pgrep', '-f', 'LiveCapture|CICFlowMeter|exeLive'],
+                capture_output=True, text=True, timeout=10,
+            )
+            
+            pids = [p.strip() for p in result.stdout.strip().splitlines() if p.strip()]
+            # Filter out our own PID
+            my_pid = str(os.getpid())
+            pids = [p for p in pids if p != my_pid]
+            
+            if pids:
+                print(f"{COLOR_YELLOW}[CICFLOWMETER] Found {len(pids)} zombie Java process(es): {pids}{COLOR_RESET}")
+                for pid in pids:
+                    try:
+                        subprocess.run(
+                            ['kill', '-9', pid],
+                            capture_output=True, timeout=10,
+                        )
+                        print(f"{COLOR_YELLOW}[CICFLOWMETER] Killed zombie process PID={pid}{COLOR_RESET}")
+                    except Exception:
+                        pass
+                time.sleep(1)
+            else:
+                print(f"{COLOR_DARK_GRAY}[CICFLOWMETER] No zombie Java processes found (good){COLOR_RESET}")
+                
+        except FileNotFoundError:
+            # pgrep not available
+            print(f"{COLOR_DARK_GRAY}[CICFLOWMETER] pgrep not available, skipping zombie check{COLOR_RESET}")
+        except Exception as e:
+            print(f"{COLOR_DARK_GRAY}[CICFLOWMETER] Zombie cleanup skipped: {e}{COLOR_RESET}")
+
+    def _kill_zombie_java_windows(self):
+        """Kill zombie Java/CICFlowMeter processes on Windows using WMIC/PowerShell."""
         try:
             # Use WMIC to find java.exe processes with CICFlowMeter/LiveCapture in command line
             result = subprocess.run(
@@ -636,7 +714,7 @@ class CICFlowMeterSource:
                 pass
 
     def _force_kill(self):
-        """Force kill the subprocess and its children using taskkill."""
+        """Force kill the subprocess and its children."""
         if not self.process:
             return
         
@@ -679,13 +757,38 @@ class CICFlowMeterSource:
                 except Exception:
                     pass
             else:
-                # On Linux/macOS
-                self.process.terminate()
+                # On Linux/macOS — kill the entire process group
+                import signal as sig
                 try:
-                    self.process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
+                    # Try killing the process group (Gradle spawns Java as child)
+                    os.killpg(os.getpgid(pid), sig.SIGTERM)
+                    time.sleep(1)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
+                
+                # If still alive, force kill
+                if self.process.poll() is None:
+                    try:
+                        os.killpg(os.getpgid(pid), sig.SIGKILL)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        pass
+                
+                # Fallback: kill just the process
+                if self.process.poll() is None:
                     self.process.kill()
-                    self.process.wait(timeout=3)
+                    try:
+                        self.process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass
+                
+                # Also kill any leftover java processes running CICFlowMeter
+                try:
+                    subprocess.run(
+                        ['pkill', '-9', '-f', 'LiveCapture|CICFlowMeter|exeLive'],
+                        capture_output=True, timeout=5,
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
         finally:

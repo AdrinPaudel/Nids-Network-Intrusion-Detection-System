@@ -414,8 +414,12 @@ CLASSIFICATION_SUBPROCESS_TIMEOUT_FORCE = 10  # Timeout for forced termination
 CLASSIFICATION_SUBPROCESS_TIMEOUT_JOIN = 30  # Timeout for reader thread join (flows trickle in after STOP)
 
 # WiFi interface detection settings
-CLASSIFICATION_WIFI_KEYWORDS = ["wi-fi", "wifi", "wireless", "wlan"]
-CLASSIFICATION_EXCLUDE_KEYWORDS = ["virtual", "direct", "bluetooth", "loopback", "miniport", "virtualbox"]
+# Windows: matched against interface description (e.g. "Intel(R) Wi-Fi 6 AX201")
+# Linux:   matched against interface name (e.g. "wlan0", "wlp2s0") since descriptions are unavailable
+CLASSIFICATION_WIFI_KEYWORDS = ["wi-fi", "wifi", "wireless", "wlan", "wlp"]
+CLASSIFICATION_ETHERNET_KEYWORDS = ["ethernet", "eth", "enp", "ens", "eno"]
+CLASSIFICATION_EXCLUDE_KEYWORDS = ["virtual", "direct", "bluetooth", "loopback", "miniport", "virtualbox",
+                                    "docker", "virbr", "br-", "veth", "lo"]
 
 # Periodic status updates
 CLASSIFICATION_STATUS_UPDATE_INTERVAL = 30   # Print status every N seconds

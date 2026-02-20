@@ -457,7 +457,14 @@ def select_interface_interactive():
     if wifi_ifaces:
         print(f"{COLOR_CYAN_BOLD}WiFi Adapters:{COLOR_RESET}")
         for iface in wifi_ifaces:
-            print(f"  [{idx}] {iface['description']}")
+            desc = iface['description']
+            name = iface['name']
+            # On Linux descriptions are "N/A", so show the name prominently
+            if desc == "N/A" or not desc:
+                print(f"  [{idx}] {name}")
+            else:
+                print(f"  [{idx}] {desc}")
+                print(f"      Name: {name}")
             print(f"      Address: {iface['addresses']}")
             all_ifaces.append(iface)
             idx += 1
@@ -465,9 +472,15 @@ def select_interface_interactive():
         print(f"{COLOR_YELLOW}(No WiFi adapters found){COLOR_RESET}")
     
     if ethernet_ifaces:
-        print(f"\n{COLOR_CYAN_BOLD}Ethernet Adapters:{COLOR_RESET}")
+        print(f"\n{COLOR_CYAN_BOLD}Ethernet / Other Adapters:{COLOR_RESET}")
         for iface in ethernet_ifaces:
-            print(f"  [{idx}] {iface['description']}")
+            desc = iface['description']
+            name = iface['name']
+            if desc == "N/A" or not desc:
+                print(f"  [{idx}] {name}")
+            else:
+                print(f"  [{idx}] {desc}")
+                print(f"      Name: {name}")
             print(f"      Address: {iface['addresses']}")
             all_ifaces.append(iface)
             idx += 1

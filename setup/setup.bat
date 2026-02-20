@@ -22,14 +22,17 @@ if %errorlevel% neq 0 (
 echo.
 echo Step 1: Creating virtual environment...
 echo.
-python -m venv venv
 
-if not exist venv (
-    echo ERROR: Failed to create venv
-    exit /b 1
+if exist venv (
+    echo ✓ Virtual environment already exists - skipping creation
+) else (
+    python -m venv venv
+    if not exist venv (
+        echo ERROR: Failed to create venv
+        exit /b 1
+    )
+    echo ✓ Virtual environment created
 )
-
-echo ✓ Virtual environment created
 
 echo.
 echo Step 2: Activating virtual environment...
@@ -46,6 +49,18 @@ echo ✓ Virtual environment activated
 echo.
 echo Step 3: Installing dependencies from requirements.txt...
 echo.
+
+REM Check if all requirements are already satisfied
+pip install -r requirements.txt --quiet --dry-run >nul 2>&1
+if %errorlevel% equ 0 (
+    pip install -r requirements.txt --quiet --dry-run 2>&1 | findstr /i "Would install" >nul 2>&1
+    if errorlevel 1 (
+        echo ✓ All dependencies already installed - skipping
+        goto :skip_pip
+    )
+)
+
+echo Installing/updating dependencies...
 pip install --upgrade pip
 pip install -r requirements.txt
 
@@ -55,6 +70,8 @@ if errorlevel 1 (
 )
 
 echo ✓ Dependencies installed successfully
+
+:skip_pip
 
 echo.
 echo Step 4: Building CICFlowMeter (for live network capture)...
@@ -76,6 +93,13 @@ if not exist CICFlowMeter\gradlew.bat (
 )
 
 echo Building CICFlowMeter with Gradle...
+
+REM Skip if already built
+if exist CICFlowMeter\build\classes\main (
+    echo ✓ CICFlowMeter already built - skipping
+    goto :skip_gradle
+)
+
 pushd CICFlowMeter
 call gradlew.bat build
 if errorlevel 1 (

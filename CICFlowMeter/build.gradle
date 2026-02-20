@@ -12,12 +12,22 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven { url "https://clojars.org/repo" }
-    flatDir { dirs 'jnetpcap/win/jnetpcap-1.4.r1425' }
+    flatDir { dirs 'jnetpcap/win/jnetpcap-1.4.r1425', 'jnetpcap/linux/jnetpcap-1.4.r1425' }
 }
+
+// Use the same jnetpcap.jar regardless of platform (the jar is identical in both dirs)
+String jnetpcapJar
+String osName = System.getProperty('os.name').toLowerCase()
+if (osName.contains('windows')) {
+    jnetpcapJar = 'jnetpcap/win/jnetpcap-1.4.r1425/jnetpcap.jar'
+} else {
+    jnetpcapJar = 'jnetpcap/linux/jnetpcap-1.4.r1425/jnetpcap.jar'
+}
+
 dependencies {
     implementation group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.11.0'
     implementation group: 'org.slf4j', name: 'slf4j-log4j12', version:'1.7.25'
-    implementation files('jnetpcap/win/jnetpcap-1.4.r1425/jnetpcap.jar')
+    implementation files(jnetpcapJar)
     testImplementation group: 'junit', name: 'junit', version:'4.12'
     implementation group: 'org.apache.commons', name: 'commons-lang3', version:'3.6'
     implementation group: 'org.apache.commons', name: 'commons-math3', version:'3.5'

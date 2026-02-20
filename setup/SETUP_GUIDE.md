@@ -214,17 +214,19 @@ java -version
 
 ### Linux: Set Packet Capture Permissions
 
-On Linux, Java needs permission to capture raw packets. Either:
+On Linux, Java needs permission to capture raw packets. Set capabilities once during setup:
 
-**Option A:** Run with sudo
 ```bash
-sudo venv/bin/python classification.py --duration 180
+setcap cap_net_raw,cap_net_admin=eip $(which java)
 ```
 
-**Option B:** Set capabilities (one-time)
+After this, you can run live capture normally without elevated privileges:
+
 ```bash
-sudo setcap cap_net_raw,cap_net_admin=eip $(which java)
+python classification.py --duration 180
 ```
+
+> **Note:** If `setcap` requires elevated access on your system, ask your system administrator to run it for you.
 
 ---
 
@@ -412,7 +414,7 @@ source venv/bin/activate
 ### "No network interfaces found"
 
 - Windows: Install Npcap
-- Linux: Run with sudo or set capabilities
+- Linux: Set Java capture capabilities (see [Step 8](#8-java-setup-for-live-capture-only))
 
 ### Out of Memory during training
 

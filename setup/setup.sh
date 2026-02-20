@@ -26,16 +26,28 @@ echo "Step 1: Installing system dependencies..."
 echo ""
 
 # Try to install system packages if apt-get is available
+# Note: These require package manager access. If they fail, install manually.
 if command -v apt-get &> /dev/null; then
-    echo "Installing with apt-get..."
-    sudo apt-get update
-    sudo apt-get install -y python3-venv python3-dev libpcap-dev
+    echo "Installing with apt-get (may prompt for password)..."
+    apt-get update 2>/dev/null && apt-get install -y python3-venv python3-dev libpcap-dev 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "NOTE: Could not install system packages automatically."
+        echo "If needed, install manually: apt-get install python3-venv python3-dev libpcap-dev"
+    fi
 elif command -v yum &> /dev/null; then
-    echo "Installing with yum..."
-    sudo yum install -y python3-devel libpcap-devel
+    echo "Installing with yum (may prompt for password)..."
+    yum install -y python3-devel libpcap-devel 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "NOTE: Could not install system packages automatically."
+        echo "If needed, install manually: yum install python3-devel libpcap-devel"
+    fi
 elif command -v dnf &> /dev/null; then
-    echo "Installing with dnf..."
-    sudo dnf install -y python3-devel libpcap-devel
+    echo "Installing with dnf (may prompt for password)..."
+    dnf install -y python3-devel libpcap-devel 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "NOTE: Could not install system packages automatically."
+        echo "If needed, install manually: dnf install python3-devel libpcap-devel"
+    fi
 else
     echo "WARNING: Could not auto-install system packages"
     echo "Please manually install: libpcap-dev (or libpcap-devel)"
@@ -46,14 +58,17 @@ echo "✓ System dependencies handled"
 echo ""
 echo "Step 2: Creating virtual environment..."
 echo ""
-python3 -m venv venv
 
-if [ ! -d "venv" ]; then
-    echo "ERROR: Failed to create venv"
-    exit 1
+if [ -d "venv" ]; then
+    echo "✓ Virtual environment already exists - skipping creation"
+else
+    python3 -m venv venv
+    if [ ! -d "venv" ]; then
+        echo "ERROR: Failed to create venv"
+        exit 1
+    fi
+    echo "✓ Virtual environment created"
 fi
-
-echo "✓ Virtual environment created"
 
 echo ""
 echo "Step 3: Activating virtual environment..."
@@ -65,15 +80,20 @@ echo "✓ Virtual environment activated"
 echo ""
 echo "Step 4: Installing Python dependencies..."
 echo ""
-pip install --upgrade pip
-pip install -r requirements.txt
 
-if [ $? -ne 0 ]; then
-    echo "ERROR: Failed to install dependencies"
-    exit 1
+# Check if all requirements are already satisfied
+if pip install -r requirements.txt --quiet --dry-run 2>&1 | grep -q "Would install"; then
+    echo "Installing/updating dependencies..."
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to install dependencies"
+        exit 1
+    fi
+    echo "✓ Dependencies installed successfully"
+else
+    echo "✓ All dependencies already installed - skipping"
 fi
-
-echo "✓ Dependencies installed successfully"
 
 echo ""
 echo "Step 5: Building CICFlowMeter (for live network capture)..."
@@ -85,17 +105,22 @@ if command -v java &> /dev/null; then
     echo "Found Java: $java_version"
 
     if [ -f "CICFlowMeter/gradlew" ]; then
-        echo "Building CICFlowMeter with Gradle..."
-        pushd CICFlowMeter > /dev/null
-        chmod +x gradlew
-        ./gradlew build
-        if [ $? -eq 0 ]; then
-            echo "✓ CICFlowMeter built successfully"
+        # Skip if already built
+        if [ -d "CICFlowMeter/build/classes/main" ]; then
+            echo "✓ CICFlowMeter already built - skipping"
         else
-            echo "WARNING: CICFlowMeter build failed - live capture may not work"
-            echo "You can retry manually: cd CICFlowMeter && ./gradlew build && cd .."
+            echo "Building CICFlowMeter with Gradle..."
+            pushd CICFlowMeter > /dev/null
+            chmod +x gradlew
+            ./gradlew build
+            if [ $? -eq 0 ]; then
+                echo "✓ CICFlowMeter built successfully"
+            else
+                echo "WARNING: CICFlowMeter build failed - live capture may not work"
+                echo "You can retry manually: cd CICFlowMeter && ./gradlew build && cd .."
+            fi
+            popd > /dev/null
         fi
-        popd > /dev/null
     else
         echo "WARNING: CICFlowMeter/gradlew not found - skipping build"
     fi
@@ -129,12 +154,8 @@ echo ""
 echo "  1. Activate venv (in new terminal):"
 echo "     source venv/bin/activate"
 echo ""
-echo "  2. Run classification (requires sudo for packet capture):"
-echo "     sudo venv/bin/python classification.py --duration 180"
-echo ""
-echo "     OR set capabilities (one-time, allows non-sudo usage):"
-echo "     sudo setcap cap_net_raw,cap_net_admin=eip \$(which java)"
-echo "     then: python classification.py --duration 180"
+echo "  2. Run classification:"
+echo "     python classification.py --duration 180"
 echo ""
 echo "  3. Run ML model pipeline:"
 echo "     python ml_model.py --help"
