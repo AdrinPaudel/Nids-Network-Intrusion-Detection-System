@@ -119,17 +119,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-pip install -r requirements.txt --quiet --dry-run >nul 2>&1
-if %errorlevel% equ 0 (
-    pip install -r requirements.txt --quiet --dry-run 2>&1 | findstr /i "Would install" >nul 2>&1
-    if errorlevel 1 (
-        echo   OK  All dependencies already satisfied — skipping
-        goto :skip_pip
-    )
-)
-
-echo   Installing/updating packages...
-pip install --upgrade pip
+pip install --upgrade pip --quiet
 pip install -r requirements.txt
 if errorlevel 1 (
     echo   ERROR: pip install failed
@@ -137,8 +127,6 @@ if errorlevel 1 (
     exit /b 1
 )
 echo   OK  Dependencies installed
-
-:skip_pip
 
 REM ------------------------------------------------------------------
 REM Step 4: Build CICFlowMeter

@@ -119,18 +119,13 @@ echo ""
 
 source venv/bin/activate
 
-if pip install -r requirements.txt --quiet --dry-run 2>&1 | grep -q "Would install"; then
-    echo "  Installing/updating packages..."
-    pip install --upgrade pip
-    pip install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        echo "  ERROR: pip install failed"
-        exit 1
-    fi
-    echo "  ✓ Dependencies installed"
-else
-    echo "  ✓ All dependencies already satisfied — skipping"
+pip install --upgrade pip --quiet
+pip install -r requirements.txt
+if [ $? -ne 0 ]; then
+    echo "  ERROR: pip install failed"
+    exit 1
 fi
+echo "  ✓ Dependencies installed"
 
 # ------------------------------------------------------------------
 # Step 4: Build CICFlowMeter

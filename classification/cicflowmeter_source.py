@@ -162,6 +162,29 @@ def _ensure_cicflowmeter_built():
         print(f"\033[91m[CICFLOWMETER] gradlew not found at {gradlew}\033[0m")
         return False
 
+    # Check Java version before attempting build — Gradle 8.5 needs Java 8-21
+    try:
+        java_result = subprocess.run(
+            ["java", "-version"], capture_output=True, text=True, timeout=10
+        )
+        version_line = (java_result.stderr + java_result.stdout).splitlines()[0]
+        import re
+        m = re.search(r'"(\d+)(?:\.(\d+))?', version_line)
+        if m:
+            major = int(m.group(1))
+            if major == 1 and m.group(2):  # Java 8 reports as "1.8"
+                major = int(m.group(2))
+            if major < 8 or major > 21:
+                print(f"\033[91m[CICFLOWMETER] Java {major} detected — Gradle 8.5 requires Java 8-21.\033[0m")
+                print(f"\033[93m  Install Java 17 LTS from https://adoptium.net/\033[0m")
+                return False
+    except FileNotFoundError:
+        print(f"\033[91m[CICFLOWMETER] Java not found. Install Java 8-21 to build CICFlowMeter.\033[0m")
+        print(f"\033[93m  Download from https://adoptium.net/ (recommend Temurin 17 LTS)\033[0m")
+        return False
+    except Exception:
+        pass  # If version detection fails, let Gradle try and report its own error
+
     print(f"\033[96m[CICFLOWMETER] CICFlowMeter not built yet. Building now (this may take a minute)...\033[0m")
     try:
         result = subprocess.run(
