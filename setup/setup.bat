@@ -106,6 +106,24 @@ if %errorlevel% neq 0 (
 
 :done_prereq
 
+REM --- Npcap (needed by jnetpcap for packet capture) ---
+if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
+    echo   [OK] Npcap found
+) else if exist "%SystemRoot%\System32\wpcap.dll" (
+    echo   [OK] WinPcap/Npcap found
+) else (
+    echo   [ERROR] Npcap is not installed.
+    echo           jnetpcap ^(packet capture library^) needs Npcap to work.
+    echo.
+    echo     Download and install Npcap:
+    echo       https://npcap.com
+    echo.
+    echo     IMPORTANT during install:
+    echo       Check "Install Npcap in WinPcap API-compatible Mode"
+    echo.
+    set "FAIL=1"
+)
+
 if "%FAIL%"=="1" (
     echo.
     echo ================================================================================

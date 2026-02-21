@@ -139,6 +139,33 @@ else
     FAIL=true
 fi
 
+# --- libpcap (needed by jnetpcap native library) ---
+LIBPCAP_FOUND=false
+if ldconfig -p 2>/dev/null | grep -q libpcap; then
+    LIBPCAP_FOUND=true
+elif [ -f /usr/lib/x86_64-linux-gnu/libpcap.so ] || \
+     [ -f /usr/lib/x86_64-linux-gnu/libpcap.so.1 ] || \
+     [ -f /usr/lib/x86_64-linux-gnu/libpcap.so.0.8 ] || \
+     [ -f /usr/lib/libpcap.so ] || \
+     [ -f /usr/lib/libpcap.so.1 ]; then
+    LIBPCAP_FOUND=true
+fi
+
+if [ "$LIBPCAP_FOUND" = true ]; then
+    echo "  [OK] libpcap found"
+else
+    echo "  [ERROR] libpcap is not installed."
+    echo "          jnetpcap (packet capture library) needs libpcap to work."
+    echo ""
+    echo "    Copy-paste the install command for your distro:"
+    echo ""
+    echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
+    echo "      Fedora/RHEL:    sudo dnf install libpcap-devel"
+    echo "      Arch Linux:     sudo pacman -S libpcap"
+    echo ""
+    FAIL=true
+fi
+
 if [ "$FAIL" = true ]; then
     echo "================================================================================"
     echo "  SETUP CANNOT CONTINUE"
@@ -251,11 +278,25 @@ else
     echo "  [ERROR] No network interfaces detected!"
     echo ""
 
+    # Check if it's specifically a native library loading error
+    if echo "$INTERFACE_OUTPUT" | grep -qi 'UnsatisfiedLinkError\|dlopen\|libpcap\|libjnetpcap'; then
+        echo "  PROBLEM: jnetpcap native library failed to load."
+        echo "    This usually means libpcap is missing or not properly installed."
+        echo "    Fix:"
+        echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
+        echo "      Fedora/RHEL:    sudo dnf install libpcap-devel"
+        echo "      Arch Linux:     sudo pacman -S libpcap"
+        echo ""
+    fi
+
     # Check for common Linux problems
     # 1. libpcap
     if ! ldconfig -p 2>/dev/null | grep -q libpcap && \
        [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so ] && \
-       [ ! -f /usr/lib/libpcap.so ]; then
+       [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so.1 ] && \
+       [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so.0.8 ] && \
+       [ ! -f /usr/lib/libpcap.so ] && \
+       [ ! -f /usr/lib/libpcap.so.1 ]; then
         echo "  PROBLEM: libpcap is not installed."
         echo "    Fix:"
         echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
