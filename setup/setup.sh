@@ -175,36 +175,23 @@ echo "==========================================================================
 echo "  Setup Complete!  Everything is working."
 echo "================================================================================"
 echo ""
-echo "  IMPORTANT: You must activate the virtual environment before running."
+echo "  1. ACTIVATE the virtual environment (one-time per terminal session):"
 echo ""
-
-case "$0" in
-    *setup.sh*)
-        echo "  You ran this script with 'sh' or 'bash', so the venv is NOT active."
-        echo "  Activate it now:"
-        echo ""
-        echo "      source venv/bin/activate    (bash/zsh)"
-        echo "      . venv/bin/activate          (any shell)"
-        echo ""
-        ;;
-    *)
-        echo "  venv is active. You're ready to go."
-        echo ""
-        ;;
-esac
-
-echo "  Quick test (120 sec capture):"
-echo "    Linux:"
-echo "      sudo ./venv/bin/python classification.py"
+echo "      source venv/bin/activate"
 echo ""
-echo "    Windows/Mac:"
+echo "     After this, 'python' automatically points to your venv's Python."
+echo ""
+echo "  2. TEST without privileges (to see interface detection):"
+echo ""
 echo "      python classification.py"
 echo ""
-echo "  See all options:"
-echo "    python classification.py --help"
+echo "  3. RUN with sudo (for actual packet capture):"
 echo ""
-echo "  ML model pipeline:"
-echo "    python ml_model.py --help"
+echo "      sudo python classification.py"
+echo ""
+echo "  See all options:"
+echo ""
+echo "      python classification.py --help"
 echo ""
 echo "================================================================================"
 echo ""

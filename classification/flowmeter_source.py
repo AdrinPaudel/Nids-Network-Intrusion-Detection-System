@@ -346,13 +346,61 @@ def _start_periodic_gc(session, interval):
 
 def list_interfaces():
     """
-    List available network interfaces using Scapy.
+    List available network interfaces.
+    First tries system commands (no root needed), then falls back to Scapy.
     Returns list of dicts with keys: index, name, description, addresses.
-    Same format as the old Java-based list_interfaces() for compatibility.
     """
+    interfaces = []
+
+    # Try system commands first (works without root on Linux/macOS)
+    if not _IS_WINDOWS:
+        try:
+            import subprocess
+            
+            # Try 'ip link show' (Linux)
+            if subprocess.run(['which', 'ip'], capture_output=True).returncode == 0:
+                result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if line and line[0].isdigit() and ':' in line:
+                            parts = line.split(':')
+                            if len(parts) >= 2:
+                                iface_name = parts[1].strip()
+                                # Skip loopback
+                                if iface_name.lower() not in ('lo', 'loopback'):
+                                    interfaces.append({
+                                        "index": len(interfaces),
+                                        "name": iface_name,
+                                        "description": "N/A",
+                                        "addresses": "N/A",
+                                    })
+                    if interfaces:
+                        return interfaces
+            
+            # Try 'ifconfig' (macOS/Linux fallback)
+            if subprocess.run(['which', 'ifconfig'], capture_output=True).returncode == 0:
+                result = subprocess.run(['ifconfig'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    import re
+                    for line in result.stdout.split('\n'):
+                        # ifconfig lines start with interface name (not whitespace)
+                        if line and line[0] not in (' ', '\t', '') and ':' in line:
+                            iface_name = line.split(':')[0].strip()
+                            if iface_name.lower() not in ('lo', 'loopback'):
+                                interfaces.append({
+                                    "index": len(interfaces),
+                                    "name": iface_name,
+                                    "description": "N/A",
+                                    "addresses": "N/A",
+                                })
+                    if interfaces:
+                        return interfaces
+        except Exception:
+            pass  # Fall through to Scapy
+    
+    # Fallback: use Scapy (requires root on Linux)
     try:
         # On Windows, explicitly load the arch module to trigger Npcap detection.
-        # Without this, conf.ifaces stays None on some Scapy/Python versions.
         if _IS_WINDOWS:
             import scapy.arch.windows  # noqa: F401
         from scapy.config import conf
@@ -361,8 +409,6 @@ def list_interfaces():
         print(f"{COLOR_RED}[ERROR] Scapy is not installed.{COLOR_RESET}")
         print(f"{COLOR_YELLOW}  Run: pip install cicflowmeter{COLOR_RESET}")
         return []
-
-    interfaces = []
 
     try:
         # Suppress Scapy's internal route/interface warnings
@@ -423,8 +469,6 @@ def list_interfaces():
             print(f"{COLOR_YELLOW}    Ubuntu/Debian:  sudo apt install libpcap-dev{COLOR_RESET}")
             print(f"{COLOR_YELLOW}    Fedora/RHEL:    sudo dnf install libpcap-devel{COLOR_RESET}")
             print(f"{COLOR_YELLOW}    Arch Linux:     sudo pacman -S libpcap{COLOR_RESET}")
-            print(f"{COLOR_YELLOW}  Run with sudo or set capabilities:{COLOR_RESET}")
-            print(f"{COLOR_YELLOW}    sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3)){COLOR_RESET}")
 
     return interfaces
 
