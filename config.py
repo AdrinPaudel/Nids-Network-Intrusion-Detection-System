@@ -388,6 +388,13 @@ TARGET_INFILTRATION_F1 = 0.89  # >89% for hardest class
 # CLASSIFICATION (LIVE DETECTION) SETTINGS
 # ============================================================
 
+# Python CICFlowMeter (Scapy-based flow capture) settings
+# These control how quickly flows are emitted for classification.
+# Matching the original Java CICFlowMeter's real-time behavior.
+FLOWMETER_IDLE_THRESHOLD = 15       # Emit flow after N seconds of no new packets
+FLOWMETER_AGE_THRESHOLD = 30        # Emit flow after N seconds total duration
+FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (seconds)
+
 # Default classification parameters
 CLASSIFICATION_DEFAULT_DURATION = 180        # 3 minutes (seconds)
 CLASSIFICATION_DEFAULT_MODEL = "default"     # "default" (5-class) or "all" (6-class)

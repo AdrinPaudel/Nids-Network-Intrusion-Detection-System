@@ -6,7 +6,7 @@ NIDS Classification - Live Traffic Analysis
 Main orchestrator for real-time network traffic classification.
 
 Starts a multi-threaded pipeline:
-    CICFlowMeter Source → Preprocessor → Classifier → Threat Handler + Report Generator
+    FlowMeter Source → Preprocessor → Classifier → Threat Handler + Report Generator
 
 Each component runs in its own thread with queues connecting them.
 
@@ -16,8 +16,8 @@ Usage:
     python classification.py --model all         # Use 'all' model (with Infilteration)
     python classification.py --interface "..."   # Specify network interface
     python classification.py --list-interfaces   # List available interfaces
-
-Multiple instances can run simultaneously without interfering with each other.
+    python classification.py --batch             # Batch CSV classification (interactive)
+    python classification.py --batch file.csv    # Batch CSV classification (specific file)
 """
 
 import os
@@ -25,7 +25,6 @@ os.environ["PYTHONWARNINGS"] = "ignore::UserWarning"
 import sys
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=ResourceWarning, message="subprocess")
 import argparse
 import threading
 import queue
@@ -51,7 +50,7 @@ def check_venv():
             print("      setup\\setup.bat")
         else:
             print("      source setup/setup.sh")
-        print("\n  This will create the venv, install dependencies, and build CICFlowMeter.")
+        print("\n  This will create the venv and install all dependencies.")
         print("="*80 + "\n")
         sys.exit(1)
 
@@ -108,8 +107,8 @@ from config import (
     COLOR_CYAN, COLOR_CYAN_BOLD, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_RESET,
     COLOR_DARK_GRAY, COLOR_RED_BOLD
 )
-from classification.cicflowmeter_source import (
-    CICFlowMeterSource, list_interfaces, 
+from classification.flowmeter_source import (
+    FlowMeterSource, list_interfaces, 
     get_wifi_interfaces, get_ethernet_interfaces
 )
 from classification.batch_source import BatchSource
@@ -142,14 +141,13 @@ class ClassificationSession:
     """
 
     def __init__(self, mode="live", interface_name=None, duration=DEFAULT_DURATION,
-                 use_all_classes=False, csv_path=None, session_id=1, batch_file_path=None, has_batch_label=False):
+                 use_all_classes=False, session_id=1, batch_file_path=None, has_batch_label=False):
         """
         Args:
-            mode: 'live', 'batch', 'csv', or 'simul' (only 'live' and 'batch' implemented)
+            mode: 'live' or 'batch'
             interface_name: network interface device name (None = auto-detect WiFi) [for live mode]
             duration: capture duration in seconds [for live mode]
             use_all_classes: use 'all' model if True
-            csv_path: path to CSV file (for csv mode)
             session_id: unique session identifier
             batch_file_path: path to batch CSV file (for batch mode)
             has_batch_label: if True, batch file has actual labels
@@ -158,7 +156,6 @@ class ClassificationSession:
         self.interface_name = interface_name
         self.duration = duration
         self.use_all_classes = use_all_classes
-        self.csv_path = csv_path
         self.session_id = session_id
         self.batch_file_path = batch_file_path
         self.has_batch_label = has_batch_label
@@ -228,21 +225,15 @@ class ClassificationSession:
             return self._start_live()
         elif self.mode == "batch":
             return self._start_batch()
-        elif self.mode == "csv":
-            print("\033[93m[SESSION] CSV mode not yet implemented.\033[0m")
-            return False
-        elif self.mode == "simul":
-            print("\033[93m[SESSION] Simulation mode not yet implemented.\033[0m")
-            return False
         else:
-            print(f"\033[91m[SESSION] Unknown mode: {self.mode}\033[0m")
+            print(f"{COLOR_RED}[SESSION] Unknown mode: {self.mode}{COLOR_RESET}")
             return False
 
     def _start_live(self):
         """Start the live capture pipeline."""
 
-        # 1. Create CICFlowMeter source
-        self.source = CICFlowMeterSource(
+        # 1. Create flow capture source (Python CICFlowMeter / Scapy)
+        self.source = FlowMeterSource(
             flow_queue=self.flow_queue,
             interface_name=self.interface_name,
             stop_event=self.stop_event,
@@ -286,9 +277,9 @@ class ClassificationSession:
             batch_completion_event=self.batch_completion_event,
         )
 
-        # Start CICFlowMeter source (subprocess, not a thread itself - has internal threads)
+        # Start flow capture source (Scapy-based, not a subprocess)
         if not self.source.start():
-            print(f"{COLOR_RED}[SESSION] Failed to start CICFlowMeter source.{COLOR_RESET}")
+            print(f"{COLOR_RED}[SESSION] Failed to start flow capture source.{COLOR_RESET}")
             return False
 
         # Start pipeline threads
@@ -308,7 +299,7 @@ class ClassificationSession:
             t.start()
             self.threads.append(t)
 
-        print(f"{COLOR_GREEN}[SESSION] Pipeline started with {len(self.threads)} threads + CICFlowMeter subprocess{COLOR_RESET}")
+        print(f"{COLOR_GREEN}[SESSION] Pipeline started with {len(self.threads)} threads + flow capture{COLOR_RESET}")
         print(f"{COLOR_GREEN}[SESSION] Capturing for {self.duration} seconds. Press Ctrl+C to stop early.{COLOR_RESET}\n")
 
         return True
@@ -360,10 +351,9 @@ class ClassificationSession:
                         flows = self.source.flow_count if self.source else 0
                         classified = self.classifier.classified_count if self.classifier else 0
                         packets = self.source._packet_count if self.source else 0
-                        header_ok = "yes" if (self.source and self.source._header_received.is_set()) else "no"
-                        java_alive = "yes" if (self.source and self.source.is_alive()) else "no"
+                        sniffer_alive = "yes" if (self.source and self.source.is_alive()) else "no"
                         print(f"{COLOR_DARK_GRAY}[SESSION] {int(elapsed)}s elapsed | "
-                              f"Java alive: {java_alive} | Header: {header_ok} | "
+                              f"Sniffer: {sniffer_alive} | "
                               f"Packets: {packets} | Flows: {flows} | Classified: {classified} | "
                               f"Remaining: {int(remaining)}s{COLOR_RESET}")
 
@@ -394,7 +384,7 @@ class ClassificationSession:
 
         print(f"\n{COLOR_CYAN}[SESSION] Shutting down session {self.session_id}...{COLOR_RESET}")
 
-        # ── Step 1: Stop the source (Java subprocess) ──────────────────────
+        # ── Step 1: Stop the flow capture source ──────────────────────────
         if self.source:
             self.source.stop()
 
@@ -567,18 +557,18 @@ Examples:
   python classification.py --model all              # Use 'all' model (with Infilteration)
   python classification.py --list-interfaces        # List network interfaces
   python classification.py --interface "\\Device\\NPF_{...}"  # Specific interface
-  python classification.py --batch                  # Batch mode (select CSV file)
-  python classification.py --batch data/batch/file.csv  # Batch mode with specific file
+  python classification.py --batch                  # Batch CSV classification (select file)
+  python classification.py --batch path/to/file.csv # Batch CSV classification (specific file)
         """
     )
 
     parser.add_argument(
-        "--mode", choices=["live", "batch", "csv", "simul"], default="live",
+        "--mode", choices=["live", "batch"], default="live",
         help="Classification mode (default: live)"
     )
     parser.add_argument(
         "--batch", type=str, nargs='?', const='SELECT',
-        help="Batch mode: optionally specify CSV file path (default: interactive selection)"
+        help="Batch CSV classification: optionally specify CSV file path (default: interactive selection)"
     )
     parser.add_argument(
         "--duration", type=int, default=DEFAULT_DURATION,
@@ -595,10 +585,6 @@ Examples:
     parser.add_argument(
         "--list-interfaces", action="store_true",
         help="List available network interfaces and exit"
-    )
-    parser.add_argument(
-        "--csv", type=str, default=None,
-        help="Path to CSV file for csv mode (not yet implemented)"
     )
 
     args = parser.parse_args()
@@ -671,7 +657,6 @@ Examples:
         interface_name=interface_name,
         duration=args.duration,
         use_all_classes=use_all,
-        csv_path=args.csv,
         session_id=session_id,
         batch_file_path=batch_file_path,
         has_batch_label=has_batch_label,

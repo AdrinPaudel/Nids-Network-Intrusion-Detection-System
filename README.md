@@ -5,7 +5,7 @@ A machine learning-based Network Intrusion Detection System built on the **CICID
 ## What It Does
 
 - **ML Pipeline** — Loads the CICIDS2018 dataset (10 CSV files, ~6 GB), preprocesses it (cleaning, encoding, SMOTE balancing, feature selection), trains a Random Forest model, and evaluates it
-- **Live Classification** — Captures real-time network traffic using CICFlowMeter (Java), converts packets into flow features, and classifies each flow as Benign or one of 5 attack types
+- **Live Classification** — Captures real-time network traffic using Scapy (via [cicflowmeter](https://pypi.org/project/cicflowmeter/)), converts packets into flow features, and classifies each flow as Benign or one of 5 attack types
 - **Batch Classification** — Classifies pre-captured CSV flow files and generates accuracy reports (if labeled)
 
 ### Attack Classes
@@ -30,7 +30,7 @@ NIDS/
 │   ├── setup.sh                  #   Automated setup (Linux)
 │   ├── fix_tuesday_csv.py        #   Fixes extra columns in Tuesday CSV
 │   ├── verify_csv_files.py       #   Verifies all 10 CSVs are correct
-│   └── verify_environment.py     #   Checks Python packages & Java
+│   └── verify_environment.py     #   Checks Python packages & Npcap/libpcap
 │
 ├── ml_model/                     # ML pipeline modules
 │   ├── data_loader.py            #   Module 1: Load CICIDS2018 CSVs
@@ -41,7 +41,7 @@ NIDS/
 │   └── utils.py                  #   Shared utilities
 │
 ├── classification/               # Live classification pipeline (threaded)
-│   ├── cicflowmeter_source.py    #   Manages CICFlowMeter Java subprocess
+│   ├── flowmeter_source.py       #   Scapy-based flow capture (cicflowmeter wrapper)
 │   ├── preprocessor.py           #   Real-time feature preprocessing
 │   ├── classifier.py             #   Model inference (top-3 predictions)
 │   ├── threat_handler.py         #   Color-coded terminal threat alerts
@@ -55,12 +55,6 @@ NIDS/
 │   ├── batch_report.py           #   Batch report generation
 │   ├── batch_classify.py         #   Batch pipeline orchestrator
 │   └── batch_utils.py            #   File discovery & selection helpers
-│
-├── CICFlowMeter/                 # Modified CICFlowMeter (Java)
-│   ├── src/main/java/            #   Java source (LiveCapture, FlowGenerator, etc.)
-│   ├── jnetpcap/                 #   Native pcap libraries (win + linux)
-│   ├── build.gradle              #   Gradle build config
-│   └── gradlew / gradlew.bat     #   Gradle wrapper
 │
 ├── trained_model/                # Pre-trained 5-class model (included in repo)
 │   ├── random_forest_model.joblib
@@ -91,11 +85,11 @@ venv\Scripts\activate
 # Linux/macOS:
 source venv/bin/activate
 
-# Install dependencies
+# Install dependencies (includes cicflowmeter, scapy, scikit-learn, etc.)
 pip install -r requirements.txt
 ```
 
-### 2. Run Live Classification (Works Immediately — Requires Java + Npcap)
+### 2. Run Live Classification (Works Immediately — Requires Npcap/libpcap)
 
 The pre-trained 5-class model is included, so live classification works right after setup:
 
@@ -130,8 +124,8 @@ python ml_model.py --module 4 --hypercache        # Retrain with cached hyperpar
 
 These are **automated setup scripts** that do Steps 1 above for you in one click:
 
-- **`setup.bat`** (Windows) — Creates the venv, activates it, installs all pip dependencies
-- **`setup.sh`** (Linux) — Same thing, plus installs system packages (`libpcap-dev`) via apt/yum
+- **`setup.bat`** (Windows) — Checks Python & Npcap, creates the venv, installs all pip dependencies, tests interface detection
+- **`setup.sh`** (Linux) — Same thing, plus checks libpcap and grants Python packet capture permissions
 
 You can either run the setup script OR do it manually — they do the same thing. The scripts just save time so you don't have to type each command yourself.
 
@@ -157,11 +151,12 @@ source venv/bin/activate
 
 | Requirement | Needed For | How to Get |
 |---|---|---|
-| **Python 3.8+** | Everything | [python.org](https://www.python.org/downloads/) |
-| **Java 8+ (JDK)** | Live capture only | [adoptium.net](https://adoptium.net/) |
-| **Npcap** (Windows) | Live capture only | **Included in repo** (`CICFlowMeter/jnetpcap/`) + install [Npcap driver](https://npcap.com) |
-| **libpcap** (Linux) | Live capture only | `sudo apt-get install libpcap-dev` |
+| **Python 3.12+** | Everything | [python.org](https://www.python.org/downloads/) |
+| **Npcap** (Windows) | Live capture only | [npcap.com](https://npcap.com) — check "WinPcap API-compatible Mode" |
+| **libpcap** (Linux) | Live capture only | `sudo apt install libpcap-dev` |
 | **CICIDS2018 dataset** | ML training only | [UNB CICIDS2018](https://www.unb.ca/cic/datasets/ids-2018.html) |
+
+> **Java is NOT required.** Live capture is fully Python-based using the `cicflowmeter` pip package (Scapy).
 
 ## ML Pipeline Modules
 
@@ -221,4 +216,4 @@ Dst Port,Protocol,Timestamp,Flow Duration,Tot Fwd Pkts,Tot Bwd Pkts,TotLen Fwd P
 
 ## License
 
-This project uses a modified version of [CICFlowMeter](https://github.com/ahlashkari/CICFlowMeter) (see `CICFlowMeter/LICENSE.txt`).
+MIT

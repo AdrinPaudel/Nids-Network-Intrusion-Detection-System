@@ -14,12 +14,10 @@ Run each step in order — commands are copy-paste ready.
 5. [Download the CICIDS2018 Dataset (For Training)](#5-download-the-cicids2018-dataset-for-training)
 6. [Fix the Extra-Column CSV File](#6-fix-the-extra-column-csv-file)
 7. [Verify CSV Files](#7-verify-csv-files)
-8. [Java Setup (For Live Capture Only)](#8-java-setup-for-live-capture-only)
-9. [Npcap Setup (For Live Capture on Windows Only)](#9-npcap-setup-for-live-capture-on-windows-only)
-10. [Build CICFlowMeter (For Live Capture Only)](#10-build-cicflowmeter-for-live-capture-only)
-11. [Configure Training Parameters (Avoid OOM)](#11-configure-training-parameters-avoid-oom)
-12. [Run It](#12-run-it)
-13. [Troubleshooting](#13-troubleshooting)
+8. [Npcap / libpcap Setup (For Live Capture)](#8-npcap--libpcap-setup-for-live-capture)
+9. [Configure Training Parameters (Avoid OOM)](#9-configure-training-parameters-avoid-oom)
+10. [Run It](#10-run-it)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
@@ -27,12 +25,11 @@ Run each step in order — commands are copy-paste ready.
 
 | Requirement | Version | Needed For |
 |---|---|---|
-| **Python** | 3.8 or higher | Everything |
-| **Java JDK** | 8 through 21 (recommend 17 LTS) | Live network capture only |
+| **Python** | 3.12 or higher | Everything |
 | **Npcap** (Windows) | Latest | Live network capture only |
 | **libpcap-dev** (Linux) | Latest | Live network capture only |
 
-> **If you only want to run batch classification or retrain the model, you do NOT need Java or Npcap.**
+> **Java is NOT required.** Live capture uses the Python `cicflowmeter` package (Scapy-based), which is installed automatically via pip.
 
 ---
 
@@ -55,11 +52,12 @@ The `setup.bat` / `setup.sh` scripts create a virtual environment and install al
 
 **What they do:**
 1. Check Python is installed
-2. Create a `venv/` virtual environment
-3. Activate it
-4. Run `pip install --upgrade pip`
-5. Run `pip install -r requirements.txt`
-6. (Linux only) Install system packages like `libpcap-dev`
+2. Check Npcap (Windows) / libpcap (Linux) is installed
+3. Create a `venv/` virtual environment
+4. Activate it
+5. Run `pip install --upgrade pip`
+6. Run `pip install -r requirements.txt` (installs cicflowmeter, scapy, scikit-learn, etc.)
+7. Test network interface detection
 
 **Windows** (run from project root):
 ```bash
@@ -115,7 +113,7 @@ Run the verification script to confirm everything is installed:
 python setup/verify_environment.py
 ```
 
-This checks all required packages, Python version, venv status, and Java availability.
+This checks all required packages (including cicflowmeter and scapy), Python version, venv status, and Npcap/libpcap availability.
 
 ---
 
@@ -196,110 +194,51 @@ All files should show **80 columns** and status **OK**.
 
 ---
 
-## 8. Java Setup (For Live Capture Only)
+## 8. Npcap / libpcap Setup (For Live Capture)
 
 > **Skip this if you only need batch classification or ML training.**
 
-### Install Java
+Live capture uses **Scapy** (via the `cicflowmeter` pip package) to sniff packets. Scapy requires a packet capture library on your OS.
 
-- **Windows/macOS/Linux:** Download from [Adoptium (Eclipse Temurin)](https://adoptium.net/)
-- **Required version: Java 8 through 21** (recommend **Java 17 LTS**)
-- Java 22+ is **NOT supported** — the Gradle 8.5 build system will fail with `Unsupported class file major version` errors
-- Make sure `java` is in your system PATH
-
-> **Linux tip:** Many distros now ship Java 22+ by default. If you get a Gradle error, install Java 17:
-> ```bash
-> apt install openjdk-17-jdk
-> update-alternatives --config java   # select version 17
-> ```
-
-### Verify
-
-```bash
-java -version
-```
-
-### Linux: Set Packet Capture Permissions
-
-On Linux, Java needs permission to capture raw packets. Set capabilities once during setup:
-
-```bash
-setcap cap_net_raw,cap_net_admin=eip $(which java)
-```
-
-After this, you can run live capture normally without elevated privileges:
-
-```bash
-python classification.py --duration 180
-```
-
-> **Note:** If `setcap` requires elevated access on your system, ask your system administrator to run it for you.
-
----
-
-## 9. Npcap Setup (For Live Capture on Windows Only)
-
-> **Skip this if you're on Linux or don't need live capture.**
+### Windows: Install Npcap
 
 1. Download Npcap from [https://npcap.com](https://npcap.com)
 2. Run the installer
 3. **IMPORTANT:** Check **"Install Npcap in WinPcap API-compatible Mode"** during installation
 4. Complete the installation
 
-> The jnetpcap native libraries (.dll / .so) are already included in the repo under `CICFlowMeter/jnetpcap/`. You do NOT need to download jnetpcap separately.
+### Linux: Install libpcap
+
+```bash
+# Ubuntu/Debian:
+sudo apt install libpcap-dev
+
+# Fedora/RHEL:
+sudo dnf install libpcap-devel
+
+# Arch Linux:
+sudo pacman -S libpcap
+```
+
+### Linux: Packet Capture Permissions
+
+On Linux, Scapy needs permission to capture raw packets. Grant capability to your Python binary:
+
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+```
+
+After this, you can run live capture normally without sudo:
+
+```bash
+python classification.py --duration 180
+```
+
+> **Note:** The setup script (`setup.sh`) will attempt to do this automatically.
 
 ---
 
-## 10. Build CICFlowMeter (For Live Capture Only)
-
-> **Skip this if you only need batch classification or ML training.**
-
-The `CICFlowMeter/build/` directory is **not included in the repo** (it's gitignored). After cloning, you must build CICFlowMeter from source using the included Gradle wrapper.
-
-### Prerequisites
-
-- Java JDK 8+ must be installed and `java` must be on your PATH (see [Step 8](#8-java-setup-for-live-capture-only))
-
-### Build
-
-Run the following from the **project root**:
-
-**Windows:**
-```bash
-cd CICFlowMeter
-gradlew.bat build
-cd ..
-```
-
-**Linux/macOS:**
-```bash
-cd CICFlowMeter
-chmod +x gradlew
-./gradlew build
-cd ..
-```
-
-This downloads Gradle automatically (via the wrapper), compiles the Java source, and produces the class files under `CICFlowMeter/build/`.
-
-### Verify
-
-After building, confirm the build directory exists:
-
-```bash
-# Windows:
-dir CICFlowMeter\build\classes
-
-# Linux:
-ls CICFlowMeter/build/classes
-```
-
-You should see a `main/` folder containing compiled `.class` files.
-
-> **Note:** You only need to do this once after cloning. If you modify the CICFlowMeter Java source, re-run the build command.
-
----
-
-## 11. Configure Training Parameters (Avoid OOM)
+## 9. Configure Training Parameters (Avoid OOM)
 
 > **⚠️ READ THIS BEFORE RUNNING THE ML PIPELINE — especially if you have ≤16 GB RAM.**
 
@@ -374,7 +313,7 @@ This uses cached/default hyperparameters and skips RandomizedSearchCV completely
 
 ---
 
-## 12. Run It
+## 10. Run It
 
 ### Batch Classification (Quickest Test — No Dataset Needed)
 
@@ -382,7 +321,7 @@ This uses cached/default hyperparameters and skips RandomizedSearchCV completely
 python classification.py --batch path/to/flows.csv
 ```
 
-### Live Classification (Requires Java + Npcap)
+### Live Classification (Requires Npcap/libpcap)
 
 ```bash
 python classification.py                     # Auto-detect WiFi, 180 seconds
@@ -400,7 +339,7 @@ python ml_model.py --module 4 --hypercache   # Retrain with cached hyperparams (
 
 ---
 
-## 13. Troubleshooting
+## 11. Troubleshooting
 
 ### "Missing required packages" / "Virtual environment not detected"
 
@@ -412,21 +351,15 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-### CICFlowMeter / Java errors
-
-- Verify `java -version` works and shows **Java 8 through 21**
-- **"Unsupported class file major version"** = your Java is too new (22+). Install Java 17: `apt install openjdk-17-jdk`
-- Windows: Make sure Npcap is installed with "WinPcap API-compatible Mode"
-- Linux: Install `libpcap-dev` and set Java capabilities
-
 ### "No network interfaces found"
 
-- Windows: Install Npcap
-- Linux: Set Java capture capabilities (see [Step 8](#8-java-setup-for-live-capture-only))
+- Windows: Install Npcap from https://npcap.com (check "WinPcap API-compatible Mode")
+- Linux: Install `libpcap-dev` and grant Python capture permissions (see [Step 8](#8-npcap--libpcap-setup-for-live-capture))
+- Try running as Administrator (Windows) or with sudo (Linux)
 
 ### Out of Memory during training
 
-- See [Step 11](#11-configure-training-parameters-avoid-oom) for how to reduce RAM usage
+- See [Step 9](#9-configure-training-parameters-avoid-oom) for how to reduce RAM usage
 - Or use `--hypercache` to skip tuning entirely
 
 ### "Label column not found"
@@ -443,7 +376,7 @@ source venv/bin/activate
 
 ## Summary Checklist
 
-- [ ] Python 3.8+ installed
+- [ ] Python 3.12+ installed
 - [ ] Virtual environment created and activated
 - [ ] Dependencies installed (`pip install -r requirements.txt`)
 - [ ] Environment verified (`python setup/verify_environment.py`)
@@ -451,7 +384,5 @@ source venv/bin/activate
 - [ ] *(For training)* Tuesday CSV fixed (`python setup/fix_tuesday_csv.py`)
 - [ ] *(For training)* All CSVs verified (`python setup/verify_csv_files.py`)
 - [ ] *(For training)* Training parameters adjusted in `config.py` for your RAM
-- [ ] *(For live capture)* Java 8-21 installed (recommend 17 LTS)
-- [ ] *(For live capture)* CICFlowMeter built (`cd CICFlowMeter && gradlew.bat build` / `./gradlew build`)
 - [ ] *(For live capture, Windows)* Npcap installed with WinPcap compatibility
-- [ ] *(For live capture, Linux)* `libpcap-dev` installed, Java has capture permissions
+- [ ] *(For live capture, Linux)* `libpcap-dev` installed, Python has capture permissions

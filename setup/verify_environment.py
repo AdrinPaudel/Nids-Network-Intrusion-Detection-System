@@ -44,6 +44,8 @@ def main():
         "tqdm": "tqdm",
         "pyarrow": "pyarrow",
         "psutil": "psutil",
+        "cicflowmeter": "cicflowmeter",
+        "scapy": "scapy",
     }
 
     all_ok = True
@@ -56,14 +58,22 @@ def main():
             print(f"  MISSING: {name}")
             all_ok = False
 
-    # Check Java (optional, for live capture)
+    # Check Npcap/libpcap (needed by Scapy for live capture)
     print()
-    import shutil
-    java_path = shutil.which("java")
-    if java_path:
-        print(f"  Java: Found at {java_path}")
+    import os
+    if os.name == "nt":
+        npcap_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "Npcap", "wpcap.dll")
+        wpcap_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "wpcap.dll")
+        if os.path.exists(npcap_path) or os.path.exists(wpcap_path):
+            print("  Npcap: Found (needed for live capture)")
+        else:
+            print("  Npcap: NOT FOUND — install from https://npcap.com (needed for live capture)")
     else:
-        print("  Java: NOT FOUND (needed only for live capture)")
+        import shutil
+        if shutil.which("tcpdump") or os.path.exists("/usr/lib/x86_64-linux-gnu/libpcap.so"):
+            print("  libpcap: Found (needed for live capture)")
+        else:
+            print("  libpcap: NOT FOUND — install libpcap-dev (needed for live capture)")
 
     # Summary
     print()

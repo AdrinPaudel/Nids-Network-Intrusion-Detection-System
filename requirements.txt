@@ -1,5 +1,5 @@
 # NIDS CICIDS2018 Project Requirements
-# Python 3.8+
+# Python 3.12+
 
 # Core Data Processing
 pandas>=1.5.0
@@ -24,3 +24,6 @@ pyarrow>=10.0.0  # For parquet files
 
 # System Utilities
 psutil>=5.9.0  # For memory monitoring
+
+# Network Flow Capture (replaces Java CICFlowMeter)
+cicflowmeter>=0.5.0  # Python CICFlowMeter — flow feature extraction via Scapy
