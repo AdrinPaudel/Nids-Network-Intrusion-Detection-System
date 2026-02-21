@@ -28,7 +28,7 @@ Run each step in order — commands are copy-paste ready.
 | Requirement | Version | Needed For |
 |---|---|---|
 | **Python** | 3.8 or higher | Everything |
-| **Java JDK** | 8 or higher | Live network capture only |
+| **Java JDK** | 8 through 21 (recommend 17 LTS) | Live network capture only |
 | **Npcap** (Windows) | Latest | Live network capture only |
 | **libpcap-dev** (Linux) | Latest | Live network capture only |
 
@@ -203,8 +203,15 @@ All files should show **80 columns** and status **OK**.
 ### Install Java
 
 - **Windows/macOS/Linux:** Download from [Adoptium (Eclipse Temurin)](https://adoptium.net/)
-- Minimum version: **Java 8**
+- **Required version: Java 8 through 21** (recommend **Java 17 LTS**)
+- Java 22+ is **NOT supported** — the Gradle 8.5 build system will fail with `Unsupported class file major version` errors
 - Make sure `java` is in your system PATH
+
+> **Linux tip:** Many distros now ship Java 22+ by default. If you get a Gradle error, install Java 17:
+> ```bash
+> apt install openjdk-17-jdk
+> update-alternatives --config java   # select version 17
+> ```
 
 ### Verify
 
@@ -407,7 +414,8 @@ source venv/bin/activate
 
 ### CICFlowMeter / Java errors
 
-- Verify `java -version` works
+- Verify `java -version` works and shows **Java 8 through 21**
+- **"Unsupported class file major version"** = your Java is too new (22+). Install Java 17: `apt install openjdk-17-jdk`
 - Windows: Make sure Npcap is installed with "WinPcap API-compatible Mode"
 - Linux: Install `libpcap-dev` and set Java capabilities
 
@@ -443,7 +451,7 @@ source venv/bin/activate
 - [ ] *(For training)* Tuesday CSV fixed (`python setup/fix_tuesday_csv.py`)
 - [ ] *(For training)* All CSVs verified (`python setup/verify_csv_files.py`)
 - [ ] *(For training)* Training parameters adjusted in `config.py` for your RAM
-- [ ] *(For live capture)* Java 8+ installed
+- [ ] *(For live capture)* Java 8-21 installed (recommend 17 LTS)
 - [ ] *(For live capture)* CICFlowMeter built (`cd CICFlowMeter && gradlew.bat build` / `./gradlew build`)
 - [ ] *(For live capture, Windows)* Npcap installed with WinPcap compatibility
 - [ ] *(For live capture, Linux)* `libpcap-dev` installed, Java has capture permissions

@@ -81,8 +81,33 @@ REM Check if Java is installed
 java -version >nul 2>&1
 if %errorlevel% neq 0 (
     echo WARNING: Java is not installed or not in PATH
-    echo Skipping CICFlowMeter build - Java 8+ is required for live capture
-    echo You can install Java later from https://adoptium.net/
+    echo Skipping CICFlowMeter build - Java 8-21 is required for live capture
+    echo Recommend installing Java 17 LTS from https://adoptium.net/
+    echo Then build manually: cd CICFlowMeter ^& gradlew.bat build ^& cd ..
+    goto :skip_gradle
+)
+
+REM Check Java version - Gradle 8.5 only supports Java 8 through 21
+REM Extract major version from java -version output
+for /f "tokens=3" %%v in ('java -version 2^>^&1 ^| findstr /i "version"') do (
+    set JAVA_VER_RAW=%%~v
+)
+REM Parse major version (handles both "1.8.x" and "17.x.x" formats)
+for /f "delims=." %%m in ("%JAVA_VER_RAW%") do set JAVA_MAJOR=%%m
+if "%JAVA_MAJOR%"=="1" (
+    for /f "tokens=2 delims=." %%m in ("%JAVA_VER_RAW%") do set JAVA_MAJOR=%%m
+)
+
+echo Detected Java major version: %JAVA_MAJOR%
+
+REM Check if version is between 8 and 21
+set JAVA_OK=0
+if %JAVA_MAJOR% GEQ 8 if %JAVA_MAJOR% LEQ 21 set JAVA_OK=1
+
+if %JAVA_OK%==0 (
+    echo WARNING: Java %JAVA_MAJOR% is NOT compatible with Gradle 8.5
+    echo Gradle 8.5 supports Java 8 through 21 only.
+    echo Install Java 17 LTS from https://adoptium.net/
     echo Then build manually: cd CICFlowMeter ^& gradlew.bat build ^& cd ..
     goto :skip_gradle
 )
@@ -144,7 +169,7 @@ echo   3. Run ML model pipeline:
 echo      python ml_model.py --help
 echo.
 echo   For live capture you also need:
-echo     - Java 8+ (https://adoptium.net/)
+echo     - Java 8-21 (https://adoptium.net/ - recommend Java 17 LTS)
 echo     - Npcap installed with WinPcap API-compatible mode (https://npcap.com)
 echo     - CICFlowMeter built (cd CICFlowMeter ^& gradlew.bat build ^& cd ..)
 echo.

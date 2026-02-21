@@ -99,11 +99,50 @@ echo ""
 echo "Step 5: Building CICFlowMeter (for live network capture)..."
 echo ""
 
-# Check if Java is installed
-if command -v java &> /dev/null; then
-    java_version=$(java -version 2>&1 | head -1)
-    echo "Found Java: $java_version"
+# Gradle 8.5 only supports Java 8 through 21.
+# Newer Java versions (22+) will fail with "Unsupported class file major version" errors.
+JAVA_OK=false
+JAVA_MAJOR=0
 
+if command -v java &> /dev/null; then
+    java_version_full=$(java -version 2>&1 | head -1)
+    echo "Found Java: $java_version_full"
+
+    # Extract major version number
+    # Java 8: "1.8.0_xxx" → major=8
+    # Java 9+: "9.x.x", "11.x.x", "17.x.x", "21.x.x" etc.
+    JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+)(\.[0-9]+)*.*/\1/')
+    if [ "$JAVA_MAJOR" = "1" ]; then
+        # Java 8 reports as 1.8
+        JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"1\.([0-9]+).*/\1/')
+    fi
+
+    echo "Detected Java major version: $JAVA_MAJOR"
+
+    if [ "$JAVA_MAJOR" -ge 8 ] && [ "$JAVA_MAJOR" -le 21 ] 2>/dev/null; then
+        JAVA_OK=true
+    else
+        echo ""
+        echo "WARNING: Java $JAVA_MAJOR is NOT compatible with Gradle 8.5"
+        echo "Gradle 8.5 supports Java 8 through 21 only."
+        echo ""
+        echo "To fix this, install a compatible Java version:"
+        echo "  Ubuntu/Debian: apt install openjdk-17-jdk"
+        echo "  Then switch:   update-alternatives --config java"
+        echo "  Or download:   https://adoptium.net/ (Temurin 17 LTS)"
+        echo ""
+        echo "Skipping CICFlowMeter build."
+    fi
+else
+    echo "WARNING: Java is not installed - skipping CICFlowMeter build"
+    echo "Java 8-21 is required for live capture."
+    echo "  Ubuntu/Debian: apt install openjdk-17-jdk"
+    echo "  Or download:   https://adoptium.net/ (Temurin 17 LTS recommended)"
+    echo "Then re-run this script or build manually:"
+    echo "  cd CICFlowMeter && chmod +x gradlew && ./gradlew build && cd .."
+fi
+
+if [ "$JAVA_OK" = true ]; then
     if [ -f "CICFlowMeter/gradlew" ]; then
         # Skip if already built
         if [ -d "CICFlowMeter/build/classes/main" ]; then
@@ -124,10 +163,6 @@ if command -v java &> /dev/null; then
     else
         echo "WARNING: CICFlowMeter/gradlew not found - skipping build"
     fi
-else
-    echo "WARNING: Java is not installed - skipping CICFlowMeter build"
-    echo "Java 8+ is required for live capture. Install from https://adoptium.net/"
-    echo "Then build manually: cd CICFlowMeter && chmod +x gradlew && ./gradlew build && cd .."
 fi
 
 echo ""
@@ -161,7 +196,7 @@ echo "  3. Run ML model pipeline:"
 echo "     python ml_model.py --help"
 echo ""
 echo "  For live capture you also need:"
-echo "    - Java 8+ (https://adoptium.net/)"
+echo "    - Java 8-21 (https://adoptium.net/ - recommend Temurin 17 LTS)"
 echo "    - libpcap-dev installed"
 echo "    - CICFlowMeter built (cd CICFlowMeter && ./gradlew build && cd ..)"
 echo ""
