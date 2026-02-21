@@ -94,11 +94,31 @@ pip install -r requirements.txt
 The pre-trained 5-class model is included, so live classification works right after setup:
 
 ```bash
-python classification.py                          # Auto-detect WiFi, 180s
-python classification.py --duration 300           # 5 minutes
-python classification.py --model all              # 6-class model (must train first)
-python classification.py --list-interfaces        # List interfaces
+# Step 1: Activate virtual environment
+source venv/bin/activate          # Linux/macOS
+# or: venv\Scripts\activate       # Windows
+
+# Step 2: Test without elevated privileges (detects interfaces)
+python classification.py
+
+# Step 3: Run with elevated privileges (captures packets)
+# Linux/macOS:
+sudo ./venv/bin/python classification.py           # 120 sec capture, auto-detect interface
+
+# Windows:
+python classification.py                           # 120 sec capture, auto-detect interface
+
+# Options:
+python classification.py --duration 300            # 5 minutes
+python classification.py --model all               # 6-class model (Benign, Botnet, Brute Force, DDoS, DoS, Infilteration)
 ```
+
+On **Linux/macOS**, Scapy requires elevated privileges for packet capture. You can:
+1. Use `sudo ./venv/bin/python classification.py` each time, OR
+2. Grant Python capabilities once (no sudo needed later):
+   ```bash
+   sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+   ```
 
 ### 3. Run Batch Classification
 

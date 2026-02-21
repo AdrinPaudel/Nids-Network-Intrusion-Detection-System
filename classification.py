@@ -19,7 +19,8 @@ Usage:
     python classification.py --batch file.csv    # Batch CSV classification (specific file)
     python classification.py --help              # Show all options
     
-Note: On Linux/macOS, live capture requires: sudo python classification.py
+On Linux/macOS, live capture requires elevated privileges:
+    sudo ./venv/bin/python classification.py
 """
 
 import os
@@ -255,8 +256,8 @@ class ClassificationSession:
             try:
                 if os.geteuid() != 0:
                     print(f"{COLOR_RED}[ERROR] Cannot capture packets without elevated privileges on Linux/macOS.{COLOR_RESET}")
-                    print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
-                    print(f"{COLOR_CYAN}      sudo python classification.py{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo + full Python path:{COLOR_RESET}")
+                    print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
                     print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
                     import subprocess
                     python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
@@ -275,12 +276,8 @@ class ClassificationSession:
         except PermissionError as e:
             print(f"{COLOR_RED}[ERROR] Permission denied. Cannot capture packets on {self.interface_name}.{COLOR_RESET}")
             print(f"{COLOR_YELLOW}\nThis requires elevated privileges on Linux/macOS.{COLOR_RESET}")
-            print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
-            print(f"{COLOR_CYAN}      sudo python classification.py{COLOR_RESET}")
-            print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
-            import subprocess
-            python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
-            print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+            print(f"{COLOR_YELLOW}\n  Run with sudo + full Python path:{COLOR_RESET}")
+            print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}\n")
             return False
         except Exception as e:
             print(f"{COLOR_RED}[ERROR] Failed to start packet capture: {e}{COLOR_RESET}")

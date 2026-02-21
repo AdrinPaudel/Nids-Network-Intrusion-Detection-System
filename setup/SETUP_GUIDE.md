@@ -222,19 +222,26 @@ sudo pacman -S libpcap
 
 ### Linux: Packet Capture Permissions
 
-On Linux, Scapy needs permission to capture raw packets. Grant capability to your Python binary:
+On Linux, Scapy needs raw packet capture permissions. You have two options:
 
+**Option A: Run with sudo each time (simple)**
+```bash
+source venv/bin/activate
+sudo ./venv/bin/python classification.py
+```
+
+**Option B: Grant Python capabilities once (no sudo needed later)**
 ```bash
 sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
 ```
 
-After this, you can run live capture normally without sudo:
-
+After this, you can run without sudo:
 ```bash
-python classification.py --duration 180
+source venv/bin/activate
+python classification.py
 ```
 
-> **Note:** The setup script (`setup.sh`) will attempt to do this automatically.
+> **Note:** The setup script (`setup.sh`) will attempt Option B automatically.
 
 ---
 
@@ -315,21 +322,57 @@ This uses cached/default hyperparameters and skips RandomizedSearchCV completely
 
 ## 10. Run It
 
-### Batch Classification (Quickest Test — No Dataset Needed)
+### 1. Activate Virtual Environment (Required for All Commands)
 
 ```bash
-python classification.py --batch path/to/flows.csv
+# Linux/macOS:
+source venv/bin/activate
+
+# Windows:
+venv\Scripts\activate
 ```
 
-### Live Classification (Requires Npcap/libpcap)
+### 2. Test Live Classification (Without Privileges)
+
+First, test that you can detect network interfaces:
 
 ```bash
-python classification.py                     # Auto-detect WiFi, 180 seconds
+python classification.py
+```
+
+Expected output:
+- Lists available network interfaces ✓
+- Prompts you to select one
+- After selection: "Permission denied" message with instructions (when running without sudo on Linux)
+
+### 3. Run Live Classification (Full Capture)
+
+**Windows / macOS:**
+```bash
+python classification.py                     # 120 sec, auto-detect interface, 5-class model
 python classification.py --duration 300      # 5 minutes
-python classification.py --list-interfaces   # List interfaces
+python classification.py --model all         # 6-class model
 ```
 
-### ML Pipeline (Requires Dataset)
+**Linux:**
+```bash
+sudo ./venv/bin/python classification.py     # 120 sec, auto-detect interface, 5-class model
+sudo ./venv/bin/python classification.py --duration 300          # 5 minutes
+sudo ./venv/bin/python classification.py --model all             # 6-class model
+```
+
+Or if you granted Python capabilities (see Step 8):
+```bash
+python classification.py                     # No sudo needed
+```
+
+### 4. Batch Classification (No Privileges Required)
+
+```bash
+python classification.py --batch flows.csv
+```
+
+### 5. ML Pipeline (Requires Dataset)
 
 ```bash
 python ml_model.py --full                    # Full pipeline (5-class)
@@ -341,21 +384,48 @@ python ml_model.py --module 4 --hypercache   # Retrain with cached hyperparams (
 
 ## 11. Troubleshooting
 
-### "Missing required packages" / "Virtual environment not detected"
+### "Virtual environment is not activated"
 
-Activate the venv:
+Activate the venv first (required):
 ```bash
+# Linux/macOS:
+source venv/bin/activate
+
 # Windows:
 venv\Scripts\activate
-# Linux:
-source venv/bin/activate
 ```
 
-### "No network interfaces found"
+### "No network interfaces detected" or "No network interfaces available"
 
-- Windows: Install Npcap from https://npcap.com (check "WinPcap API-compatible Mode")
-- Linux: Install `libpcap-dev` and grant Python capture permissions (see [Step 8](#8-npcap--libpcap-setup-for-live-capture))
-- Try running as Administrator (Windows) or with sudo (Linux)
+**Windows:**
+- Install Npcap from https://npcap.com
+- Check "Install Npcap in WinPcap API-compatible Mode"
+- Run as Administrator
+
+**Linux/macOS:**
+- Install libpcap: `sudo apt install libpcap-dev` (Ubuntu/Debian)
+- Either:
+  - Option A: Run with `sudo ./venv/bin/python classification.py`, OR
+  - Option B: Grant Python permissions with `sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))`
+
+### "Permission denied" after selecting interface
+
+On **Linux/macOS**, you need elevated privileges for live packet capture. Do one of:
+
+**Option A: Run with sudo + full venv path (each time)**
+```bash
+sudo ./venv/bin/python classification.py
+```
+
+**Option B: Grant Python capabilities (one-time setup)**
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+```
+
+Then run normally:
+```bash
+python classification.py
+```
 
 ### Out of Memory during training
 
