@@ -159,25 +159,36 @@ else
 fi
 
 # ------------------------------------------------------------------
-# Done
+# Done — leave venv activated
 # ------------------------------------------------------------------
 echo ""
 echo "================================================================================"
-echo "Setup Complete!"
+echo "Setup Complete!  (venv is now active)"
 echo "================================================================================"
 echo ""
-echo "Usage:"
+
+# Check if this script was sourced or executed
+# If executed (subshell), venv won't persist — warn the user
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    echo "NOTE: You ran this script directly, so the venv will NOT persist"
+    echo "      in your current terminal. To activate it, run:"
+    echo ""
+    echo "        source venv/bin/activate"
+    echo ""
+    echo "      Or next time, run the setup with 'source':"
+    echo ""
+    echo "        source setup/setup.sh"
+    echo ""
+else
+    echo "  The virtual environment is active. You can run commands now:"
+    echo ""
+fi
+
+echo "  Run live classification:"
+echo "      python classification.py --duration 180"
 echo ""
-echo "  1. Activate the virtual environment:"
-echo "       source venv/bin/activate"
-echo ""
-echo "  2. Run live classification:"
-echo "       python classification.py --duration 180"
-echo ""
-echo "  3. Run ML model pipeline:"
-echo "       python ml_model.py --help"
-echo ""
-echo "    - CICFlowMeter built (cd CICFlowMeter && ./gradlew build && cd ..)"
+echo "  Run ML model pipeline:"
+echo "      python ml_model.py --help"
 echo ""
 echo "================================================================================"
 echo ""

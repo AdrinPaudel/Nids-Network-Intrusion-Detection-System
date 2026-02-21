@@ -164,23 +164,20 @@ popd
 :skip_gradle
 
 REM ------------------------------------------------------------------
-REM Done
+REM Done — venv stays active in this terminal
 REM ------------------------------------------------------------------
 echo.
 echo ================================================================================
-echo Setup Complete!
+echo Setup Complete!  (venv is now active)
 echo ================================================================================
 echo.
-echo Usage:
+echo   You can run commands directly now:
 echo.
-echo   1. Activate the virtual environment:
-echo        venv\Scripts\activate
+echo   Run live classification:
+echo       python classification.py --duration 180
 echo.
-echo   2. Run live classification:
-echo        python classification.py --duration 180
-echo.
-echo   3. Run ML model pipeline:
-echo        python ml_model.py --help
+echo   Run ML model pipeline:
+echo       python ml_model.py --help
 echo.
 echo ================================================================================
 echo.
