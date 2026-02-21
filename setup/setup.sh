@@ -278,25 +278,25 @@ else
     echo "  [ERROR] No network interfaces detected!"
     echo ""
 
-    # Check if it's specifically a native library loading error
-    if echo "$INTERFACE_OUTPUT" | grep -qi 'UnsatisfiedLinkError\|dlopen\|libpcap\|libjnetpcap'; then
-        echo "  PROBLEM: jnetpcap native library failed to load."
-        echo "    This usually means libpcap is missing or not properly installed."
-        echo "    Fix:"
-        echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
-        echo "      Fedora/RHEL:    sudo dnf install libpcap-devel"
-        echo "      Arch Linux:     sudo pacman -S libpcap"
+    # Check for common Linux problems
+
+    # 1. Architecture check first (fatal — nothing else will help)
+    ARCH=$(uname -m)
+    if [ "$ARCH" != "x86_64" ]; then
+        echo "  PROBLEM: Your architecture is $ARCH. The bundled jnetpcap native"
+        echo "    library is compiled for x86_64 only. This won't work on ARM/other."
         echo ""
     fi
 
-    # Check for common Linux problems
-    # 1. libpcap
+    # 2. Check if libpcap is actually missing (even though Step 1 checked)
+    LIBPCAP_MISSING=false
     if ! ldconfig -p 2>/dev/null | grep -q libpcap && \
        [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so ] && \
        [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so.1 ] && \
        [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so.0.8 ] && \
        [ ! -f /usr/lib/libpcap.so ] && \
        [ ! -f /usr/lib/libpcap.so.1 ]; then
+        LIBPCAP_MISSING=true
         echo "  PROBLEM: libpcap is not installed."
         echo "    Fix:"
         echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
@@ -305,34 +305,38 @@ else
         echo ""
     fi
 
-    # 2. Permissions
-    echo "  PROBLEM: Java likely lacks permission to access network interfaces."
-    echo "    Fix (one-time, then no sudo needed to run):"
-    echo "      sudo setcap cap_net_raw,cap_net_admin=eip \$(readlink -f \$(which java))"
-    echo ""
-    echo "    Or run the program with sudo:"
-    echo "      sudo $(pwd)/venv/bin/python classification.py"
-    echo ""
-
-    # 3. Architecture
-    ARCH=$(uname -m)
-    if [ "$ARCH" != "x86_64" ]; then
-        echo "  PROBLEM: Your architecture is $ARCH. The bundled jnetpcap native"
-        echo "    library is compiled for x86_64 only. This won't work on ARM/other."
+    # 3. Permissions — the most common cause when libpcap IS installed
+    if [ "$LIBPCAP_MISSING" = false ]; then
+        echo "  PROBLEM: Java needs permission to capture network packets."
+        echo ""
+        echo "    libpcap is installed, so this is a PERMISSIONS issue."
+        echo ""
+        echo "    Fix (recommended — one-time command, then no sudo needed):"
+        echo ""
+        echo "      sudo setcap cap_net_raw,cap_net_admin=eip \$(readlink -f \$(which java))"
+        echo ""
+        echo "    Then re-run this script."
+        echo ""
+        echo "    Alternative: run the program with sudo each time:"
+        echo "      sudo $(pwd)/venv/bin/python classification.py"
+        echo ""
+    else
+        echo "  After installing libpcap, if it still fails, Java may need permissions:"
+        echo "      sudo setcap cap_net_raw,cap_net_admin=eip \$(readlink -f \$(which java))"
         echo ""
     fi
 
     # Show raw Java errors for debugging
     ERR_LINES=$(echo "$INTERFACE_OUTPUT" | grep -iE 'error|exception|denied|libpcap|unsatisfied' | head -5)
     if [ -n "$ERR_LINES" ]; then
-        echo "  Java errors:"
+        echo "  Java errors (for debugging):"
         echo "$ERR_LINES" | while read -r line; do
             echo "    $line"
         done
         echo ""
     fi
 
-    echo "  Fix the issues above, then re-run this script."
+    echo "  Fix the issue above, then re-run this script."
     exit 1
 fi
 
