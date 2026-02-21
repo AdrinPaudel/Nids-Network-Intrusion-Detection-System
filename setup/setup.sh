@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup script for NIDS Project on Linux
-# Creates virtual environment and installs dependencies
+# Checks prerequisites, creates venv, installs pip deps, builds CICFlowMeter
 
 # Navigate to project root (one level up from setup/)
 cd "$(dirname "$0")/.." || exit 1
@@ -11,193 +11,177 @@ echo "NIDS Project Setup - Linux"
 echo "================================================================================"
 echo ""
 
-# Check if Python is installed
-if ! command -v python3 &> /dev/null; then
-    echo "ERROR: Python3 is not installed"
-    echo "Install it with: sudo apt-get install python3 python3-venv python3-dev"
-    exit 1
+# ------------------------------------------------------------------
+# Step 1: Check prerequisites (won't install anything system-level)
+# ------------------------------------------------------------------
+echo "Step 1: Checking prerequisites..."
+echo ""
+
+MISSING=()
+
+# --- Python ---
+if command -v python3 &> /dev/null; then
+    python_version=$(python3 --version 2>&1 | awk '{print $2}')
+    echo "  ✓ Python $python_version found"
+else
+    echo "  ✗ Python3 not found"
+    MISSING+=("  - Python 3.8+  →  https://www.python.org/downloads/")
+    MISSING+=("    Ubuntu/Debian: sudo apt install python3 python3-venv python3-dev")
+    MISSING+=("    Fedora/RHEL:   sudo dnf install python3 python3-devel")
 fi
 
-python_version=$(python3 --version 2>&1 | awk '{print $2}')
-echo "Found Python: $python_version"
+# --- Java ---
+JAVA_OK=false
+if command -v java &> /dev/null; then
+    java_version_full=$(java -version 2>&1 | head -1)
 
-echo ""
-echo "Step 1: Installing system dependencies..."
-echo ""
+    # Extract major version (handles "1.8.x" and "17.x.x" formats)
+    JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+)(\.[0-9]+)*.*/\1/')
+    if [ "$JAVA_MAJOR" = "1" ]; then
+        JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"1\.([0-9]+).*/\1/')
+    fi
 
-# Try to install system packages if apt-get is available
-# Note: These require package manager access. If they fail, install manually.
-if command -v apt-get &> /dev/null; then
-    echo "Installing with apt-get (may prompt for password)..."
-    apt-get update 2>/dev/null && apt-get install -y python3-venv python3-dev libpcap-dev 2>/dev/null
-    if [ $? -ne 0 ]; then
-        echo "NOTE: Could not install system packages automatically."
-        echo "If needed, install manually: apt-get install python3-venv python3-dev libpcap-dev"
-    fi
-elif command -v yum &> /dev/null; then
-    echo "Installing with yum (may prompt for password)..."
-    yum install -y python3-devel libpcap-devel 2>/dev/null
-    if [ $? -ne 0 ]; then
-        echo "NOTE: Could not install system packages automatically."
-        echo "If needed, install manually: yum install python3-devel libpcap-devel"
-    fi
-elif command -v dnf &> /dev/null; then
-    echo "Installing with dnf (may prompt for password)..."
-    dnf install -y python3-devel libpcap-devel 2>/dev/null
-    if [ $? -ne 0 ]; then
-        echo "NOTE: Could not install system packages automatically."
-        echo "If needed, install manually: dnf install python3-devel libpcap-devel"
+    if [ "$JAVA_MAJOR" -ge 8 ] 2>/dev/null && [ "$JAVA_MAJOR" -le 21 ] 2>/dev/null; then
+        echo "  ✓ Java $JAVA_MAJOR found (${java_version_full})"
+        JAVA_OK=true
+    else
+        echo "  ✗ Java $JAVA_MAJOR found — NOT compatible (need 8-21)"
+        MISSING+=("  - Java 8-21 (you have $JAVA_MAJOR)  →  https://adoptium.net/ (recommend 17 LTS)")
+        MISSING+=("    Ubuntu/Debian: sudo apt install openjdk-17-jdk")
+        MISSING+=("    Then switch:   sudo update-alternatives --config java")
     fi
 else
-    echo "WARNING: Could not auto-install system packages"
-    echo "Please manually install: libpcap-dev (or libpcap-devel)"
+    echo "  ✗ Java not found"
+    MISSING+=("  - Java 8-21  →  https://adoptium.net/ (recommend Temurin 17 LTS)")
+    MISSING+=("    Ubuntu/Debian: sudo apt install openjdk-17-jdk")
+    MISSING+=("    Fedora/RHEL:   sudo dnf install java-17-openjdk-devel")
 fi
 
-echo "✓ System dependencies handled"
+# --- libpcap ---
+if ldconfig -p 2>/dev/null | grep -q libpcap || \
+   [ -f /usr/lib/x86_64-linux-gnu/libpcap.so ] || \
+   [ -f /usr/lib/libpcap.so ]; then
+    echo "  ✓ libpcap found"
+else
+    echo "  ✗ libpcap not found"
+    MISSING+=("  - libpcap-dev (required for live network capture)")
+    MISSING+=("    Ubuntu/Debian: sudo apt install libpcap-dev")
+    MISSING+=("    Fedora/RHEL:   sudo dnf install libpcap-devel")
+fi
 
+# --- Report missing prerequisites ---
 echo ""
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "────────────────────────────────────────────────────────────────"
+    echo "  MISSING PREREQUISITES — please install the following first:"
+    echo "────────────────────────────────────────────────────────────────"
+    for line in "${MISSING[@]}"; do
+        echo "$line"
+    done
+    echo "────────────────────────────────────────────────────────────────"
+    echo ""
+
+    # Python is hard-required — can't continue without it
+    if ! command -v python3 &> /dev/null; then
+        echo "ERROR: Cannot continue without Python. Install it and re-run this script."
+        exit 1
+    fi
+
+    # Java / libpcap are soft — warn but keep going
+    echo "NOTE: Continuing setup without the above. Live capture features"
+    echo "      will not work until all prerequisites are installed."
+    echo ""
+fi
+
+# ------------------------------------------------------------------
+# Step 2: Create virtual environment
+# ------------------------------------------------------------------
 echo "Step 2: Creating virtual environment..."
 echo ""
 
 if [ -d "venv" ]; then
-    echo "✓ Virtual environment already exists - skipping creation"
+    echo "  ✓ Virtual environment already exists — skipping"
 else
     python3 -m venv venv
     if [ ! -d "venv" ]; then
-        echo "ERROR: Failed to create venv"
+        echo "  ERROR: Failed to create venv"
         exit 1
     fi
-    echo "✓ Virtual environment created"
+    echo "  ✓ Virtual environment created"
 fi
 
+# ------------------------------------------------------------------
+# Step 3: Activate venv & install pip dependencies
+# ------------------------------------------------------------------
 echo ""
-echo "Step 3: Activating virtual environment..."
+echo "Step 3: Installing Python dependencies..."
 echo ""
+
 source venv/bin/activate
 
-echo "✓ Virtual environment activated"
-
-echo ""
-echo "Step 4: Installing Python dependencies..."
-echo ""
-
-# Check if all requirements are already satisfied
 if pip install -r requirements.txt --quiet --dry-run 2>&1 | grep -q "Would install"; then
-    echo "Installing/updating dependencies..."
+    echo "  Installing/updating packages..."
     pip install --upgrade pip
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
-        echo "ERROR: Failed to install dependencies"
+        echo "  ERROR: pip install failed"
         exit 1
     fi
-    echo "✓ Dependencies installed successfully"
+    echo "  ✓ Dependencies installed"
 else
-    echo "✓ All dependencies already installed - skipping"
+    echo "  ✓ All dependencies already satisfied — skipping"
 fi
 
+# ------------------------------------------------------------------
+# Step 4: Build CICFlowMeter
+# ------------------------------------------------------------------
 echo ""
-echo "Step 5: Building CICFlowMeter (for live network capture)..."
+echo "Step 4: Building CICFlowMeter..."
 echo ""
-
-# Gradle 8.5 only supports Java 8 through 21.
-# Newer Java versions (22+) will fail with "Unsupported class file major version" errors.
-JAVA_OK=false
-JAVA_MAJOR=0
-
-if command -v java &> /dev/null; then
-    java_version_full=$(java -version 2>&1 | head -1)
-    echo "Found Java: $java_version_full"
-
-    # Extract major version number
-    # Java 8: "1.8.0_xxx" → major=8
-    # Java 9+: "9.x.x", "11.x.x", "17.x.x", "21.x.x" etc.
-    JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+)(\.[0-9]+)*.*/\1/')
-    if [ "$JAVA_MAJOR" = "1" ]; then
-        # Java 8 reports as 1.8
-        JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"1\.([0-9]+).*/\1/')
-    fi
-
-    echo "Detected Java major version: $JAVA_MAJOR"
-
-    if [ "$JAVA_MAJOR" -ge 8 ] && [ "$JAVA_MAJOR" -le 21 ] 2>/dev/null; then
-        JAVA_OK=true
-    else
-        echo ""
-        echo "WARNING: Java $JAVA_MAJOR is NOT compatible with Gradle 8.5"
-        echo "Gradle 8.5 supports Java 8 through 21 only."
-        echo ""
-        echo "To fix this, install a compatible Java version:"
-        echo "  Ubuntu/Debian: apt install openjdk-17-jdk"
-        echo "  Then switch:   update-alternatives --config java"
-        echo "  Or download:   https://adoptium.net/ (Temurin 17 LTS)"
-        echo ""
-        echo "Skipping CICFlowMeter build."
-    fi
-else
-    echo "WARNING: Java is not installed - skipping CICFlowMeter build"
-    echo "Java 8-21 is required for live capture."
-    echo "  Ubuntu/Debian: apt install openjdk-17-jdk"
-    echo "  Or download:   https://adoptium.net/ (Temurin 17 LTS recommended)"
-    echo "Then re-run this script or build manually:"
-    echo "  cd CICFlowMeter && chmod +x gradlew && ./gradlew build && cd .."
-fi
 
 if [ "$JAVA_OK" = true ]; then
     if [ -f "CICFlowMeter/gradlew" ]; then
-        # Skip if already built
-        if [ -d "CICFlowMeter/build/classes/main" ]; then
-            echo "✓ CICFlowMeter already built - skipping"
+        if [ -d "CICFlowMeter/build/classes/java/main" ]; then
+            echo "  ✓ CICFlowMeter already built — skipping"
         else
-            echo "Building CICFlowMeter with Gradle..."
+            echo "  Building with Gradle..."
             pushd CICFlowMeter > /dev/null
             chmod +x gradlew
-            ./gradlew build
+            ./gradlew classes
             if [ $? -eq 0 ]; then
-                echo "✓ CICFlowMeter built successfully"
+                echo "  ✓ CICFlowMeter built successfully"
             else
-                echo "WARNING: CICFlowMeter build failed - live capture may not work"
-                echo "You can retry manually: cd CICFlowMeter && ./gradlew build && cd .."
+                echo "  WARNING: Build failed — live capture won't work"
+                echo "  Retry manually: cd CICFlowMeter && ./gradlew classes"
             fi
             popd > /dev/null
         fi
     else
-        echo "WARNING: CICFlowMeter/gradlew not found - skipping build"
+        echo "  WARNING: CICFlowMeter/gradlew not found — skipping"
     fi
-fi
-
-echo ""
-echo "Step 6: Checking libpcap (required for live capture)..."
-echo ""
-
-# Check if libpcap is available
-if ldconfig -p 2>/dev/null | grep -q libpcap; then
-    echo "✓ libpcap found"
-elif [ -f /usr/lib/x86_64-linux-gnu/libpcap.so ] || [ -f /usr/lib/libpcap.so ]; then
-    echo "✓ libpcap found"
 else
-    echo "WARNING: libpcap not detected"
-    echo "For live capture, install it: sudo apt-get install libpcap-dev"
+    echo "  ⊘ Skipped — Java 8-21 not available (see Step 1)"
 fi
 
+# ------------------------------------------------------------------
+# Done
+# ------------------------------------------------------------------
 echo ""
 echo "================================================================================"
 echo "Setup Complete!"
 echo "================================================================================"
 echo ""
-echo "To use the NIDS system:"
+echo "Usage:"
 echo ""
-echo "  1. Activate venv (in new terminal):"
-echo "     source venv/bin/activate"
+echo "  1. Activate the virtual environment:"
+echo "       source venv/bin/activate"
 echo ""
-echo "  2. Run classification:"
-echo "     python classification.py --duration 180"
+echo "  2. Run live classification:"
+echo "       python classification.py --duration 180"
 echo ""
 echo "  3. Run ML model pipeline:"
-echo "     python ml_model.py --help"
+echo "       python ml_model.py --help"
 echo ""
-echo "  For live capture you also need:"
-echo "    - Java 8-21 (https://adoptium.net/ - recommend Temurin 17 LTS)"
-echo "    - libpcap-dev installed"
 echo "    - CICFlowMeter built (cd CICFlowMeter && ./gradlew build && cd ..)"
 echo ""
 echo "================================================================================"

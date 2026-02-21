@@ -433,90 +433,97 @@ class ClassificationSession:
 def select_interface_interactive():
     """
     Prompt user to choose an interface by number.
+    Shows all interfaces grouped as WiFi / Ethernet / Other.
     Returns the interface name string.
     """
     print(f"\n{COLOR_CYAN_BOLD}Network Interface Selection{COLOR_RESET}")
     print(f"{COLOR_CYAN}{'='*80}{COLOR_RESET}")
-    
+
     # List all interfaces
     interfaces = list_interfaces()
     if not interfaces:
         print(f"{COLOR_RED}No network interfaces found!{COLOR_RESET}")
         return None
-    
+
     # Categorize interfaces
     wifi_ifaces = get_wifi_interfaces(interfaces)
     ethernet_ifaces = get_ethernet_interfaces(interfaces)
-    
-    # Create a flat list with all interfaces
+
+    # Build "other" list: everything not in wifi or ethernet
+    wifi_names = {i['name'] for i in wifi_ifaces}
+    ethernet_names = {i['name'] for i in ethernet_ifaces}
+    other_ifaces = [i for i in interfaces
+                    if i['name'] not in wifi_names and i['name'] not in ethernet_names]
+
+    # Flat ordered list for selection: WiFi → Ethernet → Other
     all_ifaces = []
-    
+
     print(f"\n{COLOR_CYAN}Available Interfaces:{COLOR_RESET}\n")
-    
+
+    def _print_group(label, group, start_idx):
+        idx = start_idx
+        print(f"{COLOR_CYAN_BOLD}{label}:{COLOR_RESET}")
+        for iface in group:
+            desc = iface['description']
+            name = iface['name']
+            if desc == "N/A" or not desc:
+                print(f"  [{idx}] {name}")
+            else:
+                print(f"  [{idx}] {desc}")
+                print(f"       Name: {name}")
+            print(f"       Address: {iface['addresses']}")
+            all_ifaces.append(iface)
+            idx += 1
+        return idx
+
     idx = 1
     if wifi_ifaces:
-        print(f"{COLOR_CYAN_BOLD}WiFi Adapters:{COLOR_RESET}")
-        for iface in wifi_ifaces:
-            desc = iface['description']
-            name = iface['name']
-            # On Linux descriptions are "N/A", so show the name prominently
-            if desc == "N/A" or not desc:
-                print(f"  [{idx}] {name}")
-            else:
-                print(f"  [{idx}] {desc}")
-                print(f"      Name: {name}")
-            print(f"      Address: {iface['addresses']}")
-            all_ifaces.append(iface)
-            idx += 1
+        idx = _print_group("WiFi Adapters", wifi_ifaces, idx)
     else:
-        print(f"{COLOR_YELLOW}(No WiFi adapters found){COLOR_RESET}")
-    
+        print(f"{COLOR_YELLOW}(No WiFi adapters detected){COLOR_RESET}")
+
     if ethernet_ifaces:
-        print(f"\n{COLOR_CYAN_BOLD}Ethernet / Other Adapters:{COLOR_RESET}")
-        for iface in ethernet_ifaces:
-            desc = iface['description']
-            name = iface['name']
-            if desc == "N/A" or not desc:
-                print(f"  [{idx}] {name}")
-            else:
-                print(f"  [{idx}] {desc}")
-                print(f"      Name: {name}")
-            print(f"      Address: {iface['addresses']}")
-            all_ifaces.append(iface)
-            idx += 1
+        print()
+        idx = _print_group("Ethernet Adapters", ethernet_ifaces, idx)
     else:
-        print(f"{COLOR_YELLOW}(No Ethernet adapters found){COLOR_RESET}")
-    
+        print(f"{COLOR_YELLOW}(No Ethernet adapters detected){COLOR_RESET}")
+
+    if other_ifaces:
+        print()
+        idx = _print_group(f"{COLOR_DARK_GRAY}Other / Virtual", other_ifaces, idx)
+
     print(f"\n{COLOR_CYAN}{'='*80}{COLOR_RESET}")
-    
+
     # Prompt user
     while True:
         try:
             choice = input(f"\n{COLOR_CYAN_BOLD}Enter interface number (1-{len(all_ifaces)}){COLOR_RESET}: ").strip()
             choice_idx = int(choice) - 1
-            
+
             if 0 <= choice_idx < len(all_ifaces):
                 selected = all_ifaces[choice_idx]
-                print(f"\n{COLOR_GREEN}✓ Selected: {selected['description']}{COLOR_RESET}\n")
+                desc = selected['description']
+                label = desc if desc and desc != "N/A" else selected['name']
+                print(f"\n{COLOR_GREEN}Selected: {label}{COLOR_RESET}\n")
                 return selected['name']
             else:
-                print(f"{COLOR_RED}Invalid choice. Please enter a number between 1 and {len(all_ifaces)}.{COLOR_RESET}")
+                print(f"{COLOR_RED}Invalid choice. Enter a number between 1 and {len(all_ifaces)}.{COLOR_RESET}")
         except (ValueError, IndexError):
             print(f"{COLOR_RED}Invalid input. Please enter a number.{COLOR_RESET}")
         except EOFError:
-            # Running in headless mode - auto-select Ethernet, fallback to WiFi
-            print(f"\n{COLOR_YELLOW}EOF detected - auto-selecting interface...{COLOR_RESET}")
-            if ethernet_ifaces:
-                selected = ethernet_ifaces[0]
-                print(f"{COLOR_GREEN}[OK] Auto-selected: {selected['description']}{COLOR_RESET}\n")
-                return selected['name']
-            elif wifi_ifaces:
+            # Headless mode — auto-select WiFi first, then Ethernet
+            print(f"\n{COLOR_YELLOW}EOF detected — auto-selecting interface...{COLOR_RESET}")
+            if wifi_ifaces:
                 selected = wifi_ifaces[0]
-                print(f"{COLOR_GREEN}[OK] Auto-selected: {selected['description']}{COLOR_RESET}\n")
-                return selected['name']
+            elif ethernet_ifaces:
+                selected = ethernet_ifaces[0]
             else:
-                print(f"{COLOR_RED}No network interfaces available!{COLOR_RESET}")
+                print(f"{COLOR_RED}No usable network interfaces!{COLOR_RESET}")
                 return None
+            desc = selected['description']
+            label = desc if desc and desc != "N/A" else selected['name']
+            print(f"{COLOR_GREEN}[OK] Auto-selected: {label}{COLOR_RESET}\n")
+            return selected['name']
 
 
 def main():

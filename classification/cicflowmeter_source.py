@@ -137,11 +137,70 @@ CICFLOWMETER_TO_TRAINING_COLUMNS = {
 # Identifier columns to preserve for threat reporting (uses config import above)
 
 
+def _ensure_cicflowmeter_built():
+    """
+    Check if CICFlowMeter is built. If not, run gradlew build automatically.
+    Returns True if build is ready, False if build failed.
+    """
+    cicflowmeter_dir = os.path.join(PROJECT_ROOT, "CICFlowMeter")
+    build_marker = os.path.join(cicflowmeter_dir, "build", "classes", "java", "main")
+
+    if os.path.isdir(build_marker):
+        return True
+
+    # Need to build
+    if sys.platform.startswith("win"):
+        gradlew = os.path.join(cicflowmeter_dir, "gradlew.bat")
+    else:
+        gradlew = os.path.join(cicflowmeter_dir, "gradlew")
+        try:
+            os.chmod(gradlew, 0o755)
+        except Exception:
+            pass
+
+    if not os.path.isfile(gradlew):
+        print(f"\033[91m[CICFLOWMETER] gradlew not found at {gradlew}\033[0m")
+        return False
+
+    print(f"\033[96m[CICFLOWMETER] CICFlowMeter not built yet. Building now (this may take a minute)...\033[0m")
+    try:
+        result = subprocess.run(
+            [gradlew, "--no-daemon", "classes"],
+            cwd=cicflowmeter_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            **_SUBPROCESS_FLAGS,
+        )
+        if result.returncode == 0 and os.path.isdir(build_marker):
+            print(f"\033[92m[CICFLOWMETER] Build successful.\033[0m")
+            return True
+        else:
+            print(f"\033[91m[CICFLOWMETER] Build failed (exit code {result.returncode}).\033[0m")
+            if result.stderr:
+                # Show last few lines of error
+                for line in result.stderr.strip().splitlines()[-10:]:
+                    print(f"  {line}")
+            print(f"\033[93m[CICFLOWMETER] Try building manually: cd CICFlowMeter && {'gradlew.bat' if _IS_WINDOWS else './gradlew'} classes\033[0m")
+            return False
+    except subprocess.TimeoutExpired:
+        print(f"\033[91m[CICFLOWMETER] Build timed out after 120s.\033[0m")
+        return False
+    except Exception as e:
+        print(f"\033[91m[CICFLOWMETER] Build error: {e}\033[0m")
+        return False
+
+
 def list_interfaces():
     """
     List available network interfaces by calling CICFlowMeter's LiveCapture.
     Returns list of dicts with keys: index, name, description, addresses
     """
+    # Ensure CICFlowMeter is built first
+    if not _ensure_cicflowmeter_built():
+        print(f"\033[91m[ERROR] CICFlowMeter is not built. Cannot list interfaces.\033[0m")
+        return []
+
     cicflowmeter_dir = os.path.join(PROJECT_ROOT, "CICFlowMeter")
     if sys.platform.startswith("win"):
         gradlew = os.path.join(cicflowmeter_dir, "gradlew.bat")
@@ -317,6 +376,11 @@ class CICFlowMeterSource:
         # (detection happens at the classification.py level now)
         if self.interface_name is None:
             print(f"{COLOR_RED}[CICFLOWMETER] No interface specified!{COLOR_RESET}")
+            return False
+
+        # Ensure CICFlowMeter is built before attempting capture
+        if not _ensure_cicflowmeter_built():
+            print(f"{COLOR_RED}[CICFLOWMETER] Cannot start — CICFlowMeter is not built.{COLOR_RESET}")
             return False
 
         # Set up paths
