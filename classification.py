@@ -18,6 +18,8 @@ Usage:
     python classification.py --batch             # Batch CSV classification (interactive)
     python classification.py --batch file.csv    # Batch CSV classification (specific file)
     python classification.py --help              # Show all options
+    
+Note: On Linux/macOS, live capture requires: sudo python classification.py
 """
 
 import os
@@ -248,6 +250,21 @@ class ClassificationSession:
     def _start_live(self):
         """Start the live capture pipeline."""
 
+        # Check for elevated privileges upfront on Linux/macOS (required for Scapy packet capture)
+        if not sys.platform.startswith('win'):
+            try:
+                if os.geteuid() != 0:
+                    print(f"{COLOR_RED}[ERROR] Cannot capture packets without elevated privileges on Linux/macOS.{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
+                    print(f"{COLOR_CYAN}      sudo python classification.py{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
+                    import subprocess
+                    python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
+                    print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+                    return False
+            except Exception:
+                pass  # If we can't check, proceed anyway
+
         # 1. Create flow capture source (Python CICFlowMeter / Scapy)
         try:
             self.source = FlowMeterSource(
@@ -259,7 +276,7 @@ class ClassificationSession:
             print(f"{COLOR_RED}[ERROR] Permission denied. Cannot capture packets on {self.interface_name}.{COLOR_RESET}")
             print(f"{COLOR_YELLOW}\nThis requires elevated privileges on Linux/macOS.{COLOR_RESET}")
             print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
-            print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
+            print(f"{COLOR_CYAN}      sudo python classification.py{COLOR_RESET}")
             print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
             import subprocess
             python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
