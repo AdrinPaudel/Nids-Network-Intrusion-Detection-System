@@ -396,7 +396,7 @@ FLOWMETER_AGE_THRESHOLD = 30        # Emit flow after N seconds total duration
 FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (seconds)
 
 # Default classification parameters
-CLASSIFICATION_DEFAULT_DURATION = 180        # 3 minutes (seconds)
+CLASSIFICATION_DEFAULT_DURATION = 120        # 2 minutes (seconds)
 CLASSIFICATION_DEFAULT_MODEL = "default"     # "default" (5-class) or "all" (6-class)
 
 # Queue configuration

@@ -193,13 +193,18 @@ case "$0" in
         ;;
 esac
 
-echo "  Run live classification:"
-echo "      sudo python classification.py --duration 180"
+echo "  Quick test (120 sec capture):"
+echo "    Linux:"
+echo "      sudo python classification.py"
 echo ""
-echo "  (sudo is required for live network capture on Linux)"
+echo "    Windows/Mac:"
+echo "      python classification.py"
 echo ""
-echo "  Run ML model pipeline:"
-echo "      python ml_model.py --help"
+echo "  See all options:"
+echo "    python classification.py --help"
+echo ""
+echo "  ML model pipeline:"
+echo "    python ml_model.py --help"
 echo ""
 echo "================================================================================"
 echo ""

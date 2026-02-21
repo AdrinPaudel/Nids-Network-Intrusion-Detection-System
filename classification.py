@@ -11,13 +11,13 @@ Starts a multi-threaded pipeline:
 Each component runs in its own thread with queues connecting them.
 
 Usage:
-    python classification.py                     # Live capture, WiFi auto-detect, 180s
+    python classification.py                     # Live capture, auto-detect, 120s, 5-class model
     python classification.py --duration 300      # Live capture for 5 minutes
-    python classification.py --model all         # Use 'all' model (with Infilteration)
+    python classification.py --model all         # Use 'all' model (6-class with Infilteration)
     python classification.py --interface "..."   # Specify network interface
-    python classification.py --list-interfaces   # List available interfaces
     python classification.py --batch             # Batch CSV classification (interactive)
     python classification.py --batch file.csv    # Batch CSV classification (specific file)
+    python classification.py --help              # Show all options
 """
 
 import os
@@ -236,10 +236,10 @@ class ClassificationSession:
         if not sys.platform.startswith('win'):
             try:
                 if os.geteuid() != 0:
-                    print(f"{COLOR_RED}[ERROR] Live network capture requires root/sudo on Linux.{COLOR_RESET}")
-                    print(f"{COLOR_YELLOW}\n  Run the program with sudo:{COLOR_RESET}")
-                    print(f"{COLOR_CYAN}      sudo python classification.py --duration 180{COLOR_RESET}")
-                    print(f"{COLOR_YELLOW}\n  Or grant capabilities to your Python binary (one-time setup):{COLOR_RESET}")
+                    print(f"{COLOR_RED}[ERROR] Live network capture requires elevated privileges on Linux/macOS.{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
+                    print(f"{COLOR_CYAN}      sudo python classification.py{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
                     import subprocess
                     python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
                     print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
