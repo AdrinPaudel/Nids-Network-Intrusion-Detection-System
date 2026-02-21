@@ -4,40 +4,69 @@ Command-line interface for running the complete NIDS pipeline
 """
 
 import sys
+import os
 import argparse
 
 # ============================================================
 # VENV CHECK - Verify virtual environment is active
 # ============================================================
 def check_venv():
-    """Check if running in a virtual environment."""
-    # Check if venv is active
+    """Check that venv exists and is active; exit with clear instructions if not."""
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    venv_dir = os.path.join(project_root, "venv")
+    is_win = sys.platform.startswith('win')
+
+    # 1. Check if venv directory exists at all
+    if not os.path.isdir(venv_dir):
+        print("\n" + "="*80)
+        print("ERROR: Virtual environment not found.")
+        print("="*80)
+        print("\n  Run the setup script first (it will create everything):\n")
+        if is_win:
+            print("      setup\\setup.bat")
+        else:
+            print("      source setup/setup.sh")
+        print("\n  This will create the venv, install dependencies, and build CICFlowMeter.")
+        print("="*80 + "\n")
+        sys.exit(1)
+
+    # 2. Check if venv is activated
     in_venv = (
         hasattr(sys, 'real_prefix') or  # virtualenv
         (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)  # venv
     )
-    
     if not in_venv:
         print("\n" + "="*80)
-        print("⚠️  WARNING: Virtual environment not detected!")
+        print("ERROR: Virtual environment is not activated.")
         print("="*80)
-        print("\nThe ML model and classification require dependencies.")
-        print("Please activate your venv:\n")
-        print("  Windows:")
-        print("    venv\\Scripts\\activate")
-        print("    python ml_model.py --help\n")
-        print("  Linux/macOS:")
-        print("    source venv/bin/activate")
-        print("    python ml_model.py --help\n")
-        print("Or create and install venv first:")
-        print("    python -m venv venv")
-        if sys.platform.startswith('win'):
-            print("    venv\\Scripts\\activate")
+        print("\n  Activate it first, then run again:\n")
+        if is_win:
+            print("      venv\\Scripts\\activate")
+            print("      python ml_model.py --help\n")
         else:
-            print("    source venv/bin/activate")
-        print("    pip install -r requirements.txt\n")
+            print("      source venv/bin/activate")
+            print("      python ml_model.py --help\n")
         print("="*80 + "\n")
-        # Don't exit - let it try anyway in case user has deps installed globally
+        sys.exit(1)
+
+    # 3. Check if required packages are installed
+    required = ["sklearn", "pandas", "numpy", "joblib"]
+    missing = []
+    for pkg in required:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print("\n" + "="*80)
+        print("ERROR: Missing required packages: " + ", ".join(missing))
+        print("="*80)
+        print("\n  venv is active but dependencies are not installed.")
+        print("  Run:\n")
+        print("      pip install -r requirements.txt")
+        print("      python ml_model.py --help\n")
+        print("="*80 + "\n")
+        sys.exit(1)
 
 
 # Check venv early

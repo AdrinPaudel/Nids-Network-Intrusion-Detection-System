@@ -36,7 +36,45 @@ import signal
 # VENV CHECK - Verify virtual environment is active
 # ============================================================
 def check_venv():
-    """Check that required packages are importable; exit if not."""
+    """Check that venv is active and required packages are importable; exit if not."""
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    venv_dir = os.path.join(project_root, "venv")
+    is_win = sys.platform.startswith('win')
+
+    # 1. Check if venv directory exists at all
+    if not os.path.isdir(venv_dir):
+        print("\n" + "="*80)
+        print("ERROR: Virtual environment not found.")
+        print("="*80)
+        print("\n  Run the setup script first (it will create everything):\n")
+        if is_win:
+            print("      setup\\setup.bat")
+        else:
+            print("      source setup/setup.sh")
+        print("\n  This will create the venv, install dependencies, and build CICFlowMeter.")
+        print("="*80 + "\n")
+        sys.exit(1)
+
+    # 2. Check if venv is activated
+    in_venv = (
+        hasattr(sys, 'real_prefix') or  # virtualenv
+        (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)  # venv
+    )
+    if not in_venv:
+        print("\n" + "="*80)
+        print("ERROR: Virtual environment is not activated.")
+        print("="*80)
+        print("\n  Activate it first, then run again:\n")
+        if is_win:
+            print("      venv\\Scripts\\activate")
+            print("      python classification.py\n")
+        else:
+            print("      source venv/bin/activate")
+            print("      python classification.py\n")
+        print("="*80 + "\n")
+        sys.exit(1)
+
+    # 3. Check if required packages are installed
     required = ["sklearn", "pandas", "numpy", "joblib"]
     missing = []
     for pkg in required:
@@ -49,28 +87,10 @@ def check_venv():
         print("\n" + "="*80)
         print("ERROR: Missing required packages: " + ", ".join(missing))
         print("="*80)
-
-        project_root = os.path.dirname(os.path.abspath(__file__))
-        venv_dir = os.path.join(project_root, "venv")
-
-        if os.path.isdir(venv_dir):
-            # venv exists but isn't activated — just tell them to activate
-            print("\n  The virtual environment exists but is NOT activated.")
-            print("  Activate it first, then run again:\n")
-            if sys.platform.startswith('win'):
-                print("      venv\\Scripts\\activate")
-            else:
-                print("      source venv/bin/activate")
-            print("      python classification.py\n")
-        else:
-            # No venv at all — run setup script
-            print("\n  Run the setup script to set everything up:\n")
-            if sys.platform.startswith('win'):
-                print("      setup\\setup.bat\n")
-            else:
-                print("      source setup/setup.sh\n")
-            print("  This will create the venv, install dependencies, and build CICFlowMeter.")
-
+        print("\n  venv is active but dependencies are not installed.")
+        print("  Run:\n")
+        print("      pip install -r requirements.txt")
+        print("      python classification.py\n")
         print("="*80 + "\n")
         sys.exit(1)
 
