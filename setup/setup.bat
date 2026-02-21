@@ -1,6 +1,6 @@
 @echo off
 REM Setup script for NIDS Project on Windows
-REM Checks prerequisites, creates venv, installs pip deps, builds CICFlowMeter
+REM Checks prerequisites, creates venv, installs deps, builds CICFlowMeter, tests interface detection
 
 REM Navigate to project root (one level up from setup/)
 cd /d "%~dp0.."
@@ -11,38 +11,42 @@ echo NIDS Project Setup - Windows
 echo ================================================================================
 echo.
 
-REM ------------------------------------------------------------------
-REM Step 1: Check prerequisites (won't install anything for you)
-REM ------------------------------------------------------------------
-echo Step 1: Checking prerequisites...
+REM ==================================================================
+REM Step 1: Check Python ^& Java (user must install these themselves)
+REM ==================================================================
+echo Step 1: Checking required software...
 echo.
 
-set "HAS_ISSUES=0"
+set "FAIL=0"
 set "JAVA_OK=0"
 
 REM --- Python ---
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo   X Python not found
-    echo     Install Python 3.8+ from https://www.python.org/downloads/
-    echo     IMPORTANT: Check "Add Python to PATH" during install
+    echo   [ERROR] Python is not installed.
     echo.
-    echo ERROR: Cannot continue without Python. Install it and re-run.
+    echo     Install it yourself:
+    echo       Download from https://www.python.org/downloads/
+    echo       IMPORTANT: Check "Add Python to PATH" during install
     echo.
-    pause
-    exit /b 1
+    set "FAIL=1"
+    goto :check_java
 )
 for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYTHON_VER=%%v
-echo   OK  Python %PYTHON_VER% found
+echo   [OK] Python %PYTHON_VER%
 
+:check_java
 REM --- Java ---
 java -version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo   X Java not found
-    echo     Install Java 8-21 from https://adoptium.net/ ^(recommend Temurin 17 LTS^)
-    echo     Make sure java is added to PATH
-    set "HAS_ISSUES=1"
-    goto :done_java
+    echo   [ERROR] Java is not installed.
+    echo.
+    echo     Install it yourself:
+    echo       Download Java 17 LTS from https://adoptium.net/
+    echo       Make sure java is added to PATH
+    echo.
+    set "FAIL=1"
+    goto :done_prereq
 )
 
 for /f "tokens=3" %%v in ('java -version 2^>^&1 ^| findstr /i "version"') do (
@@ -55,66 +59,58 @@ if "%JAVA_MAJOR%"=="1" (
 
 if %JAVA_MAJOR% GEQ 8 if %JAVA_MAJOR% LEQ 21 (
     set JAVA_OK=1
-    echo   OK  Java %JAVA_MAJOR% found
-    goto :done_java
+    echo   [OK] Java %JAVA_MAJOR%
+    goto :done_prereq
 )
 
-echo   X Java %JAVA_MAJOR% found — NOT compatible ^(need 8-21^)
-echo     Gradle 8.5 supports Java 8 through 21 only.
-echo     Install Java 17 LTS from https://adoptium.net/
-set "HAS_ISSUES=1"
-
-:done_java
-
-REM --- Npcap ---
-if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
-    echo   OK  Npcap found
-) else if exist "%SystemRoot%\System32\wpcap.dll" (
-    echo   OK  WinPcap/Npcap found
-) else (
-    echo   X Npcap not found
-    echo     Install from https://npcap.com
-    echo     IMPORTANT: Check "Install Npcap in WinPcap API-compatible Mode"
-    set "HAS_ISSUES=1"
-)
-
+echo   [ERROR] Java %JAVA_MAJOR% is NOT compatible. Need Java 8-21.
 echo.
-if "%HAS_ISSUES%"=="1" (
-    echo ----------------------------------------------------------------
-    echo   Some prerequisites are missing ^(see above^).
-    echo   Live capture features won't work until they're installed.
-    echo   Continuing with what we can do...
-    echo ----------------------------------------------------------------
+echo     Install a compatible version yourself:
+echo       Gradle 8.5 supports Java 8 through 21 only.
+echo       Download Java 17 LTS from https://adoptium.net/
+echo.
+set "FAIL=1"
+
+:done_prereq
+
+if "%FAIL%"=="1" (
     echo.
+    echo ================================================================================
+    echo   SETUP CANNOT CONTINUE
+    echo   Install the missing software above, then re-run this script.
+    echo ================================================================================
+    pause
+    exit /b 1
 )
 
-REM ------------------------------------------------------------------
+REM ==================================================================
 REM Step 2: Create virtual environment
-REM ------------------------------------------------------------------
+REM ==================================================================
+echo.
 echo Step 2: Creating virtual environment...
 echo.
 
 if exist venv (
-    echo   OK  Virtual environment already exists — skipping
+    echo   [OK] Already exists — skipping
 ) else (
     python -m venv venv
     if not exist venv (
-        echo   ERROR: Failed to create venv
+        echo   [ERROR] Failed to create venv
         pause
         exit /b 1
     )
-    echo   OK  Virtual environment created
+    echo   [OK] Virtual environment created
 )
 
-REM ------------------------------------------------------------------
-REM Step 3: Activate venv & install pip dependencies
-REM ------------------------------------------------------------------
+REM ==================================================================
+REM Step 3: Activate venv ^& install pip dependencies
+REM ==================================================================
 echo.
 echo Step 3: Installing Python dependencies...
 echo.
 call venv\Scripts\activate.bat
 if errorlevel 1 (
-    echo   ERROR: Failed to activate venv
+    echo   [ERROR] Failed to activate venv
     pause
     exit /b 1
 )
@@ -122,56 +118,109 @@ if errorlevel 1 (
 pip install --upgrade pip --quiet
 pip install -r requirements.txt
 if errorlevel 1 (
-    echo   ERROR: pip install failed
+    echo   [ERROR] pip install failed
     pause
     exit /b 1
 )
-echo   OK  Dependencies installed
+echo   [OK] Dependencies installed
 
-REM ------------------------------------------------------------------
+REM ==================================================================
 REM Step 4: Build CICFlowMeter
-REM ------------------------------------------------------------------
+REM ==================================================================
 echo.
 echo Step 4: Building CICFlowMeter...
 echo.
 
-if %JAVA_OK%==0 (
-    echo   Skipped — Java 8-21 not available ^(see Step 1^)
-    goto :skip_gradle
-)
-
 if not exist CICFlowMeter\gradlew.bat (
-    echo   WARNING: CICFlowMeter\gradlew.bat not found — skipping
-    goto :skip_gradle
+    echo   [ERROR] CICFlowMeter\gradlew.bat not found
+    pause
+    exit /b 1
 )
 
 if exist CICFlowMeter\build\classes\java\main (
-    echo   OK  CICFlowMeter already built — skipping
-    goto :skip_gradle
+    echo   [OK] Already built — skipping
+    goto :do_interface_test
 )
 
-echo   Building with Gradle...
+echo   Building with Gradle (this may take a minute)...
 pushd CICFlowMeter
-call gradlew.bat classes
+call gradlew.bat --no-daemon classes
 if errorlevel 1 (
-    echo   WARNING: Build failed — live capture won't work
-    echo   Retry manually: cd CICFlowMeter ^& gradlew.bat classes ^& cd ..
-) else (
-    echo   OK  CICFlowMeter built successfully
+    echo   [ERROR] Gradle build failed
+    echo   Try manually: cd CICFlowMeter ^& gradlew.bat classes ^& cd ..
+    popd
+    pause
+    exit /b 1
 )
+echo   [OK] CICFlowMeter built successfully
 popd
 
-:skip_gradle
+:do_interface_test
 
-REM ------------------------------------------------------------------
-REM Done — venv stays active in this terminal
-REM ------------------------------------------------------------------
+REM ==================================================================
+REM Step 5: Test interface detection
+REM ==================================================================
 echo.
-echo ================================================================================
-echo Setup Complete!  (venv is now active)
-echo ================================================================================
+echo Step 5: Testing network interface detection...
 echo.
-echo   You can run commands directly now:
+
+REM Run the Java interface listing and capture output
+set "IFACE_COUNT=0"
+set "IFACE_TMPFILE=%TEMP%\nids_iface_test.txt"
+
+pushd CICFlowMeter
+call gradlew.bat --no-daemon exeLive "--args=--list-interfaces" > "%IFACE_TMPFILE%" 2>&1
+popd
+
+REM Count interface lines (lines starting with digit followed by |)
+for /f %%c in ('findstr /r /c:"^[0-9]" "%IFACE_TMPFILE%" ^| find /c "|"') do set IFACE_COUNT=%%c
+
+if %IFACE_COUNT% GTR 0 (
+    echo   [OK] Detected %IFACE_COUNT% network interface^(s^):
+    echo.
+    for /f "tokens=1-4 delims=|" %%a in ('findstr /r /c:"^[0-9]" "%IFACE_TMPFILE%"') do (
+        echo         %%a. %%c  ^(%%d^)
+    )
+    echo.
+    del "%IFACE_TMPFILE%" 2>nul
+) else (
+    echo   [ERROR] No network interfaces detected!
+    echo.
+
+    REM Check Npcap
+    if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
+        echo   Npcap is installed.
+    ) else if exist "%SystemRoot%\System32\wpcap.dll" (
+        echo   WinPcap/Npcap is installed.
+    ) else (
+        echo   PROBLEM: Npcap is not installed.
+        echo     Fix: Download and install from https://npcap.com
+        echo          Check "Install Npcap in WinPcap API-compatible Mode" during install
+        echo.
+    )
+
+    echo   PROBLEM: You may need to run as Administrator.
+    echo     Fix: Right-click the terminal and select "Run as Administrator"
+    echo          then re-run this script.
+    echo.
+
+    REM Show Java errors if any
+    echo   Java output (for debugging):
+    findstr /i "error exception denied" "%IFACE_TMPFILE%" 2>nul
+    echo.
+    del "%IFACE_TMPFILE%" 2>nul
+
+    echo   Fix the issues above, then re-run this script.
+    pause
+    exit /b 1
+)
+
+REM ==================================================================
+REM Done
+REM ==================================================================
+echo ================================================================================
+echo   Setup Complete!  Everything is working.  (venv is active)
+echo ================================================================================
 echo.
 echo   Run live classification:
 echo       python classification.py --duration 180

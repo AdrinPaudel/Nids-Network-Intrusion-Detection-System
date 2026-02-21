@@ -258,6 +258,49 @@ def list_interfaces():
                     "description": parts[2],
                     "addresses": parts[3],
                 })
+
+        # ── Diagnostics when nothing came back ─────────────────────────
+        if not interfaces:
+            print(f"\033[91m[ERROR] No interfaces detected. Diagnostic info:\033[0m")
+            print(f"\033[91m  Exit code: {result.returncode}\033[0m")
+
+            # Show relevant error lines (skip Gradle build noise)
+            err_lines = (result.stderr or "").strip().splitlines()
+            interesting = [l for l in err_lines
+                           if any(kw in l.lower() for kw in
+                                  ["error", "exception", "unsatisfiedlink",
+                                   "permission", "denied", "libpcap",
+                                   "no suitable", "cannot open"])]
+            if interesting:
+                print(f"\033[91m  Errors from Java:\033[0m")
+                for l in interesting[:10]:
+                    print(f"\033[91m    {l.strip()}\033[0m")
+            elif err_lines:
+                # No keyword matches — show last few lines
+                print(f"\033[91m  stderr (last 8 lines):\033[0m")
+                for l in err_lines[-8:]:
+                    print(f"\033[91m    {l.strip()}\033[0m")
+
+            # Platform-specific guidance
+            if not _IS_WINDOWS:
+                print()
+                print(f"\033[93m  Common Linux issues:\033[0m")
+                print(f"\033[93m    1. Permission denied → run with sudo:\033[0m")
+                print(f"\033[93m         sudo venv/bin/python classification.py\033[0m")
+                print(f"\033[93m       Or set capabilities once (no sudo needed after):\033[0m")
+                print(f"\033[93m         sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which java))\033[0m")
+                print(f"\033[93m    2. libpcap missing → install it:\033[0m")
+                print(f"\033[93m         sudo apt install libpcap-dev   (Debian/Ubuntu)\033[0m")
+                print(f"\033[93m         sudo dnf install libpcap-devel (Fedora/RHEL)\033[0m")
+                print(f"\033[93m    3. Architecture mismatch → jnetpcap native lib is x86-64 only\033[0m")
+                print(f"\033[93m         Check: uname -m  (should show x86_64)\033[0m")
+            else:
+                print()
+                print(f"\033[93m  Common Windows issues:\033[0m")
+                print(f"\033[93m    1. Npcap not installed → download from https://npcap.com\033[0m")
+                print(f"\033[93m       Check 'Install Npcap in WinPcap API-compatible Mode'\033[0m")
+                print(f"\033[93m    2. Run as Administrator if Npcap is installed but not working\033[0m")
+
         return interfaces
 
     except Exception as e:
