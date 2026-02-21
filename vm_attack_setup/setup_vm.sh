@@ -227,13 +227,19 @@ echo "Step 5: Checking NIDS project..."
 echo ""
 
 NIDS_DIR=""
-if [ -d "$HOME/Nids" ]; then
-    NIDS_DIR="$HOME/Nids"
-elif [ -d "$HOME/nids" ]; then
-    NIDS_DIR="$HOME/nids"
-elif [ -d "$HOME/NIDS" ]; then
-    NIDS_DIR="$HOME/NIDS"
-fi
+for _d in \
+    "$HOME/Nids" \
+    "$HOME/nids" \
+    "$HOME/NIDS" \
+    "$HOME/Nids-Network-Intrusion-Detection-System" \
+    "$HOME/nids-network-intrusion-detection-system" \
+    "$HOME/Desktop/Nids" \
+    "$HOME/Desktop/Nids-Network-Intrusion-Detection-System"; do
+    if [ -d "$_d" ] && [ -f "$_d/classification.py" ]; then
+        NIDS_DIR="$_d"
+        break
+    fi
+done
 
 if [ -n "$NIDS_DIR" ]; then
     echo "  [OK] NIDS project found at: $NIDS_DIR"

@@ -95,8 +95,10 @@ def find_nids_dir():
         os.path.join(home, "Nids"),
         os.path.join(home, "nids"),
         os.path.join(home, "NIDS"),
+        os.path.join(home, "Nids-Network-Intrusion-Detection-System"),
+        os.path.join(home, "nids-network-intrusion-detection-system"),
         os.path.join(home, "Desktop", "Nids"),
-        os.path.join(home, "Desktop", "nids"),
+        os.path.join(home, "Desktop", "Nids-Network-Intrusion-Detection-System"),
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     ]
     for path in candidates:
