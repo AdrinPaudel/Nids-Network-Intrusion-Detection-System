@@ -176,14 +176,45 @@ def _ensure_cicflowmeter_built():
                 major = int(m.group(2))
             if major < 8 or major > 21:
                 print(f"\033[91m[CICFLOWMETER] Java {major} detected — Gradle 8.5 requires Java 8-21.\033[0m")
-                print(f"\033[93m  Install Java 17 LTS from https://adoptium.net/\033[0m")
+                print(f"\033[93m  You need the Java Development Kit (JDK), version 8 to 21.\033[0m")
+                print(f"\033[93m  Copy-paste the install command for your system:\033[0m")
+                print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
+                print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
+                print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
+                print(f"\033[93m    Other/Windows:  https://adoptium.net/ (Temurin 17 LTS)\033[0m")
                 return False
     except FileNotFoundError:
-        print(f"\033[91m[CICFLOWMETER] Java not found. Install Java 8-21 to build CICFlowMeter.\033[0m")
-        print(f"\033[93m  Download from https://adoptium.net/ (recommend Temurin 17 LTS)\033[0m")
+        print(f"\033[91m[CICFLOWMETER] Java not found. You need the Java Development Kit (JDK) to build CICFlowMeter.\033[0m")
+        print(f"\033[93m  Copy-paste the install command for your system:\033[0m")
+        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
+        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
+        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
+        print(f"\033[93m    Other/Windows:  https://adoptium.net/ (Temurin 17 LTS)\033[0m")
         return False
     except Exception:
         pass  # If version detection fails, let Gradle try and report its own error
+
+    # Check for javac (JDK vs JRE) — Gradle needs the compiler, not just the runtime
+    try:
+        javac_result = subprocess.run(
+            ["javac", "-version"], capture_output=True, text=True, timeout=10
+        )
+        if javac_result.returncode != 0:
+            raise FileNotFoundError
+    except FileNotFoundError:
+        print(f"\033[91m[CICFLOWMETER] 'javac' (Java compiler) not found.\033[0m")
+        print(f"\033[91m  You have Java installed, but only the runtime (JRE).\033[0m")
+        print(f"\033[91m  Gradle needs the full JDK which includes javac.\033[0m")
+        print(f"\033[93m\033[0m")
+        print(f"\033[93m  NOTE: Do NOT search for 'javac' — it is included in the JDK package.\033[0m")
+        print(f"\033[93m  Copy-paste the install command for your system:\033[0m")
+        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
+        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
+        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
+        print(f"\033[93m    Other/Windows:  https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+        return False
+    except Exception:
+        pass  # If detection fails, let Gradle try and report its own error
 
     print(f"\033[96m[CICFLOWMETER] CICFlowMeter not built yet. Building now (this may take a minute)...\033[0m")
     try:
@@ -286,12 +317,13 @@ def list_interfaces():
                 print()
                 print(f"\033[93m  Common Linux issues:\033[0m")
                 print(f"\033[93m    1. Permission denied → run with sudo:\033[0m")
-                print(f"\033[93m         sudo venv/bin/python classification.py\033[0m")
+                print(f"\033[93m         sudo {os.path.abspath(os.path.join(PROJECT_ROOT, 'venv', 'bin', 'python'))} classification.py\033[0m")
                 print(f"\033[93m       Or set capabilities once (no sudo needed after):\033[0m")
                 print(f"\033[93m         sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which java))\033[0m")
                 print(f"\033[93m    2. libpcap missing → install it:\033[0m")
-                print(f"\033[93m         sudo apt install libpcap-dev   (Debian/Ubuntu)\033[0m")
-                print(f"\033[93m         sudo dnf install libpcap-devel (Fedora/RHEL)\033[0m")
+                print(f"\033[93m         Ubuntu/Debian:  sudo apt install libpcap-dev\033[0m")
+                print(f"\033[93m         Fedora/RHEL:    sudo dnf install libpcap-devel\033[0m")
+                print(f"\033[93m         Arch Linux:     sudo pacman -S libpcap\033[0m")
                 print(f"\033[93m    3. Architecture mismatch → jnetpcap native lib is x86-64 only\033[0m")
                 print(f"\033[93m         Check: uname -m  (should show x86_64)\033[0m")
             else:

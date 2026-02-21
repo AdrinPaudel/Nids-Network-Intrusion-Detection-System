@@ -41,9 +41,9 @@ java -version >nul 2>&1
 if %errorlevel% neq 0 (
     echo   [ERROR] Java is not installed.
     echo.
-    echo     Install it yourself:
-    echo       Download Java 17 LTS from https://adoptium.net/
-    echo       Make sure java is added to PATH
+    echo     You need the Java Development Kit (JDK), version 8 to 21.
+    echo     Download and install from: https://adoptium.net/ (Temurin 17 LTS)
+    echo     IMPORTANT: Make sure to select JDK (not JRE) and check 'Add to PATH'
     echo.
     set "FAIL=1"
     goto :done_prereq
@@ -60,16 +60,35 @@ if "%JAVA_MAJOR%"=="1" (
 if %JAVA_MAJOR% GEQ 8 if %JAVA_MAJOR% LEQ 21 (
     set JAVA_OK=1
     echo   [OK] Java %JAVA_MAJOR%
-    goto :done_prereq
+    goto :check_javac
 )
 
 echo   [ERROR] Java %JAVA_MAJOR% is NOT compatible. Need Java 8-21.
 echo.
-echo     Install a compatible version yourself:
-echo       Gradle 8.5 supports Java 8 through 21 only.
-echo       Download Java 17 LTS from https://adoptium.net/
+echo     You need the Java Development Kit (JDK), version 8 to 21.
+echo     Gradle 8.5 supports Java 8 through 21 only.
+echo     Download from: https://adoptium.net/ (Temurin 17 LTS)
 echo.
 set "FAIL=1"
+goto :done_prereq
+
+:check_javac
+REM --- Check for javac (JDK vs JRE) ---
+javac -version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo   [ERROR] 'javac' (Java compiler) not found.
+    echo           You have Java installed, but only the runtime ^(JRE^).
+    echo           Gradle needs the full JDK which includes javac.
+    echo.
+    echo     NOTE: javac is included in the JDK — do NOT search for it separately.
+    echo     Download the JDK from: https://adoptium.net/ (Temurin 17 LTS)
+    echo     IMPORTANT: Select JDK (not JRE) during install
+    echo.
+    set "FAIL=1"
+    set "JAVA_OK=0"
+) else (
+    echo   [OK] javac found ^(JDK^)
+)
 
 :done_prereq
 

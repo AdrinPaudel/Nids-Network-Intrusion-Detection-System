@@ -31,7 +31,8 @@ else
     echo "    Install it yourself:"
     echo "      Ubuntu/Debian:  sudo apt install python3 python3-venv python3-dev"
     echo "      Fedora/RHEL:    sudo dnf install python3 python3-devel"
-    echo "      Or download:    https://www.python.org/downloads/"
+    echo "      Arch Linux:     sudo pacman -S python"
+    echo "      Other:          https://www.python.org/downloads/"
     echo ""
     FAIL=true
 fi
@@ -51,20 +52,48 @@ if command -v java &> /dev/null; then
     else
         echo "  [ERROR] Java $JAVA_MAJOR is NOT compatible. Need Java 8-21."
         echo ""
-        echo "    Install a compatible version yourself:"
+        echo "    You need the Java Development Kit (JDK), version 8 to 21."
+        echo "    Copy-paste the install command for your distro:"
+        echo ""
         echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
-        echo "      Then switch:    sudo update-alternatives --config java"
-        echo "      Or download:    https://adoptium.net/ (Temurin 17 LTS)"
+        echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
+        echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+        echo "      Other distro:   Download from https://adoptium.net/ (Temurin 17 LTS)"
         echo ""
         FAIL=true
+    fi
+
+    # Check for javac (JDK vs JRE) — Gradle needs the compiler
+    if [ "$JAVA_OK" = true ]; then
+        if ! command -v javac &> /dev/null; then
+            echo "  [ERROR] 'javac' (Java compiler) not found."
+            echo "          You have Java installed, but only the runtime (JRE)."
+            echo "          Gradle needs the full JDK which includes javac."
+            echo ""
+            echo "    NOTE: Do NOT search for 'javac' — it is included in the JDK package."
+            echo "    Copy-paste the install command for your distro:"
+            echo ""
+            echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
+            echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
+            echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+            echo "      Other distro:   Download from https://adoptium.net/ (Temurin 17 LTS)"
+            echo ""
+            FAIL=true
+            JAVA_OK=false
+        else
+            echo "  [OK] javac found (JDK)"
+        fi
     fi
 else
     echo "  [ERROR] Java is not installed."
     echo ""
-    echo "    Install it yourself:"
+    echo "    You need the Java Development Kit (JDK), version 8 to 21."
+    echo "    Copy-paste the install command for your distro:"
+    echo ""
     echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
     echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
-    echo "      Or download:    https://adoptium.net/ (Temurin 17 LTS)"
+    echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+    echo "      Other distro:   Download from https://adoptium.net/ (Temurin 17 LTS)"
     echo ""
     FAIL=true
 fi
@@ -174,7 +203,10 @@ else
        [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so ] && \
        [ ! -f /usr/lib/libpcap.so ]; then
         echo "  PROBLEM: libpcap is not installed."
-        echo "    Fix:   sudo apt install libpcap-dev"
+        echo "    Fix:"
+        echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
+        echo "      Fedora/RHEL:    sudo dnf install libpcap-devel"
+        echo "      Arch Linux:     sudo pacman -S libpcap"
         echo ""
     fi
 
@@ -184,7 +216,7 @@ else
     echo "      sudo setcap cap_net_raw,cap_net_admin=eip \$(readlink -f \$(which java))"
     echo ""
     echo "    Or run the program with sudo:"
-    echo "      sudo venv/bin/python classification.py"
+    echo "      sudo $(pwd)/venv/bin/python classification.py"
     echo ""
 
     # 3. Architecture
