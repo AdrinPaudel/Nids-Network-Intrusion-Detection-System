@@ -275,20 +275,20 @@ if [ "$INTERFACE_COUNT" -gt 0 ] 2>/dev/null; then
     done
     echo ""
 else
-    echo "  [ERROR] No network interfaces detected!"
+    echo "  [WARNING] No network interfaces detected on first try."
     echo ""
 
-    # Check for common Linux problems
-
-    # 1. Architecture check first (fatal — nothing else will help)
+    # Check architecture (fatal — nothing else will help)
     ARCH=$(uname -m)
     if [ "$ARCH" != "x86_64" ]; then
-        echo "  PROBLEM: Your architecture is $ARCH. The bundled jnetpcap native"
+        echo "  [ERROR] Your architecture is $ARCH. The bundled jnetpcap native"
         echo "    library is compiled for x86_64 only. This won't work on ARM/other."
         echo ""
+        echo "  Fix the issue above, then re-run this script."
+        exit 1
     fi
 
-    # 2. Check if libpcap is actually missing (even though Step 1 checked)
+    # Check if libpcap is missing
     LIBPCAP_MISSING=false
     if ! ldconfig -p 2>/dev/null | grep -q libpcap && \
        [ ! -f /usr/lib/x86_64-linux-gnu/libpcap.so ] && \
@@ -297,47 +297,80 @@ else
        [ ! -f /usr/lib/libpcap.so ] && \
        [ ! -f /usr/lib/libpcap.so.1 ]; then
         LIBPCAP_MISSING=true
-        echo "  PROBLEM: libpcap is not installed."
+        echo "  [ERROR] libpcap is not installed."
         echo "    Fix:"
         echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
         echo "      Fedora/RHEL:    sudo dnf install libpcap-devel"
         echo "      Arch Linux:     sudo pacman -S libpcap"
         echo ""
+        echo "  Install libpcap, then re-run this script."
+        exit 1
     fi
 
-    # 3. Permissions — the most common cause when libpcap IS installed
-    if [ "$LIBPCAP_MISSING" = false ]; then
-        echo "  PROBLEM: Java needs permission to capture network packets."
+    # libpcap is installed — this is a permissions issue
+    # Automatically fix by granting Java packet capture capabilities
+    JAVA_PATH=$(readlink -f "$(which java)")
+    echo "  libpcap is installed. Java needs permission to capture packets."
+    echo ""
+    echo "  Granting Java packet capture capability (requires sudo)..."
+    echo "    Running: sudo setcap cap_net_raw,cap_net_admin=eip $JAVA_PATH"
+    echo ""
+
+    set +e
+    sudo setcap cap_net_raw,cap_net_admin=eip "$JAVA_PATH"
+    SETCAP_RESULT=$?
+    set -e
+
+    if [ "$SETCAP_RESULT" -ne 0 ]; then
         echo ""
-        echo "    libpcap is installed, so this is a PERMISSIONS issue."
+        echo "  [ERROR] Failed to set capabilities. You can try manually:"
+        echo "      sudo setcap cap_net_raw,cap_net_admin=eip $JAVA_PATH"
         echo ""
-        echo "    Fix (recommended — one-time command, then no sudo needed):"
-        echo ""
-        echo "      sudo setcap cap_net_raw,cap_net_admin=eip \$(readlink -f \$(which java))"
-        echo ""
-        echo "    Then re-run this script."
-        echo ""
-        echo "    Alternative: run the program with sudo each time:"
+        echo "    Or run the program with sudo each time:"
         echo "      sudo $(pwd)/venv/bin/python classification.py"
         echo ""
-    else
-        echo "  After installing libpcap, if it still fails, Java may need permissions:"
-        echo "      sudo setcap cap_net_raw,cap_net_admin=eip \$(readlink -f \$(which java))"
-        echo ""
+        exit 1
     fi
 
-    # Show raw Java errors for debugging
-    ERR_LINES=$(echo "$INTERFACE_OUTPUT" | grep -iE 'error|exception|denied|libpcap|unsatisfied' | head -5)
-    if [ -n "$ERR_LINES" ]; then
-        echo "  Java errors (for debugging):"
-        echo "$ERR_LINES" | while read -r line; do
-            echo "    $line"
+    echo "  [OK] Permissions granted. Retrying interface detection..."
+    echo ""
+
+    # Retry interface detection
+    set +e
+    INTERFACE_OUTPUT=$(cd CICFlowMeter && ./gradlew --no-daemon exeLive '--args=--list-interfaces' 2>&1)
+    set -e
+    INTERFACE_COUNT=$(echo "$INTERFACE_OUTPUT" | grep -cE '^[0-9]+\|' || true)
+
+    if [ "$INTERFACE_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "  [OK] Detected $INTERFACE_COUNT network interface(s):"
+        echo ""
+        echo "$INTERFACE_OUTPUT" | grep -E '^[0-9]+\|' | while IFS='|' read -r idx name desc addrs; do
+            if [ "$desc" = "N/A" ] || [ -z "$desc" ]; then
+                echo "        $idx. $name  ($addrs)"
+            else
+                echo "        $idx. $desc  ($addrs)"
+            fi
         done
         echo ""
-    fi
+    else
+        echo "  [ERROR] Still no interfaces detected after granting permissions."
+        echo ""
 
-    echo "  Fix the issue above, then re-run this script."
-    exit 1
+        # Show raw Java errors for debugging
+        ERR_LINES=$(echo "$INTERFACE_OUTPUT" | grep -iE 'error|exception|denied|libpcap|unsatisfied' | head -5)
+        if [ -n "$ERR_LINES" ]; then
+            echo "  Java errors (for debugging):"
+            echo "$ERR_LINES" | while read -r line; do
+                echo "    $line"
+            done
+            echo ""
+        fi
+
+        echo "  Try running with sudo instead:"
+        echo "      sudo $(pwd)/venv/bin/python classification.py"
+        echo ""
+        exit 1
+    fi
 fi
 
 # ==================================================================
