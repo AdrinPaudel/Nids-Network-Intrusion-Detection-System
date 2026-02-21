@@ -55,10 +55,19 @@ if command -v java &> /dev/null; then
         echo "    You need the Java Development Kit (JDK), version 8 to 21."
         echo "    Copy-paste the install command for your distro:"
         echo ""
-        echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
-        echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
-        echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
-        echo "      Other distro:   Download from https://adoptium.net/ (Temurin 17 LTS)"
+        if command -v archlinux-java &> /dev/null; then
+            echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+            echo "      Then switch:    sudo archlinux-java set java-17-openjdk"
+        elif [ -f /etc/debian_version ]; then
+            echo "      sudo apt install openjdk-17-jdk"
+        elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
+            echo "      sudo dnf install java-17-openjdk-devel"
+        else
+            echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
+            echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
+            echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+            echo "      Other distro:   https://adoptium.net/ (Temurin 17 LTS)"
+        fi
         echo ""
         FAIL=true
     fi
@@ -71,12 +80,36 @@ if command -v java &> /dev/null; then
             echo "          Gradle needs the full JDK which includes javac."
             echo ""
             echo "    NOTE: Do NOT search for 'javac' — it is included in the JDK package."
-            echo "    Copy-paste the install command for your distro:"
             echo ""
-            echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
-            echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
-            echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
-            echo "      Other distro:   Download from https://adoptium.net/ (Temurin 17 LTS)"
+            if command -v archlinux-java &> /dev/null; then
+                echo "    Arch Linux — you need to install the JDK and switch to it:"
+                echo ""
+                echo "      Step 1 — Install the JDK for your active Java $JAVA_MAJOR:"
+                echo "        sudo pacman -S jdk${JAVA_MAJOR}-openjdk"
+                echo ""
+                echo "      Step 2 — Switch to the JDK version:"
+                echo "        sudo archlinux-java set java-${JAVA_MAJOR}-openjdk"
+                echo ""
+                echo "      (Check available versions with: archlinux-java status)"
+                # Check if they already have a JDK installed but just not active
+                if archlinux-java status 2>/dev/null | grep -q "jdk"; then
+                    echo ""
+                    echo "    Your installed Java environments:"
+                    archlinux-java status 2>/dev/null | while read -r line; do
+                        echo "      $line"
+                    done
+                fi
+            elif [ -f /etc/debian_version ]; then
+                echo "    Copy-paste:  sudo apt install openjdk-17-jdk"
+            elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
+                echo "    Copy-paste:  sudo dnf install java-17-openjdk-devel"
+            else
+                echo "    Copy-paste the install command for your distro:"
+                echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
+                echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
+                echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+                echo "      Other distro:   https://adoptium.net/ (Temurin 17 LTS)"
+            fi
             echo ""
             FAIL=true
             JAVA_OK=false
@@ -90,10 +123,19 @@ else
     echo "    You need the Java Development Kit (JDK), version 8 to 21."
     echo "    Copy-paste the install command for your distro:"
     echo ""
-    echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
-    echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
-    echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
-    echo "      Other distro:   Download from https://adoptium.net/ (Temurin 17 LTS)"
+    if command -v pacman &> /dev/null; then
+        echo "      sudo pacman -S jdk17-openjdk"
+        echo "      sudo archlinux-java set java-17-openjdk"
+    elif [ -f /etc/debian_version ]; then
+        echo "      sudo apt install openjdk-17-jdk"
+    elif [ -f /etc/fedora-release ] || [ -f /etc/redhat-release ]; then
+        echo "      sudo dnf install java-17-openjdk-devel"
+    else
+        echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
+        echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
+        echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
+        echo "      Other distro:   https://adoptium.net/ (Temurin 17 LTS)"
+    fi
     echo ""
     FAIL=true
 fi

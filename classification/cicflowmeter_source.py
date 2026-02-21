@@ -137,6 +137,57 @@ CICFLOWMETER_TO_TRAINING_COLUMNS = {
 # Identifier columns to preserve for threat reporting (uses config import above)
 
 
+def _print_jdk_install_instructions(javac_missing=False):
+    """
+    Print distro-specific JDK install instructions.
+    Detects Arch Linux (archlinux-java) and gives precise commands.
+    """
+    import shutil
+
+    # Detect the active Java major version (for Arch-specific instructions)
+    java_major = None
+    try:
+        java_result = subprocess.run(
+            ["java", "-version"], capture_output=True, text=True, timeout=10
+        )
+        import re
+        version_line = (java_result.stderr + java_result.stdout).splitlines()[0]
+        m = re.search(r'"(\d+)(?:\.(\d+))?', version_line)
+        if m:
+            java_major = int(m.group(1))
+            if java_major == 1 and m.group(2):
+                java_major = int(m.group(2))
+    except Exception:
+        pass
+
+    # Arch Linux — archlinux-java manages the active Java version
+    if shutil.which("archlinux-java"):
+        if javac_missing and java_major:
+            print(f"\033[93m  Arch Linux — install the JDK and switch to it:\033[0m")
+            print(f"\033[93m\033[0m")
+            print(f"\033[93m    Step 1 — Install the JDK for your active Java {java_major}:\033[0m")
+            print(f"\033[93m      sudo pacman -S jdk{java_major}-openjdk\033[0m")
+            print(f"\033[93m\033[0m")
+            print(f"\033[93m    Step 2 — Switch to the JDK version:\033[0m")
+            print(f"\033[93m      sudo archlinux-java set java-{java_major}-openjdk\033[0m")
+            print(f"\033[93m\033[0m")
+            print(f"\033[93m    (Check installed versions with: archlinux-java status)\033[0m")
+        else:
+            print(f"\033[93m    Arch Linux:  sudo pacman -S jdk17-openjdk\033[0m")
+            print(f"\033[93m    Then run:    sudo archlinux-java set java-17-openjdk\033[0m")
+    elif os.path.isfile("/etc/debian_version"):
+        print(f"\033[93m    sudo apt install openjdk-17-jdk\033[0m")
+    elif os.path.isfile("/etc/fedora-release") or os.path.isfile("/etc/redhat-release"):
+        print(f"\033[93m    sudo dnf install java-17-openjdk-devel\033[0m")
+    elif _IS_WINDOWS:
+        print(f"\033[93m    Download JDK from: https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+    else:
+        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
+        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
+        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
+        print(f"\033[93m    Other:          https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+
+
 def _ensure_cicflowmeter_built():
     """
     Check if CICFlowMeter is built. If not, run gradlew build automatically.
@@ -178,18 +229,12 @@ def _ensure_cicflowmeter_built():
                 print(f"\033[91m[CICFLOWMETER] Java {major} detected — Gradle 8.5 requires Java 8-21.\033[0m")
                 print(f"\033[93m  You need the Java Development Kit (JDK), version 8 to 21.\033[0m")
                 print(f"\033[93m  Copy-paste the install command for your system:\033[0m")
-                print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
-                print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
-                print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
-                print(f"\033[93m    Other/Windows:  https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+                _print_jdk_install_instructions()
                 return False
     except FileNotFoundError:
         print(f"\033[91m[CICFLOWMETER] Java not found. You need the Java Development Kit (JDK) to build CICFlowMeter.\033[0m")
         print(f"\033[93m  Copy-paste the install command for your system:\033[0m")
-        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
-        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
-        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
-        print(f"\033[93m    Other/Windows:  https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+        _print_jdk_install_instructions()
         return False
     except Exception:
         pass  # If version detection fails, let Gradle try and report its own error
@@ -207,11 +252,7 @@ def _ensure_cicflowmeter_built():
         print(f"\033[91m  Gradle needs the full JDK which includes javac.\033[0m")
         print(f"\033[93m\033[0m")
         print(f"\033[93m  NOTE: Do NOT search for 'javac' — it is included in the JDK package.\033[0m")
-        print(f"\033[93m  Copy-paste the install command for your system:\033[0m")
-        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
-        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
-        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
-        print(f"\033[93m    Other/Windows:  https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+        _print_jdk_install_instructions(javac_missing=True)
         return False
     except Exception:
         pass  # If detection fails, let Gradle try and report its own error
