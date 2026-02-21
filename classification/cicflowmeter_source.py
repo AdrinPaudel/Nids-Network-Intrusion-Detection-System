@@ -139,12 +139,12 @@ CICFLOWMETER_TO_TRAINING_COLUMNS = {
 
 def _print_jdk_install_instructions(javac_missing=False):
     """
-    Print distro-specific JDK install instructions.
-    Detects Arch Linux (archlinux-java) and gives precise commands.
+    Print JDK install instructions for all distros.
+    Always shows all options so users on any system see the right command.
     """
     import shutil
 
-    # Detect the active Java major version (for Arch-specific instructions)
+    # Detect the active Java major version (for version-matched install commands)
     java_major = None
     try:
         java_result = subprocess.run(
@@ -160,32 +160,19 @@ def _print_jdk_install_instructions(javac_missing=False):
     except Exception:
         pass
 
-    # Arch Linux — archlinux-java manages the active Java version
-    if shutil.which("archlinux-java"):
-        if javac_missing and java_major:
-            print(f"\033[93m  Arch Linux — install the JDK and switch to it:\033[0m")
-            print(f"\033[93m\033[0m")
-            print(f"\033[93m    Step 1 — Install the JDK for your active Java {java_major}:\033[0m")
-            print(f"\033[93m      sudo pacman -S jdk{java_major}-openjdk\033[0m")
-            print(f"\033[93m\033[0m")
-            print(f"\033[93m    Step 2 — Switch to the JDK version:\033[0m")
-            print(f"\033[93m      sudo archlinux-java set java-{java_major}-openjdk\033[0m")
-            print(f"\033[93m\033[0m")
-            print(f"\033[93m    (Check installed versions with: archlinux-java status)\033[0m")
-        else:
-            print(f"\033[93m    Arch Linux:  sudo pacman -S jdk17-openjdk\033[0m")
-            print(f"\033[93m    Then run:    sudo archlinux-java set java-17-openjdk\033[0m")
-    elif os.path.isfile("/etc/debian_version"):
-        print(f"\033[93m    sudo apt install openjdk-17-jdk\033[0m")
-    elif os.path.isfile("/etc/fedora-release") or os.path.isfile("/etc/redhat-release"):
-        print(f"\033[93m    sudo dnf install java-17-openjdk-devel\033[0m")
-    elif _IS_WINDOWS:
-        print(f"\033[93m    Download JDK from: https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+    jdk_ver = java_major if java_major and 8 <= java_major <= 21 else 17
+
+    if _IS_WINDOWS:
+        print(f"\033[93m  Download JDK from: https://adoptium.net/ (Temurin 17 LTS)\033[0m")
     else:
-        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-17-jdk\033[0m")
-        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-17-openjdk-devel\033[0m")
-        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk17-openjdk\033[0m")
-        print(f"\033[93m    Other:          https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+        print(f"\033[93m  Copy-paste the install command for your distro:\033[0m")
+        print(f"\033[93m\033[0m")
+        print(f"\033[93m    Ubuntu/Debian:  sudo apt install openjdk-{jdk_ver}-jdk\033[0m")
+        print(f"\033[93m    Fedora/RHEL:    sudo dnf install java-{jdk_ver}-openjdk-devel\033[0m")
+        print(f"\033[93m    Arch Linux:     sudo pacman -S jdk{jdk_ver}-openjdk\033[0m")
+        if shutil.which("archlinux-java"):
+            print(f"\033[93m      Then switch:    sudo archlinux-java set java-{jdk_ver}-openjdk\033[0m")
+        print(f"\033[93m    Other distro:   https://adoptium.net/ (Temurin 17 LTS)\033[0m")
 
 
 def _ensure_cicflowmeter_built():
