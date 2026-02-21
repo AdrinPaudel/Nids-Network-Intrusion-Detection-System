@@ -33,12 +33,17 @@ if command -v python3 > /dev/null 2>&1; then
         echo "  [ERROR] Python 'venv' module is not installed."
         echo "          On Debian/Ubuntu, venv is a separate package."
         echo ""
-        echo "    Copy-paste the install command for your distro:"
+        echo "    Run this command (copy-paste the WHOLE line, no spaces between python3):"
         echo ""
-        echo "      Ubuntu/Debian:  sudo apt install python3-venv"
-        echo "                      (or: sudo apt install python${python_version%.*}-venv)"
-        echo "      Fedora/RHEL:    (included with python3 — run: sudo dnf install python3)"
-        echo "      Arch Linux:     (included with python — run: sudo pacman -S python)"
+        echo "      sudo apt install python3-venv"
+        echo ""
+        echo "    If that doesn't work, try the version-specific package:"
+        echo ""
+        echo "      sudo apt install python${python_version%.*}-venv"
+        echo ""
+        echo "    Other distros (venv is already included, just reinstall python):"
+        echo "      Fedora/RHEL:  sudo dnf install python3"
+        echo "      Arch Linux:   sudo pacman -S python"
         echo ""
         FAIL=true
     fi
@@ -225,8 +230,11 @@ echo "Step 5: Testing network interface detection..."
 echo ""
 
 # Run the Java interface listing through Gradle
+# Disable set -e here — this command may fail due to permissions, which is expected
+set +e
 INTERFACE_OUTPUT=$(cd CICFlowMeter && chmod +x gradlew && ./gradlew --no-daemon exeLive '--args=--list-interfaces' 2>&1)
-INTERFACE_COUNT=$(echo "$INTERFACE_OUTPUT" | grep -cE '^[0-9]+\|')
+set -e
+INTERFACE_COUNT=$(echo "$INTERFACE_OUTPUT" | grep -cE '^[0-9]+\|' || true)
 
 if [ "$INTERFACE_COUNT" -gt 0 ] 2>/dev/null; then
     echo "  [OK] Detected $INTERFACE_COUNT network interface(s):"
