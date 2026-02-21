@@ -49,18 +49,28 @@ def check_venv():
         print("\n" + "="*80)
         print("ERROR: Missing required packages: " + ", ".join(missing))
         print("="*80)
-        print("\nSetup your environment first:\n")
-        print("  1. Create a virtual environment (if not already):")
-        print("       python -m venv venv\n")
-        print("  2. Activate it:")
-        if sys.platform.startswith('win'):
-            print("       venv\\Scripts\\activate")
+
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        venv_dir = os.path.join(project_root, "venv")
+
+        if os.path.isdir(venv_dir):
+            # venv exists but isn't activated — just tell them to activate
+            print("\n  The virtual environment exists but is NOT activated.")
+            print("  Activate it first, then run again:\n")
+            if sys.platform.startswith('win'):
+                print("      venv\\Scripts\\activate")
+            else:
+                print("      source venv/bin/activate")
+            print("      python classification.py\n")
         else:
-            print("       source venv/bin/activate")
-        print("\n  3. Install dependencies:")
-        print("       pip install -r requirements.txt\n")
-        print("  4. Run again:")
-        print("       python classification.py\n")
+            # No venv at all — run setup script
+            print("\n  Run the setup script to set everything up:\n")
+            if sys.platform.startswith('win'):
+                print("      setup\\setup.bat\n")
+            else:
+                print("      source setup/setup.sh\n")
+            print("  This will create the venv, install dependencies, and build CICFlowMeter.")
+
         print("="*80 + "\n")
         sys.exit(1)
 

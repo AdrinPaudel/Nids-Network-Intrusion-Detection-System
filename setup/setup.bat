@@ -247,6 +247,9 @@ echo.
 echo   Run ML model pipeline:
 echo       python ml_model.py --help
 echo.
+echo   NOTE: If you open a NEW terminal, activate the venv again first:
+echo       venv\Scripts\activate
+echo.
 echo ================================================================================
 echo.
 

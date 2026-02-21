@@ -290,20 +290,25 @@ echo "==========================================================================
 echo "  Setup Complete!  Everything is working."
 echo "================================================================================"
 echo ""
+echo "  IMPORTANT: You must activate the virtual environment before running."
+echo ""
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    echo "  To start, activate venv first:"
+    echo "  You ran this script with 'sh' or 'bash', so the venv is NOT active."
+    echo "  Activate it now:"
+    echo ""
     echo "      source venv/bin/activate"
     echo ""
-    echo "  Or next time run setup with 'source' so venv stays active:"
-    echo "      source setup/setup.sh"
 else
     echo "  venv is active. You're ready to go."
+    echo ""
 fi
 
-echo ""
 echo "  Run live classification:"
 echo "      python classification.py --duration 180"
+echo ""
+echo "  Or with sudo (needed if you haven't set Java capabilities):"
+echo "      sudo $(pwd)/venv/bin/python classification.py --duration 180"
 echo ""
 echo "  Run ML model pipeline:"
 echo "      python ml_model.py --help"

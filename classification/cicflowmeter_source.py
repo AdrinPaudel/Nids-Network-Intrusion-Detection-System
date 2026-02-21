@@ -641,6 +641,10 @@ class CICFlowMeterSource:
                     print(f"{COLOR_GREEN}[CICFLOWMETER] {line}{COLOR_RESET}")
                 elif "ERROR:" in line:
                     print(f"{COLOR_RED}[CICFLOWMETER] {line}{COLOR_RESET}")
+                    # Detect permission / CAP_NET_RAW errors and give fix instructions
+                    line_lower = line.lower()
+                    if "permission" in line_lower or "cap_net_raw" in line_lower:
+                        self._print_permission_fix()
                 elif "SCAN:" in line:
                     # Parse: SCAN: packets=N valid=N emitted=N active_flows=N
                     try:
@@ -659,6 +663,32 @@ class CICFlowMeterSource:
                     print(f"{COLOR_DARK_GRAY}[CICFLOWMETER-LOG] {line}{COLOR_RESET}")
         except Exception:
             pass
+
+    _permission_fix_shown = False  # class-level flag to print fix only once
+
+    def _print_permission_fix(self):
+        """Print permission fix instructions (once per session)."""
+        if CICFlowMeterSource._permission_fix_shown:
+            return
+        CICFlowMeterSource._permission_fix_shown = True
+        print()
+        print(f"{COLOR_RED}{'='*70}{COLOR_RESET}")
+        print(f"{COLOR_RED}  PERMISSION ERROR: Java cannot capture network packets.{COLOR_RESET}")
+        print(f"{COLOR_RED}{'='*70}{COLOR_RESET}")
+        print()
+        if _IS_WINDOWS:
+            print(f"{COLOR_YELLOW}  Fix: Run this terminal as Administrator.{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}  (Right-click terminal → Run as Administrator){COLOR_RESET}")
+        else:
+            venv_python = os.path.abspath(os.path.join(PROJECT_ROOT, 'venv', 'bin', 'python'))
+            print(f"{COLOR_YELLOW}  Option 1 — Set capabilities once (no sudo needed after):{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}    sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which java)){COLOR_RESET}")
+            print()
+            print(f"{COLOR_YELLOW}  Option 2 — Run with sudo this time:{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}    sudo {venv_python} classification.py{COLOR_RESET}")
+        print()
+        print(f"{COLOR_RED}{'='*70}{COLOR_RESET}")
+        print()
 
     def _read_flows(self):
         """Read CSV flow lines from stdout and push to queue.
