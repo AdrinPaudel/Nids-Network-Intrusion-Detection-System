@@ -27,6 +27,21 @@ FAIL=false
 if command -v python3 > /dev/null 2>&1; then
     python_version=$(python3 --version 2>&1 | awk '{print $2}')
     echo "  [OK] Python $python_version"
+
+    # Check for venv module (separate package on Debian/Ubuntu)
+    if ! python3 -c "import ensurepip" > /dev/null 2>&1; then
+        echo "  [ERROR] Python 'venv' module is not installed."
+        echo "          On Debian/Ubuntu, venv is a separate package."
+        echo ""
+        echo "    Copy-paste the install command for your distro:"
+        echo ""
+        echo "      Ubuntu/Debian:  sudo apt install python3-venv"
+        echo "                      (or: sudo apt install python${python_version%.*}-venv)"
+        echo "      Fedora/RHEL:    (included with python3 — run: sudo dnf install python3)"
+        echo "      Arch Linux:     (included with python — run: sudo pacman -S python)"
+        echo ""
+        FAIL=true
+    fi
 else
     echo "  [ERROR] Python3 is not installed."
     echo ""
@@ -137,9 +152,19 @@ echo ""
 if [ -d "venv" ]; then
     echo "  [OK] Already exists — skipping"
 else
-    python3 -m venv venv
+    if ! python3 -m venv venv 2>&1; then
+        echo ""
+        echo "  [ERROR] Failed to create virtual environment."
+        echo ""
+        echo "    Most likely cause: the python3-venv package is not installed."
+        echo "    Fix:"
+        echo "      Ubuntu/Debian:  sudo apt install python3-venv"
+        echo "      Then re-run this script."
+        echo ""
+        exit 1
+    fi
     if [ ! -d "venv" ]; then
-        echo "  [ERROR] Failed to create venv"
+        echo "  [ERROR] venv directory was not created"
         exit 1
     fi
     echo "  [OK] Virtual environment created"
