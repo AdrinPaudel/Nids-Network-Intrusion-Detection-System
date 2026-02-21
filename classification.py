@@ -219,6 +219,22 @@ class ClassificationSession:
                     self.interface_name = eth_ifaces[0]['name']
                     print(f"{COLOR_CYAN}[SESSION] Auto-selected Ethernet interface: {self.interface_name}{COLOR_RESET}")
                 else:
+                    # No interfaces detected — check if we're on Linux without sudo
+                    if not sys.platform.startswith('win'):
+                        try:
+                            if os.geteuid() != 0:
+                                print(f"{COLOR_RED}[SESSION] No network interfaces detected.{COLOR_RESET}")
+                                print(f"{COLOR_YELLOW}\nThis is expected on Linux without elevated privileges.{COLOR_RESET}")
+                                print(f"{COLOR_YELLOW}\nRun with sudo:{COLOR_RESET}")
+                                print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
+                                print(f"{COLOR_YELLOW}\nOr grant Python capabilities (one-time):{COLOR_RESET}")
+                                import subprocess
+                                python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
+                                print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+                                return False
+                        except Exception:
+                            pass
+                    
                     print(f"{COLOR_RED}[SESSION] No network interfaces available!{COLOR_RESET}")
                     return False
             
@@ -232,27 +248,26 @@ class ClassificationSession:
     def _start_live(self):
         """Start the live capture pipeline."""
 
-        # Check for elevated privileges on Linux (required for Scapy packet capture)
-        if not sys.platform.startswith('win'):
-            try:
-                if os.geteuid() != 0:
-                    print(f"{COLOR_RED}[ERROR] Live network capture requires elevated privileges on Linux/macOS.{COLOR_RESET}")
-                    print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
-                    print(f"{COLOR_CYAN}      sudo python classification.py{COLOR_RESET}")
-                    print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
-                    import subprocess
-                    python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
-                    print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
-                    return False
-            except Exception:
-                pass  # If we can't check, proceed anyway (permission error will occur later)
-
         # 1. Create flow capture source (Python CICFlowMeter / Scapy)
-        self.source = FlowMeterSource(
-            flow_queue=self.flow_queue,
-            interface_name=self.interface_name,
-            stop_event=self.stop_event,
-        )
+        try:
+            self.source = FlowMeterSource(
+                flow_queue=self.flow_queue,
+                interface_name=self.interface_name,
+                stop_event=self.stop_event,
+            )
+        except PermissionError as e:
+            print(f"{COLOR_RED}[ERROR] Permission denied. Cannot capture packets on {self.interface_name}.{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}\nThis requires elevated privileges on Linux/macOS.{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}\n  Option 1: Run with sudo (quick):{COLOR_RESET}")
+            print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}\n  Option 2: Grant Python capabilities (one-time setup, no sudo needed later):{COLOR_RESET}")
+            import subprocess
+            python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
+            print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+            return False
+        except Exception as e:
+            print(f"{COLOR_RED}[ERROR] Failed to start packet capture: {e}{COLOR_RESET}")
+            return False
 
         # 2. Create preprocessor
         self.preprocessor = Preprocessor(

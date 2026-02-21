@@ -195,7 +195,7 @@ esac
 
 echo "  Quick test (120 sec capture):"
 echo "    Linux:"
-echo "      sudo python classification.py"
+echo "      sudo ./venv/bin/python classification.py"
 echo ""
 echo "    Windows/Mac:"
 echo "      python classification.py"
