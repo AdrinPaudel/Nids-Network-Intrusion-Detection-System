@@ -163,7 +163,10 @@ def _print_jdk_install_instructions(javac_missing=False):
     jdk_ver = java_major if java_major and 8 <= java_major <= 21 else 17
 
     if _IS_WINDOWS:
-        print(f"\033[93m  Download JDK from: https://adoptium.net/ (Temurin 17 LTS)\033[0m")
+        print(f"\033[93m  Download the Java Development Kit (JDK):\033[0m")
+        print(f"\033[93m    https://adoptium.net/\033[0m")
+        print(f"\033[93m    Select: Temurin 17 LTS, JDK (not JRE), Windows x64\033[0m")
+        print(f"\033[93m    Check 'Add to PATH' and 'Set JAVA_HOME' during install\033[0m")
     else:
         print(f"\033[93m  Copy-paste the install command for your distro:\033[0m")
         print(f"\033[93m\033[0m")

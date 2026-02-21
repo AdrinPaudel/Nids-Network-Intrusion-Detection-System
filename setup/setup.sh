@@ -1,11 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 # Setup script for NIDS Project on Linux
 # Checks prerequisites, creates venv, installs deps, builds CICFlowMeter, tests interface detection
+# POSIX-compatible — works with sh (dash), bash, zsh, etc.
 
 set -e  # Exit on error
 
 # Navigate to project root (one level up from setup/)
 cd "$(dirname "$0")/.." || exit 1
+PROJECT_ROOT=$(pwd)
 
 echo ""
 echo "================================================================================"
@@ -22,7 +24,7 @@ echo ""
 FAIL=false
 
 # --- Python ---
-if command -v python3 &> /dev/null; then
+if command -v python3 > /dev/null 2>&1; then
     python_version=$(python3 --version 2>&1 | awk '{print $2}')
     echo "  [OK] Python $python_version"
 else
@@ -39,7 +41,7 @@ fi
 
 # --- Java ---
 JAVA_OK=false
-if command -v java &> /dev/null; then
+if command -v java > /dev/null 2>&1; then
     java_version_full=$(java -version 2>&1 | head -1)
     JAVA_MAJOR=$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+)(\.[0-9]+)*.*/\1/')
     if [ "$JAVA_MAJOR" = "1" ]; then
@@ -58,7 +60,7 @@ if command -v java &> /dev/null; then
         echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
         echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
         echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
-        if command -v archlinux-java &> /dev/null; then
+        if command -v archlinux-java > /dev/null 2>&1; then
             echo "      Then switch:    sudo archlinux-java set java-17-openjdk"
         fi
         echo "      Other distro:   https://adoptium.net/ (Temurin 17 LTS)"
@@ -68,7 +70,7 @@ if command -v java &> /dev/null; then
 
     # Check for javac (JDK vs JRE) — Gradle needs the compiler
     if [ "$JAVA_OK" = true ]; then
-        if ! command -v javac &> /dev/null; then
+        if ! command -v javac > /dev/null 2>&1; then
             echo "  [ERROR] 'javac' (Java compiler) not found."
             echo "          You have Java installed, but only the runtime (JRE)."
             echo "          Gradle needs the full JDK which includes javac."
@@ -80,7 +82,7 @@ if command -v java &> /dev/null; then
             echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
             echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
             echo "      Arch Linux:     sudo pacman -S jdk${JAVA_MAJOR}-openjdk"
-            if command -v archlinux-java &> /dev/null; then
+            if command -v archlinux-java > /dev/null 2>&1; then
                 echo "      Then switch:    sudo archlinux-java set java-${JAVA_MAJOR}-openjdk"
                 echo ""
                 echo "      (Check available versions with: archlinux-java status)"
@@ -109,7 +111,7 @@ else
     echo "      Ubuntu/Debian:  sudo apt install openjdk-17-jdk"
     echo "      Fedora/RHEL:    sudo dnf install java-17-openjdk-devel"
     echo "      Arch Linux:     sudo pacman -S jdk17-openjdk"
-    if command -v archlinux-java &> /dev/null || command -v pacman &> /dev/null; then
+    if command -v archlinux-java > /dev/null 2>&1 || command -v pacman > /dev/null 2>&1; then
         echo "      Then switch:    sudo archlinux-java set java-17-openjdk"
     fi
     echo "      Other distro:   https://adoptium.net/ (Temurin 17 LTS)"
@@ -150,7 +152,7 @@ echo ""
 echo "Step 3: Installing Python dependencies..."
 echo ""
 
-source venv/bin/activate
+. venv/bin/activate
 
 pip install --upgrade pip --quiet
 pip install -r requirements.txt
@@ -176,7 +178,7 @@ if [ -d "CICFlowMeter/build/classes/java/main" ]; then
     echo "  [OK] Already built — skipping"
 else
     echo "  Building with Gradle (this may take a minute)..."
-    pushd CICFlowMeter > /dev/null
+    cd CICFlowMeter
     chmod +x gradlew
     ./gradlew --no-daemon classes
     if [ $? -eq 0 ]; then
@@ -184,10 +186,10 @@ else
     else
         echo "  [ERROR] Gradle build failed"
         echo "  Try manually: cd CICFlowMeter && ./gradlew classes"
-        popd > /dev/null
+        cd "$PROJECT_ROOT"
         exit 1
     fi
-    popd > /dev/null
+    cd "$PROJECT_ROOT"
 fi
 
 # ==================================================================
@@ -270,16 +272,20 @@ echo ""
 echo "  IMPORTANT: You must activate the virtual environment before running."
 echo ""
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    echo "  You ran this script with 'sh' or 'bash', so the venv is NOT active."
-    echo "  Activate it now:"
-    echo ""
-    echo "      source venv/bin/activate"
-    echo ""
-else
-    echo "  venv is active. You're ready to go."
-    echo ""
-fi
+case "$0" in
+    *setup.sh*)
+        echo "  You ran this script with 'sh' or 'bash', so the venv is NOT active."
+        echo "  Activate it now:"
+        echo ""
+        echo "      source venv/bin/activate    (bash/zsh)"
+        echo "      . venv/bin/activate          (any shell)"
+        echo ""
+        ;;
+    *)
+        echo "  venv is active. You're ready to go."
+        echo ""
+        ;;
+esac
 
 echo "  Run live classification:"
 echo "      python classification.py --duration 180"

@@ -25,9 +25,13 @@ python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo   [ERROR] Python is not installed.
     echo.
-    echo     Install it yourself:
-    echo       Download from https://www.python.org/downloads/
-    echo       IMPORTANT: Check "Add Python to PATH" during install
+    echo     Download and install Python:
+    echo       https://www.python.org/downloads/
+    echo.
+    echo     IMPORTANT during install:
+    echo       1. Check "Add Python to PATH" at the bottom of the installer
+    echo       2. Click "Install Now" (or Customize ^> check all boxes)
+    echo       3. Close and reopen your terminal after installing
     echo.
     set "FAIL=1"
     goto :check_java
@@ -41,9 +45,13 @@ java -version >nul 2>&1
 if %errorlevel% neq 0 (
     echo   [ERROR] Java is not installed.
     echo.
-    echo     You need the Java Development Kit (JDK), version 8 to 21.
-    echo     Download and install from: https://adoptium.net/ (Temurin 17 LTS)
-    echo     IMPORTANT: Make sure to select JDK (not JRE) and check 'Add to PATH'
+    echo     Download and install the Java Development Kit (JDK):
+    echo       https://adoptium.net/  (select Temurin 17 LTS, JDK, Windows x64)
+    echo.
+    echo     IMPORTANT during install:
+    echo       1. Make sure you download the JDK (not JRE)
+    echo       2. Check "Add to PATH" and "Set JAVA_HOME" options
+    echo       3. Close and reopen your terminal after installing
     echo.
     set "FAIL=1"
     goto :done_prereq
@@ -65,9 +73,12 @@ if %JAVA_MAJOR% GEQ 8 if %JAVA_MAJOR% LEQ 21 (
 
 echo   [ERROR] Java %JAVA_MAJOR% is NOT compatible. Need Java 8-21.
 echo.
-echo     You need the Java Development Kit (JDK), version 8 to 21.
 echo     Gradle 8.5 supports Java 8 through 21 only.
-echo     Download from: https://adoptium.net/ (Temurin 17 LTS)
+echo     Download a compatible JDK:
+echo       https://adoptium.net/  (select Temurin 17 LTS, JDK, Windows x64)
+echo.
+echo     IMPORTANT: Check "Add to PATH" and "Set JAVA_HOME" during install.
+echo     Close and reopen your terminal after installing.
 echo.
 set "FAIL=1"
 goto :done_prereq
@@ -81,8 +92,11 @@ if %errorlevel% neq 0 (
     echo           Gradle needs the full JDK which includes javac.
     echo.
     echo     NOTE: javac is included in the JDK — do NOT search for it separately.
-    echo     Download the JDK from: https://adoptium.net/ (Temurin 17 LTS)
-    echo     IMPORTANT: Select JDK (not JRE) during install
+    echo     Download the JDK from: https://adoptium.net/
+    echo       Select: Temurin 17 LTS, JDK (not JRE), Windows x64
+    echo.
+    echo     IMPORTANT: Check "Add to PATH" and "Set JAVA_HOME" during install.
+    echo     Close and reopen your terminal after installing.
     echo.
     set "FAIL=1"
     set "JAVA_OK=0"
