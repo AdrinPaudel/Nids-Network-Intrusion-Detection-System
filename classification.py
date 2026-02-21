@@ -232,6 +232,21 @@ class ClassificationSession:
     def _start_live(self):
         """Start the live capture pipeline."""
 
+        # Check for elevated privileges on Linux (required for Scapy packet capture)
+        if not sys.platform.startswith('win'):
+            try:
+                if os.geteuid() != 0:
+                    print(f"{COLOR_RED}[ERROR] Live network capture requires root/sudo on Linux.{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Run the program with sudo:{COLOR_RESET}")
+                    print(f"{COLOR_CYAN}      sudo python classification.py --duration 180{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}\n  Or grant capabilities to your Python binary (one-time setup):{COLOR_RESET}")
+                    import subprocess
+                    python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
+                    print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+                    return False
+            except Exception:
+                pass  # If we can't check, proceed anyway (permission error will occur later)
+
         # 1. Create flow capture source (Python CICFlowMeter / Scapy)
         self.source = FlowMeterSource(
             flow_queue=self.flow_queue,

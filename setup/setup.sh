@@ -140,62 +140,30 @@ fi
 echo "  [OK] Dependencies installed"
 
 # ==================================================================
-# Step 4: Test interface detection
+# Step 4: Verify network interfaces exist
 # ==================================================================
 echo ""
-echo "Step 4: Testing network interface detection..."
+echo "Step 4: Verifying network interface availability..."
 echo ""
 
-set +e
-IFACE_OUTPUT=$(python3 -c "
-from classification.flowmeter_source import list_interfaces
-ifaces = list_interfaces()
-if ifaces:
-    print(f'  [OK] Detected {len(ifaces)} network interface(s)')
-else:
-    print('  [WARNING] No interfaces detected')
-" 2>&1)
-IFACE_RESULT=$?
-set -e
-
-if [ "$IFACE_RESULT" -eq 0 ]; then
-    echo "$IFACE_OUTPUT"
-else
-    echo "  [WARNING] Interface detection test failed."
-    echo ""
-    echo "  On Linux, Python/Scapy needs permission to capture raw packets."
-    echo "  Grant capability to your Python binary:"
-    echo ""
-
-    PYTHON_PATH=$(readlink -f "$(which python3)")
-    echo "    sudo setcap cap_net_raw,cap_net_admin=eip $PYTHON_PATH"
-    echo ""
-    echo "  Or run the program with sudo each time:"
-    echo "    sudo $(pwd)/venv/bin/python classification.py"
-    echo ""
-
-    echo "  Attempting to grant permissions automatically..."
-    set +e
-    sudo setcap cap_net_raw,cap_net_admin=eip "$PYTHON_PATH"
-    SETCAP_RESULT=$?
-    set -e
-
-    if [ "$SETCAP_RESULT" -eq 0 ]; then
-        echo "  [OK] Permissions granted. Retrying..."
-        set +e
-        IFACE_OUTPUT=$(python3 -c "
-from classification.flowmeter_source import list_interfaces
-ifaces = list_interfaces()
-if ifaces:
-    print(f'  [OK] Detected {len(ifaces)} network interface(s)')
-else:
-    print('  [WARNING] No interfaces detected')
-" 2>&1)
-        set -e
-        echo "$IFACE_OUTPUT"
+# Use 'ip link show' which doesn't require root — just checks if interfaces exist
+if command -v ip >/dev/null 2>&1; then
+    IFACE_COUNT=$(ip link show | grep -c "^[0-9]:" || true)
+    if [ "$IFACE_COUNT" -gt 1 ]; then
+        echo "  [OK] Detected $IFACE_COUNT network interface(s)"
     else
-        echo "  [WARNING] Could not set capabilities automatically."
-        echo "            Run the sudo command above manually, or use sudo to run the program."
+        echo "  [WARNING] Only loopback interface detected. This may be a VM or container."
+    fi
+else
+    # Fallback: use ifconfig/iwconfig if ip command not available
+    if command -v ifconfig >/dev/null 2>&1; then
+        if ifconfig | grep -q "eth\|en\|wlan"; then
+            echo "  [OK] Network interfaces detected"
+        else
+            echo "  [WARNING] Limited interface detection. Check your network setup."
+        fi
+    else
+        echo "  [OK] Interface check skipped (ip/ifconfig not available)"
     fi
 fi
 
@@ -226,10 +194,9 @@ case "$0" in
 esac
 
 echo "  Run live classification:"
-echo "      python classification.py --duration 180"
+echo "      sudo python classification.py --duration 180"
 echo ""
-echo "  List network interfaces:"
-echo "      python classification.py --list-interfaces"
+echo "  (sudo is required for live network capture on Linux)"
 echo ""
 echo "  Run ML model pipeline:"
 echo "      python ml_model.py --help"
