@@ -108,7 +108,6 @@ task execute(type: JavaExec) {
 
     main = "cic.cs.unb.ca.ifm.App" //main class
     classpath = sourceSets.main.runtimeClasspath
-    String osName = System.getProperty('os.name').toLowerCase()
     if(osName.contains('windows')){
         jvmArgs '-Djava.library.path=jnetpcap/win/jnetpcap-1.4.r1425'
     }else{
@@ -120,7 +119,6 @@ task execute(type: JavaExec) {
 task exeCMD(type: JavaExec){
     main = "cic.cs.unb.ca.ifm.Cmd" //main class
     classpath = sourceSets.main.runtimeClasspath
-    String osName = System.getProperty('os.name').toLowerCase()
     if(osName.contains('windows')){
         jvmArgs '-Djava.library.path=jnetpcap/win/jnetpcap-1.4.r1425'
     }else{
@@ -132,7 +130,6 @@ task exeCMD(type: JavaExec){
 task exeLive(type: JavaExec){
     main = "cic.cs.unb.ca.ifm.LiveCapture" //live capture class
     classpath = sourceSets.main.runtimeClasspath
-    String osName = System.getProperty('os.name').toLowerCase()
     if(osName.contains('windows')){
         jvmArgs '-Djava.library.path=jnetpcap/win/jnetpcap-1.4.r1425'
     }else{
