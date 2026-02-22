@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 """
-VM Attack Setup Check - Cross-Platform
-Checks if the VM is ready to receive attacks. Asks before changing anything.
+Device Attack Setup Check - Cross-Platform
+Checks if the device (VM or server) is ready to receive attacks.
+Asks before changing anything.
 
 Usage:
-    Linux:   sudo python setup_vm.py
-    Windows: python setup_vm.py  (run as Administrator)
+    Linux:   sudo python setup_device.py
+    Windows: python setup_device.py  (run as Administrator)
 
 What it checks:
-    1. Network interfaces and VM IP
+    1. Network interfaces and device IP
     2. SSH server (installed? running?) — asks before installing/starting
     3. Firewall rules (Windows) — asks before adding
     4. libpcap / Npcap — tells you if missing
@@ -639,20 +640,27 @@ def main():
     os_name = platform.system()
 
     print(f"\n{'='*60}")
-    print(f"  VM Attack Setup Check — {os_name}")
+    print(f"  Device Attack Setup Check — {os_name}")
     print(f"{'='*60}")
-    print(f"  Checks if your VM is ready to receive attacks.")
+    print(f"  Checks if your device (VM or server) is ready to receive attacks.")
     print(f"  Will NOT change anything without asking first.")
     print(f"{'='*60}\n")
 
     if not is_admin():
         if os_name == "Linux":
-            print("  [ERROR] Run with sudo:  sudo python setup_vm.py")
+            print("  [ERROR] Run with sudo:  sudo python setup_device.py")
         else:
             print("  [ERROR] Run as Administrator")
         sys.exit(1)
 
     print("  [OK] Running with admin privileges\n")
+
+    # Network interface guidance
+    print("  [INFO] Recommended network interface setup:")
+    print("    For VMs:     At least 1 Host-Only adapter (attacker-to-target communication)")
+    print("                 + 1 Bridged or NAT adapter (internet access)")
+    print("    For servers: At least 1 NIC with a reachable IP from your attacker machine")
+    print()
 
     # Step 1: Show IPs
     print("  [*] Network interfaces:")
@@ -684,12 +692,12 @@ def main():
     # Summary
     print(f"{'='*60}")
     if issues == 0:
-        print(f"  ALL CHECKS PASSED — VM is ready for attacks!")
+        print(f"  ALL CHECKS PASSED — Device is ready for attacks!")
     else:
         print(f"  CHECKS DONE — {issues} issue(s) found (see above)")
     print(f"{'='*60}\n")
 
-    print("  Your VM IP:")
+    print("  Your device IP:")
     if ips:
         for ip in ips:
             print(f"    -> {ip}")
@@ -720,7 +728,7 @@ def main():
     if ips:
         print(f"    python run_all_attacks.py {ips[0]}")
     else:
-        print("    python run_all_attacks.py <VM_IP>")
+        print("    python run_all_attacks.py <DEVICE_IP>")
     print(f"\n{'='*60}\n")
 
 

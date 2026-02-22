@@ -1,19 +1,20 @@
 @echo off
 REM ==============================================================================
-REM VM Attack Setup Check - Windows
+REM Device Attack Setup Check - Windows
 REM ==============================================================================
-REM Run this ON THE WINDOWS VM to check readiness for NIDS attack testing.
+REM Run this ON THE TARGET DEVICE (VM or server) to check readiness for NIDS
+REM attack testing. Works on both virtual machines and physical servers.
 REM Checks everything, asks before installing/changing anything.
 REM
 REM Usage:
-REM   Right-click setup_vm.bat → Run as Administrator
+REM   Right-click setup_device.bat -> Run as Administrator
 REM ==============================================================================
 
 echo.
 echo ================================================================================
-echo   VM Attack Setup Check - Windows
+echo   Device Attack Setup Check - Windows
 echo ================================================================================
-echo   Checks if your VM is ready to receive attacks.
+echo   Checks if your device (VM or server) is ready to receive attacks.
 echo   Will NOT install or change anything without asking first.
 echo ================================================================================
 echo.
@@ -27,7 +28,7 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo   [ERROR] This script must be run as Administrator.
     echo.
-    echo   Right-click setup_vm.bat and select "Run as Administrator"
+    echo   Right-click setup_device.bat and select "Run as Administrator"
     echo.
     pause
     exit /b 1
@@ -39,6 +40,11 @@ REM ==================================================================
 REM Step 1: Show Network Info
 REM ==================================================================
 echo Step 1: Checking network interfaces...
+echo.
+echo   [INFO] Recommended network interface setup:
+echo     For VMs:     At least 1 Host-Only adapter (attacker-to-target communication)
+echo                  + 1 Bridged or NAT adapter (internet access)
+echo     For servers: At least 1 NIC with a reachable IP from your attacker machine
 echo.
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4"') do (
     echo   IP: %%a
@@ -288,13 +294,13 @@ REM Summary
 REM ==================================================================
 echo ================================================================================
 if %ISSUES% equ 0 (
-    echo   ALL CHECKS PASSED — VM is ready for attacks!
+    echo   ALL CHECKS PASSED - Device is ready for attacks!
 ) else (
-    echo   CHECKS DONE — %ISSUES% issue(s) found (see above)
+    echo   CHECKS DONE - %ISSUES% issue(s) found (see above)
 )
 echo ================================================================================
 echo.
-echo   Your VM IP:
+echo   Your device IP:
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4" ^| findstr /v "127.0.0"') do (
     echo     =^> %%a
 )
@@ -314,7 +320,7 @@ echo     venv\Scripts\activate
 echo     python classification.py --duration 600
 echo.
 echo   Then from your attacker machine:
-echo     python run_all_attacks.py ^<VM_IP^>
+echo     python run_all_attacks.py ^<DEVICE_IP^>
 echo.
 echo ================================================================================
 echo.

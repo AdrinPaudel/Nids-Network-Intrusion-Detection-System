@@ -83,9 +83,11 @@ def verify_setup(target_ip):
     else:
         print(f"  ✗ Ping to {target_ip}: FAILED")
         print(f"    Make sure:")
-        print(f"      1. VM is powered on")
-        print(f"      2. Network adapter is set to Host-Only or Bridged")
-        print(f"      3. VM IP is correct")
+        print(f"      1. Target device is powered on")
+        print(f"      2. Network adapter is configured correctly")
+        print(f"         For VMs: Host-Only or Bridged adapter")
+        print(f"         For servers: reachable NIC on same network")
+        print(f"      3. Target IP is correct")
         all_good = False
     
     # Check SSH

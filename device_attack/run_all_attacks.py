@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """
 Run Attacks - Main Attack Runner
-Automatically discovers VM's Host-Only IP and runs attacks
+Automatically discovers target device IP and runs attacks
 
 Usage:
-    python run_all_attacks.py --attack 1              # Auto-discover VM, run DoS
-    python run_all_attacks.py --all                   # Auto-discover VM, all 5 attacks
-    python run_all_attacks.py --default               # Auto-discover VM, 4 attacks
+    python run_all_attacks.py --attack 1              # Auto-discover target, run DoS
+    python run_all_attacks.py --all                   # Auto-discover target, all 5 attacks
+    python run_all_attacks.py --default               # Auto-discover target, 4 attacks
     python run_all_attacks.py 192.168.56.102 --all    # Explicit IP, all 5 attacks
 
 Optional:
@@ -22,14 +22,14 @@ import socket
 import ipaddress
 
 # ==========================================================
-# Auto-Discovery: Find VM's Host-Only IP
+# Auto-Discovery: Find target device IP
 # ==========================================================
 def discover_vm_ip():
     """
-    Auto-discover the Linux VM's Host-Only IP on Windows
-    Scans the Host-Only network and looks for active hosts
+    Auto-discover the target device's IP on the network.
+    Works for both VMs (Host-Only adapter) and physical servers.
     """
-    print("\n[*] Auto-discovering VM's Host-Only IP...")
+    print("\n[*] Auto-discovering target device IP...")
     print("    Scanning network for active hosts (this takes ~30 seconds)...\n")
     
     try:
@@ -75,12 +75,12 @@ def discover_vm_ip():
             for ip, hostname in sorted(found_hosts.items()):
                 print(f"    {ip:20} {hostname}")
             
-            # Pick the one that looks most like a VM (not localhost, not gateway)
+            # Pick the one that looks most like a target (not localhost, not gateway)
             for ip in sorted(found_hosts.keys()):
                 if ip.endswith(".1"):
                     continue  # Skip gateway
                 if ip.endswith(".101") or ip.endswith(".102") or ip.endswith(".103"):
-                    print(f"\n[+] Likely VM IP: {ip}")
+                    print(f"\n[+] Likely target IP: {ip}")
                     return ip
             
             # Otherwise pick the first one found
@@ -364,7 +364,7 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python run_all_attacks.py [OPTIONS]")
         print()
-        print("Auto-discovers VM IP if not specified:")
+        print("Auto-discovers target device IP if not specified:")
         print("  python run_all_attacks.py --attack 1")
         print("  python run_all_attacks.py --all")
         print("  python run_all_attacks.py --default")
@@ -395,11 +395,11 @@ def main():
         args_start = 1
         target_ip = discover_vm_ip()
         if not target_ip:
-            print("\n[!] Could not auto-discover VM IP")
+            print("\n[!] Could not auto-discover target device IP")
             print("    Provide it explicitly: python run_all_attacks.py 192.168.56.102 --attack 1")
             sys.exit(1)
     
-    print(f"\n[+] Target VM: {target_ip}\n")
+    print(f"\n[+] Target: {target_ip}\n")
     
     # Extract custom duration if provided
     custom_duration = None

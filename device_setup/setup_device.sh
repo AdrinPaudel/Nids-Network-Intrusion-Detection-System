@@ -1,20 +1,21 @@
 #!/bin/sh
 # ==============================================================================
-# VM Attack Setup - Linux
+# Device Attack Setup - Linux
 # ==============================================================================
-# Run this ON THE LINUX VM to check readiness for NIDS attack testing.
+# Run this ON THE TARGET DEVICE (VM or server) to check readiness for NIDS
+# attack testing. Works on both virtual machines and physical servers.
 # Checks everything, asks before installing/changing anything.
 #
 # Usage:
-#   chmod +x setup_vm.sh
-#   sudo sh ./setup_vm.sh
+#   chmod +x setup_device.sh
+#   sudo sh ./setup_device.sh
 # ==============================================================================
 
 echo ""
 echo "================================================================================"
-echo "  VM Attack Setup Check - Linux"
+echo "  Device Attack Setup Check - Linux"
 echo "================================================================================"
-echo "  Checks if your VM is ready to receive attacks."
+echo "  Checks if your device (VM or server) is ready to receive attacks."
 echo "  Will NOT install or change anything without asking first."
 echo "================================================================================"
 echo ""
@@ -26,7 +27,7 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "  [ERROR] This script must be run as root (use sudo)"
     echo ""
     echo "  Usage:"
-    echo "    sudo sh ./setup_vm.sh"
+    echo "    sudo sh ./setup_device.sh"
     echo ""
     exit 1
 fi
@@ -40,6 +41,12 @@ ISSUES=0
 # Step 1: Check network interfaces and IPs
 # ==================================================================
 echo "Step 1: Checking network interfaces..."
+echo ""
+
+echo "  [INFO] Recommended network interface setup:"
+echo "    For VMs:     At least 1 Host-Only adapter (attacker-to-target communication)"
+echo "                 + 1 Bridged or NAT adapter (internet access)"
+echo "    For servers: At least 1 NIC with a reachable IP from your attacker machine"
 echo ""
 
 ip -4 addr show | while IFS= read -r line; do
@@ -56,35 +63,37 @@ done
 
 echo ""
 
-# Try to identify VM IP
-VM_IP=""
+# Try to identify device IP
+DEVICE_IP=""
 for iface in $(ip -o -4 addr show | awk '{print $2}' | sort -u); do
     ip_addr=$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet )\d+\.\d+\.\d+\.\d+' | head -1)
     case "$ip_addr" in
         127.*)
             ;;
         192.168.56.*|192.168.57.*|10.0.2.*|172.*)
-            VM_IP="$ip_addr"
-            VM_IFACE="$iface"
+            DEVICE_IP="$ip_addr"
+            DEVICE_IFACE="$iface"
             ;;
         *)
-            if [ -z "$VM_IP" ]; then
-                VM_IP="$ip_addr"
-                VM_IFACE="$iface"
+            if [ -z "$DEVICE_IP" ]; then
+                DEVICE_IP="$ip_addr"
+                DEVICE_IFACE="$iface"
             fi
             ;;
     esac
 done
 
-if [ -n "$VM_IP" ]; then
-    echo "  -> Your VM IP (for attacks): $VM_IP (on $VM_IFACE)"
+if [ -n "$DEVICE_IP" ]; then
+    echo "  -> Your device IP (for attacks): $DEVICE_IP (on $DEVICE_IFACE)"
 else
-    echo "  [!] Could not auto-detect VM IP"
-    echo "      Look at the interfaces above and pick the one your host can reach"
+    echo "  [!] Could not auto-detect device IP"
+    echo "      Look at the interfaces above and pick the one your attacker can reach"
     echo ""
-    echo "      If no IP on second adapter, run:"
+    echo "      For VMs — if no IP on second adapter, run:"
     echo "        sudo dhclient enp0s8"
     echo "      (replace enp0s8 with your second adapter name)"
+    echo ""
+    echo "      For servers — make sure at least one NIC has an IP reachable from attacker"
     ISSUES=$((ISSUES + 1))
 fi
 echo ""
@@ -538,17 +547,17 @@ echo ""
 # ==================================================================
 echo "================================================================================"
 if [ "$ISSUES" -eq 0 ]; then
-    echo "  ALL CHECKS PASSED — VM is ready for attacks!"
+    echo "  ALL CHECKS PASSED — Device is ready for attacks!"
 else
     echo "  CHECKS DONE — $ISSUES issue(s) found (see above)"
 fi
 echo "================================================================================"
 echo ""
 
-if [ -n "$VM_IP" ]; then
-    echo "  Your VM IP: $VM_IP"
+if [ -n "$DEVICE_IP" ]; then
+    echo "  Your device IP: $DEVICE_IP"
 else
-    echo "  Your VM IP: run 'ip addr show' to find it"
+    echo "  Your device IP: run 'ip addr show' to find it"
 fi
 
 echo ""
@@ -564,15 +573,15 @@ echo "    source venv/bin/activate"
 echo "    sudo ./venv/bin/python classification.py --duration 600"
 echo ""
 echo "  Required services for attacks:"
-echo "    Web server (Apache)  - port 80  → DoS (Hulk, Slowloris, GoldenEye) + DDoS (LOIC, HOIC)"
-echo "    SSH server            - port 22  → Brute Force SSH"
-echo "    FTP server (vsftpd)  - port 21  → Brute Force FTP"
+echo "    Web server (Apache)  - port 80  -> DoS (Hulk, Slowloris, GoldenEye) + DDoS (LOIC, HOIC)"
+echo "    SSH server            - port 22  -> Brute Force SSH"
+echo "    FTP server (vsftpd)  - port 21  -> Brute Force FTP"
 echo ""
 echo "  Then from your attacker machine:"
-if [ -n "$VM_IP" ]; then
-    echo "    python run_all_attacks.py $VM_IP"
+if [ -n "$DEVICE_IP" ]; then
+    echo "    python run_all_attacks.py $DEVICE_IP"
 else
-    echo "    python run_all_attacks.py <VM_IP>"
+    echo "    python run_all_attacks.py <DEVICE_IP>"
 fi
 echo ""
 echo "================================================================================"

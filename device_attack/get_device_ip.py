@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """
-Get VM IP - Helper to find your Linux VM's IP address
-Run this from Windows to scan the network
+Get Device IP - Helper to find your target device's IP address
+Run this from your attacker machine to scan the network.
+Works for both VMs and physical servers.
 """
 
 import sys
@@ -86,7 +87,7 @@ def scan_network_linux(network_prefix):
 
 
 def guess_vm_ip(active_hosts):
-    """Try to identify which host is the VM"""
+    """Try to identify which host is the target device"""
     print(f"\n[*] Analysis:")
     print(f"    Found {len(active_hosts)} active hosts\n")
     
@@ -113,17 +114,17 @@ def guess_vm_ip(active_hosts):
 
 def main():
     print(f"\n{'='*70}")
-    print(f"VM IP DISCOVERY - Find Your Linux VM")
+    print(f"DEVICE IP DISCOVERY - Find Your Target Device (VM or Server)")
     print(f"{'='*70}\n")
     
     print("[*] Getting your local IP address...")
     local_ip = get_local_ip()
     
     if not local_ip:
-        print("✗ Could not determine local IP")
+        print("x Could not determine local IP")
         print("\nManual steps:")
-        print("1. On your Linux VM, run:  ip addr show")
-        print("2. Look for the IP on the Host-Only adapter (e.g., 192.168.56.x)")
+        print("1. On your target device, run:  ip addr show  (Linux) or ipconfig (Windows)")
+        print("2. Look for the IP on the reachable adapter (e.g., 192.168.56.x for Host-Only)")
         print("3. Use that IP with attack scripts")
         return
     
@@ -152,20 +153,22 @@ def main():
         if active_hosts:
             guess_vm_ip(active_hosts)
             
-            print(f"\n[*] Tips for identifying your VM:")
-            print(f"    • Look for a VirtualBox or Linux hostname")
-            print(f"    • If unsure, try: python verify_attack_setup.py <IP>")
-            print(f"    • Or just try to ping it: ping 192.168.56.101")
+            print(f"\n[*] Tips for identifying your target device:")
+            print(f"    - For VMs: Look for a VirtualBox or Linux hostname")
+            print(f"    - For servers: Look for the known hostname or IP")
+            print(f"    - If unsure, try: python verify_attack_setup.py <IP>")
+            print(f"    - Or just try to ping it: ping 192.168.56.101")
         else:
-            print("✗ No active hosts found")
+            print("x No active hosts found")
             print("\nTroubleshooting:")
-            print("  1. Make sure VirtualBox network is Host-Only or Bridged")
-            print("  2. Make sure VM is powered on")
-            print("  3. Check Windows Firewall settings")
+            print("  1. For VMs: make sure VirtualBox network is Host-Only or Bridged")
+            print("  2. For servers: make sure device is powered on and on the same network")
+            print("  3. Make sure the target is powered on")
+            print("  4. Check firewall settings on both sides")
     
-    print(f"\n[*] Once you find your VM IP, use it with attack scripts:")
-    print(f"    python run_all_attacks.py <VM_IP>")
-    print(f"    python 1_dos_attack.py <VM_IP>")
+    print(f"\n[*] Once you find your target device IP, use it with attack scripts:")
+    print(f"    python run_all_attacks.py <DEVICE_IP>")
+    print(f"    python 1_dos_attack.py <DEVICE_IP>")
     print(f"\n{'='*70}\n")
 
 
