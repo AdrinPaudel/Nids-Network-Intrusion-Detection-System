@@ -406,8 +406,12 @@ CLASSIFICATION_BATCH_QUEUE_TIMEOUT = 0.001   # Queue get timeout for batch mode 
 
 # Preprocessing settings
 CLASSIFICATION_DROP_COLUMNS = ["Flow ID", "Src IP", "Dst IP", "Src Port", "Timestamp", "Label"]
-CLASSIFICATION_BATCH_SIZE = 1                # Flows to batch before processing
-CLASSIFICATION_BATCH_TIMEOUT = 0.5           # Max seconds to wait for full batch
+CLASSIFICATION_BATCH_SIZE = 50               # Flows to batch before preprocessing (vectorized)
+CLASSIFICATION_BATCH_TIMEOUT = 1.0           # Max seconds to wait for full batch
+
+# Classifier batching settings
+CLASSIFICATION_CLASSIFIER_BATCH_SIZE = 50    # Flows to batch before classification (vectorized)
+CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT = 1.0  # Max seconds to wait for classifier batch
 
 # Threat assessment settings
 CLASSIFICATION_BENIGN_CLASS = "Benign"       # Benign class name

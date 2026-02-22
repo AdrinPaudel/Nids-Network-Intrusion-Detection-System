@@ -105,86 +105,103 @@ class Preprocessor:
               f"model expects {len(self.selected_features)} selected features, "
               f"{len(self.label_encoder.classes_)} classes: {list(self.label_encoder.classes_)}{COLOR_RESET}")
 
-    def _preprocess_flow(self, flow_dict):
+    def _preprocess_batch(self, flow_dicts):
         """
-        Preprocess a single raw flow dict into a model-ready feature vector.
+        Vectorized batch preprocessing of multiple raw flow dicts at once.
 
         Matches the training pipeline order:
             1. Extract identifiers
             2. Drop identifier columns (Flow ID, Src IP, Dst IP, Src Port, Timestamp, Label)
             3. Convert to numeric, handle inf/nan
             4. One-hot encode Protocol → Protocol_0, Protocol_6, Protocol_17
-            5. Build full 80-feature vector in scaler's expected order
+            5. Build full 80-feature matrix in scaler's expected order
             6. Scale ALL 80 features with the saved scaler
             7. Select only the 40 features the model needs
 
         Args:
-            flow_dict: dict from CICFlowMeter with training column names as keys
+            flow_dicts: list of dicts from CICFlowMeter with training column names as keys
 
         Returns:
-            dict with keys: 'features' (numpy array), 'identifiers' (dict),
-                  'feature_names' (list), or None on error
+            list of dicts with keys: 'features' (numpy array), 'identifiers' (dict),
+                  'feature_names' (list). Failed flows are skipped.
         """
-        try:
-            # 1. Extract identifiers (already saved by CICFlowMeter source)
-            identifiers = flow_dict.pop("__identifiers__", {})
-            # Also extract actual_label if present (for labeled batches)
-            actual_label = flow_dict.pop("actual_label", None)
+        if not flow_dicts:
+            return []
 
-            # 2. Create a DataFrame and drop identifier/useless columns
-            df = pd.DataFrame([flow_dict])
+        try:
+            # 1. Extract identifiers and actual_labels before DataFrame creation
+            identifiers_list = []
+            actual_labels = []
+            clean_dicts = []
+
+            for fd in flow_dicts:
+                identifiers_list.append(fd.pop("__identifiers__", {}))
+                actual_labels.append(fd.pop("actual_label", None))
+                clean_dicts.append(fd)
+
+            # 2. Create ONE DataFrame for all flows and drop identifier columns
+            df = pd.DataFrame(clean_dicts)
             cols_to_drop = [c for c in DROP_COLUMNS if c in df.columns]
             df = df.drop(columns=cols_to_drop, errors='ignore')
 
-            # 3. Convert all columns to numeric, handle inf/nan
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            df = df.replace([np.inf, -np.inf], np.nan)
-            df = df.fillna(0)
-
-            # 4. One-hot encode Protocol (matching training: drop_first=False)
-            protocol_val = 0
+            # 3. Extract protocol values before dropping, then convert all to numeric
             if "Protocol" in df.columns:
-                protocol_val = int(df["Protocol"].iloc[0])
+                protocol_vals = pd.to_numeric(df["Protocol"], errors='coerce').fillna(0).astype(int)
                 df = df.drop(columns=["Protocol"])
+            else:
+                protocol_vals = pd.Series([0] * len(df), dtype=int)
 
-            # Add Protocol one-hot columns
-            df["Protocol_0"] = 1 if protocol_val == 0 else 0
-            df["Protocol_17"] = 1 if protocol_val == 17 else 0
-            df["Protocol_6"] = 1 if protocol_val == 6 else 0
+            df = df.apply(pd.to_numeric, errors='coerce')
+            df = df.replace([np.inf, -np.inf], np.nan).fillna(0)
 
-            # 5. Build full 80-feature DataFrame in scaler's expected column order
-            full_df = pd.DataFrame(columns=self.scaler_feature_names, dtype=float)
-            full_df.loc[0] = 0.0  # Initialize with zeros
+            # 4. One-hot encode Protocol (vectorized)
+            df["Protocol_0"] = (protocol_vals.values == 0).astype(int)
+            df["Protocol_17"] = (protocol_vals.values == 17).astype(int)
+            df["Protocol_6"] = (protocol_vals.values == 6).astype(int)
 
-            # Fill in available features
-            for col in self.scaler_feature_names:
-                if col in df.columns:
-                    full_df.at[0, col] = float(df[col].iloc[0])
+            # 5. Build full 80-feature DataFrame in scaler's expected column order (vectorized)
+            full_df = pd.DataFrame(0.0, index=range(len(df)), columns=self.scaler_feature_names)
+            common_cols = [c for c in self.scaler_feature_names if c in df.columns]
+            if common_cols:
+                full_df[common_cols] = df[common_cols].values
 
-            # 6. Scale ALL 80 features
+            # 6. Scale ALL 80 features (single sklearn call for entire batch)
             features_scaled = self.scaler.transform(full_df)
-            scaled_df = pd.DataFrame(features_scaled, columns=self.scaler_feature_names)
 
-            # 7. Select only the 40 features the model expects
-            final_features = scaled_df[self.selected_features].values[0]
+            # 7. Select only the 40 features the model expects (vectorized indexing)
+            if not hasattr(self, '_selected_indices'):
+                self._selected_indices = [self.scaler_feature_names.index(f) for f in self.selected_features]
+            final_features = features_scaled[:, self._selected_indices]
 
-            result = {
-                "features": final_features,  # 1D array of shape (40,)
-                "identifiers": identifiers,
-                "feature_names": list(self.selected_features),
-            }
-            # Include actual_label if present (for labeled batches)
-            if actual_label is not None:
-                result["actual_label"] = actual_label
-            return result
+            # Build results list
+            results = []
+            feature_names_list = list(self.selected_features)
+            for i in range(len(flow_dicts)):
+                result = {
+                    "features": final_features[i],  # 1D array of shape (40,)
+                    "identifiers": identifiers_list[i],
+                    "feature_names": feature_names_list,
+                }
+                if actual_labels[i] is not None:
+                    result["actual_label"] = actual_labels[i]
+                results.append(result)
+
+            return results
 
         except Exception as e:
-            print(f"{COLOR_YELLOW}[PREPROCESSOR] Error processing flow: {e}{COLOR_RESET}")
-            return None
+            print(f"{COLOR_YELLOW}[PREPROCESSOR] Batch error ({len(flow_dicts)} flows): {e}{COLOR_RESET}")
+            # Fallback: try processing individually
+            results = []
+            for i, fd in enumerate(flow_dicts):
+                try:
+                    single_result = self._preprocess_batch([fd])
+                    results.extend(single_result)
+                except Exception:
+                    pass
+            return results
 
     def run(self):
-        """Main loop: read from flow_queue, preprocess, push to classifier_queue.
+        """Main loop: read from flow_queue, preprocess in vectorized batches, push to classifier_queue.
         Runs until a None sentinel is received from flow_queue, then
         propagates None to classifier_queue for sequential pipeline shutdown."""
         print(f"{COLOR_GREEN}[PREPROCESSOR] Started. Waiting for flows...{COLOR_RESET}")
@@ -219,43 +236,41 @@ class Preprocessor:
             )
 
             if should_process and len(batch) > 0:
-                for flow_dict in batch:
-                    result = self._preprocess_flow(flow_dict)
-                    if result is not None:
-                        self.classifier_queue.put(result)
-                        self.processed_count += 1
+                results = self._preprocess_batch(batch)
+                for result in results:
+                    self.classifier_queue.put(result)
+                    self.processed_count += 1
 
                 batch = []
                 last_batch_time = current_time
 
         # Process remaining batch items
         if batch:
-            for flow_dict in batch:
-                result = self._preprocess_flow(flow_dict)
-                if result is not None:
-                    self.classifier_queue.put(result)
-                    self.processed_count += 1
+            results = self._preprocess_batch(batch)
+            for result in results:
+                self.classifier_queue.put(result)
+                self.processed_count += 1
             batch = []
 
-        # Drain any remaining items in flow_queue
-        remaining = 0
+        # Drain any remaining items in flow_queue (process in batches)
+        drain_batch = []
         while not self.flow_queue.empty():
             try:
                 flow_dict = self.flow_queue.get_nowait()
                 if flow_dict is None:
                     self.flow_queue.task_done()
                     continue
-                result = self._preprocess_flow(flow_dict)
-                if result is not None:
-                    self.classifier_queue.put(result)
-                    self.processed_count += 1
-                    remaining += 1
+                drain_batch.append(flow_dict)
                 self.flow_queue.task_done()
             except queue.Empty:
                 break
 
-        if remaining > 0:
-            print(f"{COLOR_CYAN}[PREPROCESSOR] Processed {remaining} remaining flows from queue{COLOR_RESET}")
+        if drain_batch:
+            results = self._preprocess_batch(drain_batch)
+            for result in results:
+                self.classifier_queue.put(result)
+                self.processed_count += 1
+            print(f"{COLOR_CYAN}[PREPROCESSOR] Processed {len(drain_batch)} remaining flows from queue{COLOR_RESET}")
 
         # Propagate sentinel to classifier
         self.classifier_queue.put(None)

@@ -424,7 +424,7 @@ class ClassificationSession:
         7. Set stop_event             (final fallback)
         8. Print summary
         """
-        THREAD_JOIN_TIMEOUT = 30
+        THREAD_JOIN_TIMEOUT = 90
 
         print(f"\n{COLOR_CYAN}[SESSION] Shutting down session {self.session_id}...{COLOR_RESET}")
 

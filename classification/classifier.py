@@ -20,7 +20,11 @@ import time
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from config import CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT, COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_RESET
+from config import (
+    CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT,
+    CLASSIFICATION_CLASSIFIER_BATCH_SIZE, CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT,
+    COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_RESET
+)
 
 
 class Classifier:
@@ -47,6 +51,8 @@ class Classifier:
         self.stop_event = stop_event
         self.mode = mode
         self.classified_count = 0
+        self.batch_size = CLASSIFICATION_CLASSIFIER_BATCH_SIZE
+        self.batch_timeout = CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT
 
         # Determine model directory
         if model_dir is None:
@@ -81,67 +87,82 @@ class Classifier:
               f"Trees: {self.model.n_estimators}, "
               f"Classes: {class_names}{COLOR_RESET}")
 
-    def _classify(self, preprocessed):
+    def _classify_batch(self, preprocessed_list):
         """
-        Classify a single preprocessed flow.
+        Classify a batch of preprocessed flows at once using vectorized predict_proba.
 
         Args:
-            preprocessed: dict with 'features', 'identifiers', 'feature_names', and optionally 'actual_label'
+            preprocessed_list: list of dicts with 'features', 'identifiers', 'feature_names',
+                               and optionally 'actual_label'
 
         Returns:
-            dict with:
-                'identifiers': original flow identifiers
-                'top3': list of (class_name, confidence) tuples, sorted descending
-                'predicted_class': top predicted class name
-                'confidence': confidence of top prediction
-                'timestamp': classification timestamp
-                'actual_label': actual label if present in preprocessed (for labeled batches)
+            list of result dicts with 'identifiers', 'top3', 'predicted_class',
+            'confidence', 'timestamp', and optionally 'actual_label'
         """
+        if not preprocessed_list:
+            return []
+
         try:
-            features = preprocessed["features"].reshape(1, -1)
-            feature_names = preprocessed.get("feature_names", None)
+            # Stack all feature vectors into a single 2D array
+            features_array = np.array([p["features"] for p in preprocessed_list])
+            feature_names = preprocessed_list[0].get("feature_names", None)
 
-            # Create DataFrame with feature names to avoid sklearn warning
+            # Create single DataFrame for entire batch
             if feature_names is not None:
-                features_df = pd.DataFrame(features, columns=feature_names)
+                features_df = pd.DataFrame(features_array, columns=feature_names)
             else:
-                features_df = features
+                features_df = features_array
 
-            # Get probability predictions
+            # Single predict_proba call for the entire batch
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                probabilities = self.model.predict_proba(features_df)[0]
+                all_probabilities = self.model.predict_proba(features_df)
 
-            # Build (class_name, confidence) pairs
+            # Build results for each flow
             class_names = self.label_encoder.classes_
-            predictions = list(zip(class_names, probabilities))
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            results = []
 
-            # Sort by confidence descending, take top 3
-            predictions.sort(key=lambda x: x[1], reverse=True)
-            top3 = [(name, float(conf)) for name, conf in predictions[:3]]
+            for i, preprocessed in enumerate(preprocessed_list):
+                probabilities = all_probabilities[i]
+                predictions = list(zip(class_names, probabilities))
+                predictions.sort(key=lambda x: x[1], reverse=True)
+                top3 = [(name, float(conf)) for name, conf in predictions[:3]]
 
-            result = {
-                "identifiers": preprocessed["identifiers"],
-                "top3": top3,
-                "predicted_class": top3[0][0],
-                "confidence": top3[0][1],
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            }
-            # Include actual_label if present (for labeled batches)
-            if "actual_label" in preprocessed:
-                result["actual_label"] = preprocessed["actual_label"]
-            return result
+                result = {
+                    "identifiers": preprocessed["identifiers"],
+                    "top3": top3,
+                    "predicted_class": top3[0][0],
+                    "confidence": top3[0][1],
+                    "timestamp": timestamp,
+                }
+                if "actual_label" in preprocessed:
+                    result["actual_label"] = preprocessed["actual_label"]
+                results.append(result)
+
+            return results
 
         except Exception as e:
-            print(f"\033[93m[CLASSIFIER] Classification error: {e}\033[0m")
-            return None
+            print(f"\033[93m[CLASSIFIER] Batch classification error: {e}\033[0m")
+            # Fallback: try individually
+            results = []
+            for p in preprocessed_list:
+                try:
+                    single = self._classify_batch([p])
+                    results.extend(single)
+                except Exception:
+                    pass
+            return results
 
     def run(self):
-        """Main loop: read from classifier_queue, classify, push to threat and report queues.
+        """Main loop: read from classifier_queue in batches, classify, push to threat and report queues.
         Runs until a None sentinel is received, then propagates None to
         threat_queue and report_queue for sequential pipeline shutdown."""
         warnings.filterwarnings("ignore", category=UserWarning)
         print(f"{COLOR_GREEN}[CLASSIFIER] Started. Waiting for preprocessed flows...{COLOR_RESET}")
+
+        batch = []
+        last_batch_time = time.time()
 
         while True:
             try:
@@ -154,47 +175,63 @@ class Classifier:
                     self.classifier_queue.task_done()
                     break
 
-                result = self._classify(preprocessed)
-
-                if result is not None:
-                    # Skip threat handler in batch mode
-                    if self.mode != "batch":
-                        self.threat_queue.put(result)
-                    self.report_queue.put(result)
-                    self.classified_count += 1
-
+                batch.append(preprocessed)
                 self.classifier_queue.task_done()
 
             except queue.Empty:
                 # If stop_event is set and queue is empty, exit
                 if self.stop_event.is_set():
                     break
-                continue
-            except Exception as e:
-                print(f"{COLOR_RED}[CLASSIFIER] Error: {e}{COLOR_RESET}")
+                # Fall through to check batch processing
 
-        # Drain remaining items
-        remaining = 0
+            # Process batch if full or timeout
+            current_time = time.time()
+            should_process = (
+                len(batch) >= self.batch_size or
+                (len(batch) > 0 and (current_time - last_batch_time) >= self.batch_timeout)
+            )
+
+            if should_process and len(batch) > 0:
+                results = self._classify_batch(batch)
+                for result in results:
+                    if self.mode != "batch":
+                        self.threat_queue.put(result)
+                    self.report_queue.put(result)
+                    self.classified_count += 1
+                batch = []
+                last_batch_time = current_time
+
+        # Process remaining batch items
+        if batch:
+            results = self._classify_batch(batch)
+            for result in results:
+                if self.mode != "batch":
+                    self.threat_queue.put(result)
+                self.report_queue.put(result)
+                self.classified_count += 1
+            batch = []
+
+        # Drain remaining items in batches
+        drain_batch = []
         while not self.classifier_queue.empty():
             try:
                 preprocessed = self.classifier_queue.get_nowait()
                 if preprocessed is None:
                     self.classifier_queue.task_done()
                     continue
-                result = self._classify(preprocessed)
-                if result is not None:
-                    # Skip threat handler in batch mode
-                    if self.mode != "batch":
-                        self.threat_queue.put(result)
-                    self.report_queue.put(result)
-                    self.classified_count += 1
-                    remaining += 1
+                drain_batch.append(preprocessed)
                 self.classifier_queue.task_done()
             except queue.Empty:
                 break
 
-        if remaining > 0:
-            print(f"{COLOR_CYAN}[CLASSIFIER] Classified {remaining} remaining flows{COLOR_RESET}")
+        if drain_batch:
+            results = self._classify_batch(drain_batch)
+            for result in results:
+                if self.mode != "batch":
+                    self.threat_queue.put(result)
+                self.report_queue.put(result)
+                self.classified_count += 1
+            print(f"{COLOR_CYAN}[CLASSIFIER] Classified {len(drain_batch)} remaining flows{COLOR_RESET}")
 
         # Propagate sentinel to threat handler and report generator
         if self.mode != "batch":
