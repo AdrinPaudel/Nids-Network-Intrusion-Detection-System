@@ -36,6 +36,7 @@ echo "  [OK] Running as root"
 echo ""
 
 ISSUES=0
+WARNINGS=0
 
 # ==================================================================
 # Step 1: Check network interfaces and IPs
@@ -402,6 +403,7 @@ if command -v ifconfig > /dev/null 2>&1; then
 else
     echo "  [!] net-tools not installed (optional — for ifconfig)"
     echo "      To install: sudo apt install net-tools"
+    WARNINGS=$((WARNINGS + 1))
 fi
 echo ""
 
@@ -487,6 +489,7 @@ if [ -n "$NIDS_DIR" ]; then
         echo "  [OK] All model (6-class: + Infilteration)"
     else
         echo "  [-] No 6-class model (optional — only needed for infiltration detection)"
+        WARNINGS=$((WARNINGS + 1))
     fi
 else
     echo "  [!] NIDS project not found in home directory"
@@ -547,9 +550,13 @@ echo ""
 # ==================================================================
 echo "================================================================================"
 if [ "$ISSUES" -eq 0 ]; then
-    echo "  ALL CHECKS PASSED — Device is ready for attacks!"
+    if [ "$WARNINGS" -eq 0 ]; then
+        echo "  ✓ ALL CHECKS PASSED — Device is ready for attacks!"
+    else
+        echo "  ✓ CRITICAL CHECKS PASSED — $WARNINGS optional feature(s) not configured"
+    fi
 else
-    echo "  CHECKS DONE — $ISSUES issue(s) found (see above)"
+    echo "  ✗ CHECKS DONE — $ISSUES critical issue(s) found, $WARNINGS warning(s) (see above)"
 fi
 echo "================================================================================"
 echo ""

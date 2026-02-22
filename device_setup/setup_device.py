@@ -604,6 +604,7 @@ def setup_windows():
 # ==================================================================
 def check_nids_project():
     issues = 0
+    warnings = 0
     nids_dir = find_nids_dir()
 
     if nids_dir:
@@ -625,12 +626,13 @@ def check_nids_project():
             print("      [OK] All model (6-class: + Infilteration)")
         else:
             print("      [-] No 6-class model (optional)")
+            warnings += 1
     else:
         print("      [!] NIDS project not found")
         print("      Make sure you git cloned and ran the setup script")
         issues += 1
 
-    return nids_dir, issues
+    return nids_dir, issues, warnings
 
 
 # ==================================================================
@@ -681,20 +683,26 @@ def main():
         print(f"  [!] Untested OS: {os_name} — trying Linux checks")
         issues = setup_linux()
 
+    warnings = 0  # Initialize warnings tracker
+
     # NIDS project check (both platforms)
     step_num = 7 if os_name == "Linux" else 5
     print(f"  [{step_num}] Checking NIDS project...")
     print()
-    nids_dir, nids_issues = check_nids_project()
+    nids_dir, nids_issues, nids_warnings = check_nids_project()
     issues += nids_issues
+    warnings += nids_warnings
     print()
 
     # Summary
     print(f"{'='*60}")
     if issues == 0:
-        print(f"  ALL CHECKS PASSED — Device is ready for attacks!")
+        if warnings == 0:
+            print(f"  ✓ ALL CHECKS PASSED — Device is ready for attacks!")
+        else:
+            print(f"  ✓ CRITICAL CHECKS PASSED — {warnings} optional feature(s) not configured")
     else:
-        print(f"  CHECKS DONE — {issues} issue(s) found (see above)")
+        print(f"  ✗ CHECKS DONE — {issues} critical issue(s), {warnings} warning(s) (see above)")
     print(f"{'='*60}\n")
 
     print("  Your device IP:")

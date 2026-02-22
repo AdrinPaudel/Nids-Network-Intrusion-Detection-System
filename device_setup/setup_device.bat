@@ -20,6 +20,7 @@ echo ===========================================================================
 echo.
 
 set "ISSUES=0"
+set "WARNINGS=0"
 
 REM ==================================================================
 REM Check admin privileges
@@ -281,6 +282,7 @@ if defined NIDS_DIR (
         echo   [OK] All model (6-class)
     ) else (
         echo   [-] No 6-class model (optional)
+        set /a WARNINGS+=1
     )
 ) else (
     echo   [!] NIDS project not found
@@ -294,9 +296,13 @@ REM Summary
 REM ==================================================================
 echo ================================================================================
 if %ISSUES% equ 0 (
-    echo   ALL CHECKS PASSED - Device is ready for attacks!
+    if %WARNINGS% equ 0 (
+        echo   [OK] ALL CHECKS PASSED - Device is ready for attacks!
+    ) else (
+        echo   [OK] CRITICAL CHECKS PASSED - %WARNINGS% optional feature(s) not configured
+    )
 ) else (
-    echo   CHECKS DONE - %ISSUES% issue(s) found (see above)
+    echo   [!] CHECKS DONE - %ISSUES% critical issue(s) found, %WARNINGS% warning(s) (see above)
 )
 echo ================================================================================
 echo.
