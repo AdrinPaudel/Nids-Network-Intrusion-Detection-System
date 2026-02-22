@@ -90,6 +90,16 @@ def get_all_ips():
 
 def find_nids_dir():
     """Find the NIDS project directory"""
+    # Check script's parent directory first (most reliable)
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_parent = os.path.dirname(script_dir)
+        if os.path.isfile(os.path.join(script_parent, "classification.py")):
+            return script_parent
+    except:
+        pass
+    
+    # Check home directory variations
     home = os.path.expanduser("~")
     candidates = [
         os.path.join(home, "Nids"),
@@ -99,7 +109,10 @@ def find_nids_dir():
         os.path.join(home, "nids-network-intrusion-detection-system"),
         os.path.join(home, "Desktop", "Nids"),
         os.path.join(home, "Desktop", "Nids-Network-Intrusion-Detection-System"),
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "/root/Nids",
+        "/root/nids",
+        "/home/Nids",
+        "/home/nids",
     ]
     for path in candidates:
         if os.path.isfile(os.path.join(path, "classification.py")):
@@ -186,8 +199,164 @@ def setup_linux():
 
     print()
 
+    # --- Web Server (needed for DoS/DDoS HTTP attacks) ---
+    print("  [2] Checking Web Server (needed for DoS and DDoS HTTP attacks)...")
+    print()
+
+    web_installed = False
+    web_running = False
+    web_name = ""
+
+    # Check Apache
+    ok_apache, _ = run_cmd("dpkg -l apache2 2>/dev/null | grep -q '^ii'")
+    ok_httpd, _ = run_cmd("rpm -q httpd 2>/dev/null")
+    if ok_apache:
+        web_installed = True
+        web_name = "apache2"
+        print("      [OK] Apache2 is installed")
+    elif ok_httpd:
+        web_installed = True
+        web_name = "httpd"
+        print("      [OK] Apache (httpd) is installed")
+
+    # Check Nginx if no Apache
+    if not web_installed:
+        ok_nginx_deb, _ = run_cmd("dpkg -l nginx 2>/dev/null | grep -q '^ii'")
+        ok_nginx_rpm, _ = run_cmd("rpm -q nginx 2>/dev/null")
+        if ok_nginx_deb or ok_nginx_rpm:
+            web_installed = True
+            web_name = "nginx"
+            print("      [OK] Nginx is installed")
+
+    if web_installed:
+        ok_run, _ = run_cmd(f"systemctl is-active --quiet {web_name}")
+        if ok_run:
+            web_running = True
+            print(f"      [OK] {web_name} service is running")
+        else:
+            print(f"      [!] {web_name} is installed but NOT running")
+            print()
+            if ask_yes_no(f"Start {web_name} service?"):
+                run_cmd(f"systemctl enable {web_name} 2>/dev/null")
+                run_cmd(f"systemctl start {web_name} 2>/dev/null")
+                ok_run2, _ = run_cmd(f"systemctl is-active --quiet {web_name}")
+                if ok_run2:
+                    print(f"      [OK] {web_name} started")
+                else:
+                    print(f"      [!] Failed to start {web_name}")
+                    issues += 1
+            else:
+                print(f"      [SKIP] {web_name} not started")
+                issues += 1
+    else:
+        print("      [!] No web server installed")
+        print("          A web server on port 80 is REQUIRED for DoS and DDoS attacks.")
+        print("          (Hulk, Slowloris, GoldenEye, SlowHTTPTest, LOIC, HOIC)")
+        print()
+        if ask_yes_no("Install Apache2?"):
+            print("      Installing...")
+            if os.path.exists("/usr/bin/apt-get"):
+                run_cmd("apt-get update -qq")
+                ok, _ = run_cmd("apt-get install -y -qq apache2")
+                web_name = "apache2"
+            elif os.path.exists("/usr/bin/dnf"):
+                ok, _ = run_cmd("dnf install -y httpd")
+                web_name = "httpd"
+            elif os.path.exists("/usr/bin/yum"):
+                ok, _ = run_cmd("yum install -y httpd")
+                web_name = "httpd"
+            elif os.path.exists("/usr/bin/pacman"):
+                ok, _ = run_cmd("pacman -S --noconfirm apache")
+                web_name = "apache"
+            else:
+                ok = False
+                print("      [!] Unknown package manager")
+
+            if web_name:
+                ok_check, _ = run_cmd(f"systemctl list-unit-files {web_name}.service 2>/dev/null | grep -q {web_name}")
+                ok_check2, _ = run_cmd(f"command -v {web_name}")
+                if ok_check or ok_check2 or ok:
+                    web_installed = True
+                    print("      [OK] Installed")
+                    if ask_yes_no(f"Start {web_name} now?"):
+                        run_cmd(f"systemctl enable {web_name} 2>/dev/null")
+                        run_cmd(f"systemctl start {web_name} 2>/dev/null")
+                        print(f"      [OK] {web_name} started")
+                else:
+                    print("      [!] Installation failed")
+                    issues += 1
+        else:
+            print("      [SKIP] Not installing web server")
+            print("      To install manually: sudo apt install apache2 && sudo systemctl start apache2")
+            issues += 1
+
+    print()
+
+    # --- FTP Server (needed for FTP Brute Force) ---
+    print("  [3] Checking FTP Server (needed for FTP Brute Force attack)...")
+    print()
+
+    ftp_installed = False
+    ftp_running = False
+
+    ok_ftp_deb, _ = run_cmd("dpkg -l vsftpd 2>/dev/null | grep -q '^ii'")
+    ok_ftp_rpm, _ = run_cmd("rpm -q vsftpd 2>/dev/null")
+
+    if ok_ftp_deb or ok_ftp_rpm:
+        ftp_installed = True
+        print("      [OK] vsftpd is installed")
+    else:
+        print("      [!] vsftpd FTP server NOT installed")
+        print("          Needed for FTP Brute Force attack (CICIDS2018 used Patator on FTP)")
+        print()
+        if ask_yes_no("Install vsftpd?"):
+            print("      Installing...")
+            if os.path.exists("/usr/bin/apt-get"):
+                run_cmd("apt-get update -qq")
+                ok, _ = run_cmd("apt-get install -y -qq vsftpd")
+            elif os.path.exists("/usr/bin/dnf"):
+                ok, _ = run_cmd("dnf install -y vsftpd")
+            elif os.path.exists("/usr/bin/yum"):
+                ok, _ = run_cmd("yum install -y vsftpd")
+            elif os.path.exists("/usr/bin/pacman"):
+                ok, _ = run_cmd("pacman -S --noconfirm vsftpd")
+            else:
+                ok = False
+
+            ok_check, _ = run_cmd("command -v vsftpd")
+            ok_check2, _ = run_cmd("dpkg -l vsftpd 2>/dev/null | grep -q '^ii'")
+            if ok_check or ok_check2:
+                ftp_installed = True
+                print("      [OK] Installed")
+            else:
+                print("      [!] Installation failed")
+        else:
+            print("      [SKIP] Not installing FTP")
+            print("      FTP brute force won't work, but SSH brute force will.")
+
+    if ftp_installed:
+        ok_run, _ = run_cmd("systemctl is-active --quiet vsftpd")
+        if ok_run:
+            ftp_running = True
+            print("      [OK] vsftpd service is running")
+        else:
+            print("      [!] vsftpd is installed but NOT running")
+            print()
+            if ask_yes_no("Start vsftpd service?"):
+                run_cmd("systemctl enable vsftpd 2>/dev/null")
+                run_cmd("systemctl start vsftpd 2>/dev/null")
+                ok_run2, _ = run_cmd("systemctl is-active --quiet vsftpd")
+                if ok_run2:
+                    print("      [OK] vsftpd started")
+                else:
+                    print("      [!] Failed to start vsftpd")
+            else:
+                print("      [SKIP] vsftpd not started")
+
+    print()
+
     # --- libpcap ---
-    print("  [2] Checking libpcap (needed by NIDS for packet capture)...")
+    print("  [4] Checking libpcap (needed by NIDS for packet capture)...")
     print()
 
     libpcap_found = False
@@ -215,7 +384,7 @@ def setup_linux():
     print()
 
     # --- net-tools ---
-    print("  [3] Checking network tools...")
+    print("  [5] Checking network tools...")
     print()
     ok, _ = run_cmd("command -v ifconfig")
     if ok:
@@ -227,7 +396,7 @@ def setup_linux():
     print()
 
     # --- Packet capture permissions ---
-    print("  [4] Checking packet capture permissions...")
+    print("  [6] Checking packet capture permissions...")
     print()
 
     nids_dir = find_nids_dir()
@@ -335,12 +504,38 @@ def setup_windows():
 
     print()
 
+    # --- Web Server (needed for DoS/DDoS) ---
+    print("  [2] Checking Web Server (needed for DoS and DDoS attacks)...")
+    print()
+
+    # Check if IIS is running or any web server on port 80
+    ok_iis, _ = run_cmd('sc query W3SVC 2>NUL | findstr "RUNNING"')
+    if ok_iis:
+        print("      [OK] IIS Web Server is running")
+    else:
+        # Check if any process is listening on port 80
+        ok_80, out_80 = run_cmd('netstat -an | findstr ":80 "')
+        if ok_80 and "LISTEN" in out_80.upper():
+            print("      [OK] A web server is listening on port 80")
+        else:
+            print("      [!] No web server running on port 80")
+            print("          DoS/DDoS attacks (Hulk, Slowloris, LOIC, HOIC) need a web server.")
+            print()
+            print("      Options:")
+            print("        1. Install IIS via: Settings > Apps > Optional Features > IIS")
+            print("        2. Or install Apache/Nginx manually")
+            print("        3. Or use Python:  python -m http.server 80  (simple test server)")
+            issues += 1
+
+    print()
+
     # --- Firewall ---
-    print("  [2] Checking Firewall rules...")
+    print("  [3] Checking Firewall rules...")
     print()
 
     rules = {
         "NIDS-SSH": ("tcp", "22"),
+        "NIDS-FTP": ("tcp", "21"),
         "NIDS-Ping": ("icmpv4", None),
         "NIDS-Port-80": ("tcp", "80"),
         "NIDS-Port-443": ("tcp", "443"),
@@ -382,7 +577,7 @@ def setup_windows():
     print()
 
     # --- Npcap ---
-    print("  [3] Checking Npcap (needed by NIDS for packet capture)...")
+    print("  [4] Checking Npcap (needed by NIDS for packet capture)...")
     print()
 
     npcap_paths = [
@@ -479,7 +674,7 @@ def main():
         issues = setup_linux()
 
     # NIDS project check (both platforms)
-    step_num = 5 if os_name == "Linux" else 4
+    step_num = 7 if os_name == "Linux" else 5
     print(f"  [{step_num}] Checking NIDS project...")
     print()
     nids_dir, nids_issues = check_nids_project()
@@ -501,6 +696,11 @@ def main():
     else:
         print("    Run: ip addr show  (Linux) or ipconfig (Windows)")
 
+    print()
+    print("  Required services for attacks:")
+    print("    Web server (Apache/IIS) - port 80  -> DoS (Hulk, Slowloris, GoldenEye) + DDoS (LOIC, HOIC)")
+    print("    SSH server              - port 22  -> Brute Force SSH")
+    print("    FTP server (vsftpd)     - port 21  -> Brute Force FTP")
     print()
     print("  To start NIDS:")
     if nids_dir:

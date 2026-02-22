@@ -7,7 +7,7 @@
 #
 # Usage:
 #   chmod +x setup_vm.sh
-#   sudo ./setup_vm.sh
+#   sudo sh ./setup_vm.sh
 # ==============================================================================
 
 echo ""
@@ -26,7 +26,7 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "  [ERROR] This script must be run as root (use sudo)"
     echo ""
     echo "  Usage:"
-    echo "    sudo ./setup_vm.sh"
+    echo "    sudo sh ./setup_vm.sh"
     echo ""
     exit 1
 fi
@@ -182,9 +182,210 @@ fi
 echo ""
 
 # ==================================================================
-# Step 3: Check net-tools
+# Step 3: Check Web Server (needed for DoS/DDoS HTTP attacks)
 # ==================================================================
-echo "Step 3: Checking network tools..."
+echo "Step 3: Checking Web Server (needed for DoS and DDoS attacks)..."
+echo ""
+
+WEB_INSTALLED=false
+WEB_RUNNING=false
+
+# Check Apache
+if dpkg -l apache2 2>/dev/null | grep -q "^ii"; then
+    WEB_INSTALLED=true
+    WEB_NAME="apache2"
+    echo "  [OK] Apache2 is installed"
+elif rpm -q httpd >/dev/null 2>&1; then
+    WEB_INSTALLED=true
+    WEB_NAME="httpd"
+    echo "  [OK] Apache (httpd) is installed"
+fi
+
+# Check Nginx if no Apache
+if [ "$WEB_INSTALLED" = false ]; then
+    if dpkg -l nginx 2>/dev/null | grep -q "^ii"; then
+        WEB_INSTALLED=true
+        WEB_NAME="nginx"
+        echo "  [OK] Nginx is installed"
+    elif rpm -q nginx >/dev/null 2>&1; then
+        WEB_INSTALLED=true
+        WEB_NAME="nginx"
+        echo "  [OK] Nginx is installed"
+    fi
+fi
+
+if [ "$WEB_INSTALLED" = true ]; then
+    if systemctl is-active --quiet "$WEB_NAME" 2>/dev/null; then
+        WEB_RUNNING=true
+        echo "  [OK] $WEB_NAME service is running"
+    else
+        echo "  [!] $WEB_NAME is installed but NOT running"
+        echo ""
+        printf "  Do you want to start $WEB_NAME? [y/n]: "
+        read -r answer
+        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+            systemctl enable "$WEB_NAME" 2>/dev/null
+            systemctl start "$WEB_NAME" 2>/dev/null
+            if systemctl is-active --quiet "$WEB_NAME" 2>/dev/null; then
+                WEB_RUNNING=true
+                echo "  [OK] $WEB_NAME started"
+            else
+                echo "  [!] Failed to start $WEB_NAME"
+            fi
+        else
+            echo "  [SKIP] $WEB_NAME not started"
+            echo "  To start it manually:"
+            echo "    sudo systemctl start $WEB_NAME"
+        fi
+    fi
+else
+    echo "  [!] No web server installed"
+    echo "      A web server is REQUIRED for DoS and DDoS attacks."
+    echo "      (DoS uses HTTP Hulk/Slowloris/GoldenEye, DDoS uses LOIC/HOIC HTTP floods)"
+    echo ""
+    printf "  Do you want to install Apache2? [y/n]: "
+    read -r answer
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        echo "  Installing apache2..."
+        if command -v apt-get > /dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq apache2
+        elif command -v dnf > /dev/null 2>&1; then
+            dnf install -y httpd
+        elif command -v yum > /dev/null 2>&1; then
+            yum install -y httpd
+        elif command -v pacman > /dev/null 2>&1; then
+            pacman -S --noconfirm apache
+        else
+            echo "  [!] Unknown package manager — install manually"
+        fi
+
+        # Determine service name
+        if command -v apache2 > /dev/null 2>&1 || dpkg -l apache2 2>/dev/null | grep -q "^ii"; then
+            WEB_INSTALLED=true
+            WEB_NAME="apache2"
+        elif command -v httpd > /dev/null 2>&1 || rpm -q httpd >/dev/null 2>&1; then
+            WEB_INSTALLED=true
+            WEB_NAME="httpd"
+        fi
+
+        if [ "$WEB_INSTALLED" = true ]; then
+            echo "  [OK] Installed"
+            printf "  Start $WEB_NAME now? [y/n]: "
+            read -r answer2
+            if [ "$answer2" = "y" ] || [ "$answer2" = "Y" ]; then
+                systemctl enable "$WEB_NAME" 2>/dev/null
+                systemctl start "$WEB_NAME" 2>/dev/null
+                WEB_RUNNING=true
+                echo "  [OK] $WEB_NAME started"
+            fi
+        else
+            echo "  [!] Installation failed"
+        fi
+    else
+        echo "  [SKIP] Not installing web server"
+        echo "  To install manually:"
+        echo "    sudo apt install apache2"
+        echo "    sudo systemctl start apache2"
+        ISSUES=$((ISSUES + 1))
+    fi
+fi
+echo ""
+
+# ==================================================================
+# Step 4: Check FTP Server (needed for FTP Brute Force attack)
+# ==================================================================
+echo "Step 4: Checking FTP Server (needed for FTP Brute Force attack)..."
+echo ""
+
+FTP_INSTALLED=false
+FTP_RUNNING=false
+
+if dpkg -l vsftpd 2>/dev/null | grep -q "^ii"; then
+    FTP_INSTALLED=true
+    FTP_NAME="vsftpd"
+    echo "  [OK] vsftpd is installed"
+elif rpm -q vsftpd >/dev/null 2>&1; then
+    FTP_INSTALLED=true
+    FTP_NAME="vsftpd"
+    echo "  [OK] vsftpd is installed"
+fi
+
+if [ "$FTP_INSTALLED" = true ]; then
+    if systemctl is-active --quiet "$FTP_NAME" 2>/dev/null; then
+        FTP_RUNNING=true
+        echo "  [OK] $FTP_NAME service is running"
+    else
+        echo "  [!] $FTP_NAME is installed but NOT running"
+        echo ""
+        printf "  Do you want to start $FTP_NAME? [y/n]: "
+        read -r answer
+        if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+            systemctl enable "$FTP_NAME" 2>/dev/null
+            systemctl start "$FTP_NAME" 2>/dev/null
+            if systemctl is-active --quiet "$FTP_NAME" 2>/dev/null; then
+                FTP_RUNNING=true
+                echo "  [OK] $FTP_NAME started"
+            else
+                echo "  [!] Failed to start $FTP_NAME"
+            fi
+        else
+            echo "  [SKIP] $FTP_NAME not started"
+            echo "  To start it manually:"
+            echo "    sudo systemctl start $FTP_NAME"
+        fi
+    fi
+else
+    echo "  [!] vsftpd FTP server NOT installed"
+    echo "      FTP server is needed for the FTP Brute Force attack."
+    echo "      (CICIDS2018 used Patator against FTP on Feb 14)"
+    echo ""
+    printf "  Do you want to install vsftpd? [y/n]: "
+    read -r answer
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        echo "  Installing vsftpd..."
+        if command -v apt-get > /dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq vsftpd
+        elif command -v dnf > /dev/null 2>&1; then
+            dnf install -y vsftpd
+        elif command -v yum > /dev/null 2>&1; then
+            yum install -y vsftpd
+        elif command -v pacman > /dev/null 2>&1; then
+            pacman -S --noconfirm vsftpd
+        else
+            echo "  [!] Unknown package manager — install manually"
+        fi
+
+        if command -v vsftpd > /dev/null 2>&1 || dpkg -l vsftpd 2>/dev/null | grep -q "^ii"; then
+            FTP_INSTALLED=true
+            FTP_NAME="vsftpd"
+            echo "  [OK] Installed"
+            printf "  Start vsftpd now? [y/n]: "
+            read -r answer2
+            if [ "$answer2" = "y" ] || [ "$answer2" = "Y" ]; then
+                systemctl enable vsftpd 2>/dev/null
+                systemctl start vsftpd 2>/dev/null
+                FTP_RUNNING=true
+                echo "  [OK] vsftpd started"
+            fi
+        else
+            echo "  [!] Installation failed"
+        fi
+    else
+        echo "  [SKIP] Not installing FTP server"
+        echo "  To install manually:"
+        echo "    sudo apt install vsftpd"
+        echo "    sudo systemctl start vsftpd"
+        echo "  Note: FTP brute force attack will still work against SSH (--ssh)"
+    fi
+fi
+echo ""
+
+# ==================================================================
+# Step 5: Check network tools
+# ==================================================================
+echo "Step 5: Checking network tools..."
 echo ""
 
 if command -v ifconfig > /dev/null 2>&1; then
@@ -196,9 +397,9 @@ fi
 echo ""
 
 # ==================================================================
-# Step 4: Check libpcap
+# Step 6: Check libpcap
 # ==================================================================
-echo "Step 4: Checking libpcap (needed by NIDS for packet capture)..."
+echo "Step 6: Checking libpcap (needed by NIDS for packet capture)..."
 echo ""
 
 LIBPCAP_FOUND=false
@@ -221,20 +422,35 @@ fi
 echo ""
 
 # ==================================================================
-# Step 5: Check NIDS project
+# Step 7: Check NIDS project
 # ==================================================================
-echo "Step 5: Checking NIDS project..."
+echo "Step 7: Checking NIDS project..."
 echo ""
+
+# When run with sudo, $HOME is /root. Get original user's home too.
+REAL_HOME="$HOME"
+if [ -n "$SUDO_USER" ]; then
+    REAL_HOME=$(eval echo "~$SUDO_USER")
+fi
+
+# Also check the script's own parent directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+SCRIPT_PARENT="$(dirname "$SCRIPT_DIR" 2>/dev/null)"
 
 NIDS_DIR=""
 for _d in \
+    "$SCRIPT_PARENT" \
+    "$REAL_HOME/Nids" \
+    "$REAL_HOME/nids" \
+    "$REAL_HOME/NIDS" \
+    "$REAL_HOME/Nids-Network-Intrusion-Detection-System" \
+    "$REAL_HOME/nids-network-intrusion-detection-system" \
+    "$REAL_HOME/Desktop/Nids" \
+    "$REAL_HOME/Desktop/Nids-Network-Intrusion-Detection-System" \
     "$HOME/Nids" \
     "$HOME/nids" \
     "$HOME/NIDS" \
-    "$HOME/Nids-Network-Intrusion-Detection-System" \
-    "$HOME/nids-network-intrusion-detection-system" \
-    "$HOME/Desktop/Nids" \
-    "$HOME/Desktop/Nids-Network-Intrusion-Detection-System"; do
+    "$HOME/Nids-Network-Intrusion-Detection-System"; do
     if [ -d "$_d" ] && [ -f "$_d/classification.py" ]; then
         NIDS_DIR="$_d"
         break
@@ -271,9 +487,9 @@ fi
 echo ""
 
 # ==================================================================
-# Step 6: Check packet capture permissions
+# Step 8: Check packet capture permissions
 # ==================================================================
-echo "Step 6: Checking packet capture permissions..."
+echo "Step 8: Checking packet capture permissions..."
 echo ""
 
 if [ -n "$NIDS_DIR" ] && [ -d "$NIDS_DIR/venv" ]; then
@@ -346,6 +562,11 @@ fi
 
 echo "    source venv/bin/activate"
 echo "    sudo ./venv/bin/python classification.py --duration 600"
+echo ""
+echo "  Required services for attacks:"
+echo "    Web server (Apache)  - port 80  → DoS (Hulk, Slowloris, GoldenEye) + DDoS (LOIC, HOIC)"
+echo "    SSH server            - port 22  → Brute Force SSH"
+echo "    FTP server (vsftpd)  - port 21  → Brute Force FTP"
 echo ""
 echo "  Then from your attacker machine:"
 if [ -n "$VM_IP" ]; then

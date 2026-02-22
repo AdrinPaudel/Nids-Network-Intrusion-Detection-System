@@ -112,9 +112,42 @@ if %errorlevel% equ 0 (
 echo.
 
 REM ==================================================================
-REM Step 3: Check Firewall Rules
+REM Step 3: Check Web Server (needed for DoS/DDoS attacks)
 REM ==================================================================
-echo Step 3: Checking Firewall rules...
+echo Step 3: Checking Web Server (needed for DoS and DDoS HTTP attacks)...
+echo.
+
+REM Check if IIS is running
+sc query W3SVC >nul 2>&1
+if %errorlevel% equ 0 (
+    sc query W3SVC | find "RUNNING" >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo   [OK] IIS Web Server is running
+    ) else (
+        echo   [!] IIS is installed but not running
+        echo       Start it: net start W3SVC
+    )
+) else (
+    REM Check if anything is on port 80
+    netstat -an | findstr ":80 " | findstr "LISTEN" >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo   [OK] A web server is listening on port 80
+    ) else (
+        echo   [!] No web server running on port 80
+        echo       DoS/DDoS attacks (Hulk, Slowloris, LOIC, HOIC) need a web server.
+        echo.
+        echo       Options:
+        echo         1. Install IIS: Settings ^> Apps ^> Optional Features ^> IIS
+        echo         2. Or run: python -m http.server 80  (simple test server)
+        set /a ISSUES+=1
+    )
+)
+echo.
+
+REM ==================================================================
+REM Step 4: Check Firewall Rules
+REM ==================================================================
+echo Step 4: Checking Firewall rules...
 echo.
 
 set "FW_MISSING=0"
@@ -126,6 +159,15 @@ if %errorlevel% neq 0 (
     set /a FW_MISSING+=1
 ) else (
     echo   [OK] SSH (port 22) rule exists
+)
+
+REM Check FTP rule
+netsh advfirewall firewall show rule name="NIDS-FTP" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo   [!] No firewall rule for FTP (port 21)
+    set /a FW_MISSING+=1
+) else (
+    echo   [OK] FTP (port 21) rule exists
 )
 
 REM Check ICMP rule
@@ -158,6 +200,11 @@ if %FW_MISSING% gtr 0 (
             netsh advfirewall firewall add rule name="NIDS-SSH" dir=in action=allow protocol=tcp localport=22 >nul 2>&1
             echo   [OK] Added: SSH (port 22)
         )
+        netsh advfirewall firewall show rule name="NIDS-FTP" >nul 2>&1
+        if errorlevel 1 (
+            netsh advfirewall firewall add rule name="NIDS-FTP" dir=in action=allow protocol=tcp localport=21 >nul 2>&1
+            echo   [OK] Added: FTP (port 21)
+        )
         netsh advfirewall firewall show rule name="NIDS-Ping" >nul 2>&1
         if errorlevel 1 (
             netsh advfirewall firewall add rule name="NIDS-Ping" dir=in action=allow protocol=icmpv4 >nul 2>&1
@@ -172,9 +219,6 @@ if %FW_MISSING% gtr 0 (
         )
     ) else (
         echo   [SKIP] Not adding firewall rules
-        echo   To add manually:
-        echo     netsh advfirewall firewall add rule name="NIDS-SSH" dir=in action=allow protocol=tcp localport=22
-        echo     netsh advfirewall firewall add rule name="NIDS-Ping" dir=in action=allow protocol=icmpv4
         set /a ISSUES+=1
     )
 ) else (
@@ -183,9 +227,9 @@ if %FW_MISSING% gtr 0 (
 echo.
 
 REM ==================================================================
-REM Step 4: Check Npcap
+REM Step 5: Check Npcap
 REM ==================================================================
-echo Step 4: Checking Npcap (needed by NIDS for packet capture)...
+echo Step 5: Checking Npcap (needed by NIDS for packet capture)...
 echo.
 
 if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
@@ -201,9 +245,9 @@ if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
 echo.
 
 REM ==================================================================
-REM Step 5: Check NIDS Project
+REM Step 6: Check NIDS Project
 REM ==================================================================
-echo Step 5: Checking NIDS project...
+echo Step 6: Checking NIDS project...
 echo.
 
 set "NIDS_DIR="
@@ -254,6 +298,11 @@ echo   Your VM IP:
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4" ^| findstr /v "127.0.0"') do (
     echo     =^> %%a
 )
+echo.
+echo   Required services for attacks:
+echo     Web server (IIS/Apache) - port 80  -^> DoS (Hulk, Slowloris, GoldenEye) + DDoS (LOIC, HOIC)
+echo     SSH server              - port 22  -^> Brute Force SSH
+echo     FTP server              - port 21  -^> Brute Force FTP (optional)
 echo.
 echo   To start NIDS:
 if defined NIDS_DIR (
