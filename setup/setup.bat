@@ -8,207 +8,161 @@ echo ===========================================================================
 echo NIDS Project Setup - Windows
 echo ================================================================================
 echo.
+echo [STATUS] Script started - you should see this message!
+echo.
+pause
 
-REM Navigate to project root (one level up from setup/)
-cd /d "%~dp0.." || (
-    echo [ERROR] Failed to navigate to project root
-    echo Current location: %cd%
-    echo Script location: %~dp0
+REM ==================================================================
+REM Step 1: Check Python
+REM ==================================================================
+echo.
+echo ================================================================================
+echo Step 1: Checking Python installation...
+echo ================================================================================
+echo.
+echo [STATUS] Checking if Python is installed...if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Python is not installed OR not in PATH
+    echo.
+    echo   How to fix:
+    echo     1. Download Python: https://www.python.org/downloads/
+    echo     2. During install - CHECK "Add Python to PATH"
+    echo     3. Restart your terminal completely (close and reopen)
+    echo     4. Run: python --version
+    echo     5. Then run this script again
+    echo.
     pause
     exit /b 1
 )
-
-echo [DEBUG] Now in directory: %cd%
+echo [OK] Python is installed
 echo.
+echo ========== PYTHON CHECK COMPLETE ==========
+pause
 
 REM ==================================================================
-REM Step 1: Check Python ^& Npcap (user must install these themselves)
+REM Step 2: Check Npcap
 REM ==================================================================
-echo Step 1: Checking required software...
+echo.
+echo ================================================================================
+echo Step 2: Checking Npcap (packet capture - optional)...
+echo ================================================================================
 echo.
 
-set "FAIL=0"
-
-REM --- Python ---
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo   [ERROR] Python is not installed.
-    echo.
-    echo     DOWNLOAD and install Python from:
-    echo       https://www.python.org/downloads/
-    echo.
-    echo     OR use Windows Package Manager (winget):
-    echo       winget install Python.Python.3.12
-    echo.
-    echo     OR use Chocolatey:
-    echo       choco install python
-    echo.
-    echo     IMPORTANT during install:
-    echo       - Check "Add Python to PATH" at the bottom
-    echo       - Click "Install Now" or Customize to install all
-    echo       - CLOSE and REOPEN this terminal after install
-    echo       - Run: python --version
-    echo       - Then run this script again
-    echo.
-    set "FAIL=1"
-    goto :check_npcap
-)
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYTHON_VER=%%v
-echo   [OK] Python %PYTHON_VER%
-
-:check_npcap
-REM --- Npcap (needed by Scapy for packet capture) ---
 if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
-    echo   [OK] Npcap found
+    echo [OK] Npcap found
 ) else if exist "%SystemRoot%\System32\wpcap.dll" (
-    echo   [OK] WinPcap/Npcap found
+    echo [OK] WinPcap/Npcap found
 ) else (
-    echo   [ERROR] Npcap is not installed (needed for packet capture).
-    echo.
-    echo     OPTION 1: Download and run installer:
-    echo       Link: https://npcap.com/
-    echo       - Download npcap-X.XX.exe
-    echo       - Run the installer
-    echo       - CHECK "Install Npcap in WinPcap API-compatible Mode"
-    echo.
-    echo     OPTION 2: Download via PowerShell (auto-run):
-    echo       powershell -Command "Invoke-WebRequest -Uri 'https://npcap.com/dist/npcap-1.81.exe' -OutFile 'npcap-installer.exe'; Start-Process 'npcap-installer.exe' -Wait"
-    echo.
-    echo     OPTION 3: Use Chocolatey:
-    echo       choco install npcap
-    echo.
-    echo     After install, CLOSE and REOPEN this terminal, then run script again.
-    echo. — Missing required software
-    echo ================================================================================
-    echo.
-    echo   STEPS TO FIX:
-    echo     1. Install the software shown above
-    echo     2. CLOSE this terminal completely
-    echo     3. OPEN a NEW terminal (critical for PATH updates)
-    echo     4. Navigate to this folder: cd Z:\Nids
-    echo     5. Run this script again: setup\setup.bat
-    echo
+    echo [WARNING] Npcap not found (optional - only for live packet capture)
+echo.
+echo ========== NPCAP CHECK COMPLETE ==========
+    echo   Download: https://npcap.com
 )
-
-if "%FAIL%"=="1" (
-    echo.
-    echo ================================================================================
-    echo   SETUP CANNOT CONTINUE - Missing required software
-    echo ================================================================================
-    echo.
-    echo   STEPS TO FIX:
-    echo     1. Install the software shown above
-    echo     2. CLOSE this terminal completely
-    echo     3. OPEN a NEW terminal (critical for PATH updates)
-    echo     4. Navigate to this folder: cd Z:\Nids
-    echo     5. Run this script again: setup\setup.bat
-    echo.
-    echo ================================================================================
-    echo.
-    pause
-    exit /b 1
-)
+pause
 
 REM ==================================================================
-REM Step 2: Create virtual environment
+REM Step 3: Create virtual environment
 REM ==================================================================
 echo.
-echo Step 2: Creating virtual environment...
+echo ================================================================================
+echo Step 3: Creating/checking virtual environment...
+echo ================================================================================
 echo.
 
 if exist venv (
-    echo   [OK] Already exists — skipping
+    echo [OK] Virtual environment already exists - skipping creation
 ) else (
+    echo Creating virtual environment...
     python -m venv venv
     if not exist venv (
-        echo   [ERROR] Failed to create venv
-        echo.
-        echo   Troubleshooting:
-        echo     - Check Python is installed: python --version
-        echo     - Check Python location: where python
-        echo     - Check disk space available
+        echo [ERROR] Failed to create venv
         echo.
         pause
         exit /b 1
     )
-    echo   [OK] Virtual environment created
+echo.
+echo ========== VENV CREATION COMPLETE ==========
+    echo [OK] Virtual environment created
 )
+pause
 
 REM ==================================================================
-REM Step 3: Activate venv ^& install pip dependencies
+REM Step 4: Activate virtual environment
 REM ==================================================================
 echo.
-echo Step 3: Installing Python dependencies...
+echo ================================================================================
+echo Step 4: Activating virtual environment...
+echo ================================================================================
 echo.
+
 call venv\Scripts\activate.bat
 if errorlevel 1 (
-    echo   [ERROR] Failed to activate venv
+    echo [ERROR] Failed to activate virtual environment
     echo.
-    echo   Try manually:
-    echo     venv\Scripts\activate.bat
+echo.
+echo ========== VENV ACTIVATION COMPLETE ==========
+    pause
+    exit /b 1
+)
+echo [OK] Virtual environment activated
+pause
+
+REM ==================================================================
+REM Step 5: Install Python packages
+REM ==================================================================
+echo.
+echo ================================================================================
+echo Step 5: Installing Python dependencies...
+echo        (this may take a few minutes)
+echo ================================================================================
+echo.
+
+echo Upgrading pip...
+pip install --upgrade pip
+if errorlevel 1 (
+    echo [ERROR] Failed to upgrade pip
     echo.
     pause
     exit /b 1
 )
+echo [OK] pip upgraded
+echo.
+echo ========== PIP UPGRADE COMPLETE - Press any key to continue to package install ==========
+pause
+echo.
 
-pip install --upgrade pip --quiet
+echo Installing packages from requirements.txt...
 pip install -r requirements.txt
 if errorlevel 1 (
-    echo   [ERROR] pip install failed
+    echo [ERROR] pip install failed
     echo.
-    echo   Troubleshooting:
-    echo     1. Check internet connection
-    echo     2. Try manually: pip install --upgrade pip
-    echo     3. Then: pip install -r requirements.txt
-    echo     4. If errors about packages, try: pip install --upgrade pip
+    echo Troubleshooting:
+    echo   - Check internet connection
+    echo   - Try manually: pip install -r requirements.txt
     echo.
     pause
     exit /b 1
 )
-echo   [OK] Dependencies installed
+echo [OK] All packages installed
+echo.
+echo ========== PACKAGE INSTALL COMPLETE ==========
+pause
 
 REM ==================================================================
-REM Done
+REM SUCCESS
 REM ==================================================================
 echo.
 echo ================================================================================
-echo   Setup Complete!  Everything is working.
+echo   SUCCESS! Setup Complete!
 echo ================================================================================
 echo.
-echo   NEXT STEPS:
-echo.
-echo   1. ACTIVATE the virtual environment:
+echo   Next time you open a terminal, run:
 echo      venv\Scripts\activate
 echo.
-echo   2. TEST live classification (detects interfaces):
+echo   Then you can:
 echo      python classification.py
-echo.
-echo   3. RUN live classification (captures packets):
-echo      python classification.py
-echo.
-echo   OPTIONS:
-echo.
-echo      See all commands:
-echo        python classification.py --help
-echo.
-echo      Capture for 5 minutes:
-echo        python classification.py --duration 300
-echo.
-echo      Use 6-class model (if trained):
-echo        python classification.py --model all
-echo.
-echo      Batch classify a CSV file:
-echo        python classification.py --batch flows.csv
-echo.
-echo      Train ML model (requires CICIDS2018 dataset):
-echo        python ml_model.py --full
-echo.
-echo   NOTE: If you open a NEW terminal, activate the venv first:
-echo      venv\Scripts\activate
+echo      python ml_model.py --help
 echo.
 echo ================================================================================
-echo   Press any key to close this window...
-echo ================================================================================
 echo.
-
 pause
