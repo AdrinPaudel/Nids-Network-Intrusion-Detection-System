@@ -1,6 +1,4 @@
-REM Setup script for NIDS Project on Windows
-REM Checks prerequisites, creates venv, installs deps, tests interface detection
-
+@echo off
 setlocal enabledelayedexpansion
 
 echo.
@@ -8,160 +6,106 @@ echo ===========================================================================
 echo NIDS Project Setup - Windows
 echo ================================================================================
 echo.
-echo [STATUS] Script started - you should see this message!
+echo Script started - you should see this message
 echo.
 pause
 
-REM ==================================================================
 REM Step 1: Check Python
-REM ==================================================================
 echo.
 echo ================================================================================
-echo Step 1: Checking Python installation...
+echo Step 1: Checking Python
 echo ================================================================================
 echo.
-echo [STATUS] Checking if Python is installed...if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] Python is not installed OR not in PATH
-    echo.
-    echo   How to fix:
-    echo     1. Download Python: https://www.python.org/downloads/
-    echo     2. During install - CHECK "Add Python to PATH"
-    echo     3. Restart your terminal completely (close and reopen)
-    echo     4. Run: python --version
-    echo     5. Then run this script again
-    echo.
+
+python --version
+if errorlevel 1 (
+    echo ERROR: Python not found
+    echo Download: https://www.python.org/downloads/
     pause
     exit /b 1
 )
-echo [OK] Python is installed
+
+echo OK - Python is installed
 echo.
-echo ========== PYTHON CHECK COMPLETE ==========
 pause
 
-REM ==================================================================
 REM Step 2: Check Npcap
-REM ==================================================================
 echo.
 echo ================================================================================
-echo Step 2: Checking Npcap (packet capture - optional)...
+echo Step 2: Checking Npcap (optional)
 echo ================================================================================
 echo.
 
 if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
-    echo [OK] Npcap found
+    echo OK - Npcap found
 ) else if exist "%SystemRoot%\System32\wpcap.dll" (
-    echo [OK] WinPcap/Npcap found
+    echo OK - WinPcap found
 ) else (
-    echo [WARNING] Npcap not found (optional - only for live packet capture)
-echo.
-echo ========== NPCAP CHECK COMPLETE ==========
-    echo   Download: https://npcap.com
+    echo WARNING - Npcap not found (optional for live capture)
+    echo Download: https://npcap.com
 )
+
+echo.
 pause
 
-REM ==================================================================
-REM Step 3: Create virtual environment
-REM ==================================================================
+REM Step 3: Create venv
 echo.
 echo ================================================================================
-echo Step 3: Creating/checking virtual environment...
+echo Step 3: Creating virtual environment
 echo ================================================================================
 echo.
 
 if exist venv (
-    echo [OK] Virtual environment already exists - skipping creation
+    echo OK - venv already exists
 ) else (
-    echo Creating virtual environment...
+    echo Creating venv...
     python -m venv venv
     if not exist venv (
-        echo [ERROR] Failed to create venv
-        echo.
+        echo ERROR: Failed to create venv
         pause
         exit /b 1
     )
-echo.
-echo ========== VENV CREATION COMPLETE ==========
-    echo [OK] Virtual environment created
+    echo OK - venv created
 )
+
+echo.
 pause
 
-REM ==================================================================
-REM Step 4: Activate virtual environment
-REM ==================================================================
+REM Step 4: Activate and install
 echo.
 echo ================================================================================
-echo Step 4: Activating virtual environment...
+echo Step 4: Installing dependencies
 echo ================================================================================
 echo.
 
 call venv\Scripts\activate.bat
-if errorlevel 1 (
-    echo [ERROR] Failed to activate virtual environment
-    echo.
-echo.
-echo ========== VENV ACTIVATION COMPLETE ==========
-    pause
-    exit /b 1
-)
-echo [OK] Virtual environment activated
-pause
-
-REM ==================================================================
-REM Step 5: Install Python packages
-REM ==================================================================
-echo.
-echo ================================================================================
-echo Step 5: Installing Python dependencies...
-echo        (this may take a few minutes)
-echo ================================================================================
-echo.
 
 echo Upgrading pip...
 pip install --upgrade pip
-if errorlevel 1 (
-    echo [ERROR] Failed to upgrade pip
-    echo.
-    pause
-    exit /b 1
-)
-echo [OK] pip upgraded
-echo.
-echo ========== PIP UPGRADE COMPLETE - Press any key to continue to package install ==========
-pause
-echo.
 
-echo Installing packages from requirements.txt...
+echo.
+echo Installing packages...
 pip install -r requirements.txt
+
 if errorlevel 1 (
-    echo [ERROR] pip install failed
-    echo.
-    echo Troubleshooting:
-    echo   - Check internet connection
-    echo   - Try manually: pip install -r requirements.txt
-    echo.
+    echo ERROR: pip install failed
     pause
     exit /b 1
 )
-echo [OK] All packages installed
+
+echo OK - All packages installed
 echo.
-echo ========== PACKAGE INSTALL COMPLETE ==========
 pause
 
-REM ==================================================================
-REM SUCCESS
-REM ==================================================================
+REM Success
 echo.
 echo ================================================================================
-echo   SUCCESS! Setup Complete!
+echo SUCCESS - Setup Complete!
 echo ================================================================================
 echo.
-echo   Next time you open a terminal, run:
-echo      venv\Scripts\activate
-echo.
-echo   Then you can:
-echo      python classification.py
-echo      python ml_model.py --help
+echo Next steps:
+echo   1. Activate venv: venv\Scripts\activate
+echo   2. Run: python classification.py
 echo.
 echo ================================================================================
 echo.

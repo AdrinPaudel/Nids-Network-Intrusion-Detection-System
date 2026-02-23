@@ -1,173 +1,160 @@
-REM Complete NIDS Setup - Windows (Basic + Dataset + ML Prep)
-
+@echo off
 setlocal enabledelayedexpansion
 
 echo.
 echo ================================================================================
 echo NIDS Complete Setup - Windows
 echo ================================================================================
-echo This will:
+echo.
+echo This script will:
 echo   1. Setup Python environment
-echo   2. Guide you to download CICIDS2018 dataset (6 GB)
-echo   3. Fix Tuesday CSV file
+echo   2. Guide you to download dataset
+echo   3. Fix Tuesday CSV
 echo   4. Verify all CSV files
-echo   5. Prepare for ML training
-echo ================================================================================
+echo.
+echo Script started
 echo.
 pause
 
-echo [STATUS] Setting up NIDS...
-echo.
-echo Current directory: %cd%
-echo.
-
-REM ==================================================================
-REM PART 1: Basic Setup
-REM ==================================================================
+REM Step 1: Check Python
 echo.
 echo ================================================================================
-echo PART 1: Basic Python Environment Setup
+echo Step 1: Checking Python
 echo ================================================================================
 echo.
 
-REM Check Python
 python --version
-if %errorlevel% neq 0 (
-    echo [ERROR] Python not found
+if errorlevel 1 (
+    echo ERROR: Python not found
     echo Download: https://www.python.org/downloads/
-    echo.
     pause
     exit /b 1
 )
-echo [OK] Python found
-echo ========== PYTHON CHECK COMPLETE ==========
+
+echo OK - Python is installed
+echo.
 pause
 
-REM Create venv
-if not exist venv (
-    echo Creating virtual environment...
+REM Step 2: Create venv
+echo.
+echo ================================================================================
+echo Step 2: Creating virtual environment
+echo ================================================================================
+echo.
+
+if exist venv (
+    echo OK - venv already exists
+) else (
+    echo Creating venv...
     python -m venv venv
     if not exist venv (
-        echo [ERROR] Failed to create venv
+        echo ERROR: Failed to create venv
         pause
         exit /b 1
     )
+    echo OK - venv created
 )
-echo [OK] Virtual environment ready
-echo ========== VENV CREATION COMPLETE ==========
+
+echo.
 pause
 
-REM Install dependencies
-echo Installing dependencies...
+REM Step 3: Install dependencies
+echo.
+echo ================================================================================
+echo Step 3: Installing dependencies
+echo ================================================================================
+echo.
+
 call venv\Scripts\activate.bat
+
+echo Upgrading pip...
 pip install --upgrade pip
+
+echo Installing packages...
 pip install -r requirements.txt
+
 if errorlevel 1 (
-    echo [ERROR] pip install failed
+    echo ERROR: pip install failed
     pause
     exit /b 1
 )
-echo ========== DEPENDENCIES INSTALLED COMPLETE ==========
-echo [OK] Dependencies installed
+
+echo OK - All packages installed
+echo.
 pause
 
-REM ==================================================================
-REM PART 2: Dataset Download
-REM ==================================================================
+REM Step 4: Dataset Download
 echo.
 echo ================================================================================
-echo PART 2: CICIDS2018 Dataset Download
+echo Step 4: Download CICIDS2018 Dataset
 echo ================================================================================
-echo.
-echo This dataset is ~6 GB total (10 CSV files)
 echo.
 echo Download from: https://www.unb.ca/cic/datasets/ids-2018.html
 echo.
-echo Files to download:
-echo   1. Friday-02-03-2018_TrafficForML_CICFlowMeter.csv
-echo   2. Friday-16-02-2018_TrafficForML_CICFlowMeter.csv
-echo   3. Friday-23-02-2018_TrafficForML_CICFlowMeter.csv
-echo   4. Thuesday-20-02-2018_TrafficForML_CICFlowMeter.csv  (3.5 GB - LARGEST)
-echo   5. Thursday-01-03-2018_TrafficForML_CICFlowMeter.csv
-echo   6. Thursday-15-02-2018_TrafficForML_CICFlowMeter.csv
-echo   7. Thursday-22-02-2018_TrafficForML_CICFlowMeter.csv
-echo   8. Wednesday-14-02-2018_TrafficForML_CICFlowMeter.csv
-echo   9. Wednesday-21-02-2018_TrafficForML_CICFlowMeter.csv
-echo   10. Wednesday-28-02-2018_TrafficForML_CICFlowMeter.csv
+echo Files needed (10 total, ~6 GB):
+echo   - Friday-02-03-2018_TrafficForML_CICFlowMeter.csv
+echo   - Friday-16-02-2018_TrafficForML_CICFlowMeter.csv
+echo   - Friday-23-02-2018_TrafficForML_CICFlowMeter.csv
+echo   - Thuesday-20-02-2018_TrafficForML_CICFlowMeter.csv (3.5 GB)
+echo   - Thursday-01-03-2018_TrafficForML_CICFlowMeter.csv
+echo   - Thursday-15-02-2018_TrafficForML_CICFlowMeter.csv
+echo   - Thursday-22-02-2018_TrafficForML_CICFlowMeter.csv
+echo   - Wednesday-14-02-2018_TrafficForML_CICFlowMeter.csv
+echo   - Wednesday-21-02-2018_TrafficForML_CICFlowMeter.csv
+echo   - Wednesday-28-02-2018_TrafficForML_CICFlowMeter.csv
 echo.
 echo Place all files in: data\raw\
 echo.
+set /p DUMMY=Press Enter when ready...
+echo.
 pause
 
-REM Check if files exist
-for /f %%A in ('dir /b "data\raw\*.csv" 2^>nul ^| find /c /v ""') do set CSV_COUNT=%%A
-if %CSV_COUNT% gtr 0 (
-    echo [OK] Found %CSV_COUNT% CSV files in data\raw\
-)
-if %CSV_COUNT% lss 10 (
-    echo [!] Only %CSV_COUNT% files found, need 10
-    set /p "WAIT=Press Enter after you download all files to data\raw\ ..."
-)
-pause
-
-REM ==================================================================
-REM PART 3: Fix Tuesday CSV
-REM ==================================================================
+REM Step 5: Fix Tuesday CSV
 echo.
 echo ================================================================================
-echo PART 3: Fix Tuesday CSV (Remove Extra Columns)
+echo Step 5: Fix Tuesday CSV
 echo ================================================================================
 echo.
 
 if exist "data\raw\Thuesday-20-02-2018_TrafficForML_CICFlowMeter.csv" (
-    echo Running fix_tuesday_csv.py...
+    echo Running fix...
     python setup\fix_tuesday_csv.py
-    echo [OK] Tuesday file processed
+    echo OK - Tuesday CSV fixed
 ) else (
-    echo [!] Tuesday file not found - skipping
-echo.
-echo ========== TUESDAY CSV FIX COMPLETE ==========
+    echo WARNING - Tuesday CSV not found (skipping)
 )
+
+echo.
 pause
 
-REM ==================================================================
-REM PART 4: Verify CSV Files
-REM ==================================================================
+REM Step 6: Verify CSV files
 echo.
 echo ================================================================================
-echo PART 4: Verify CSV Files (Check 80 columns)
+echo Step 6: Verify CSV Files
 echo ================================================================================
 echo.
 
 if exist "data\raw\Friday-02-03-2018_TrafficForML_CICFlowMeter.csv" (
-    echo Running verify_csv_files.py...
+    echo Verifying files...
     python setup\verify_csv_files.py
-    echo [OK] Files verified
-echo.
-echo ========== CSV VERIFICATION COMPLETE ==========
+    echo OK - Files verified
 ) else (
-    echo [!] CSV files not found - skipping
+    echo WARNING - CSV files not found (skipping)
 )
+
+echo.
 pause
 
-REM ==================================================================
-REM SUCCESS
-REM ==================================================================
+REM Success
 echo.
 echo ================================================================================
-echo   SUCCESS! Complete Setup Done!
+echo SUCCESS - Complete Setup Done!
 echo ================================================================================
 echo.
-echo   You can now:
-echo.
-echo     1. Activate venv:
-echo        venv\Scripts\activate
-echo.
-echo     2. Train ML model (uses data\raw\ CSVs):
-echo        python ml_model.py --full
-echo.
-echo     3. Run classifications:
-echo        python classification.py
+echo You can now:
+echo   1. Activate venv: venv\Scripts\activate
+echo   2. Train ML model: python ml_model.py --full
+echo   3. Run classification: python classification.py
 echo.
 echo ================================================================================
 echo.
