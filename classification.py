@@ -112,7 +112,7 @@ from config import (
 )
 from classification.flowmeter_source import (
     FlowMeterSource, list_interfaces, 
-    get_wifi_interfaces, get_ethernet_interfaces
+    get_wifi_interfaces, get_ethernet_interfaces, get_vm_interfaces
 )
 from classification.batch_source import BatchSource
 from classification.preprocessor import Preprocessor
@@ -144,7 +144,8 @@ class ClassificationSession:
     """
 
     def __init__(self, mode="live", interface_name=None, duration=DEFAULT_DURATION,
-                 use_all_classes=False, session_id=1, batch_file_path=None, has_batch_label=False):
+                 use_all_classes=False, session_id=1, batch_file_path=None, has_batch_label=False,
+                 vm_mode=False, debug=False):
         """
         Args:
             mode: 'live' or 'batch'
@@ -154,6 +155,8 @@ class ClassificationSession:
             session_id: unique session identifier
             batch_file_path: path to batch CSV file (for batch mode)
             has_batch_label: if True, batch file has actual labels
+            vm_mode: if True, auto-select VirtualBox/VM adapter instead of WiFi
+            debug: if True, print detailed feature values for first N flows
         """
         self.mode = mode
         self.interface_name = interface_name
@@ -162,6 +165,8 @@ class ClassificationSession:
         self.session_id = session_id
         self.batch_file_path = batch_file_path
         self.has_batch_label = has_batch_label
+        self.vm_mode = vm_mode
+        self.debug = debug
 
         # Shared stop event for all threads in this session
         self.stop_event = threading.Event()
@@ -212,16 +217,33 @@ class ClassificationSession:
             # Auto-select interface if not specified
             if self.interface_name is None:
                 interfaces = list_interfaces()
-                wifi_ifaces = get_wifi_interfaces(interfaces)
-                eth_ifaces = get_ethernet_interfaces(interfaces)
                 
-                if wifi_ifaces:
-                    self.interface_name = wifi_ifaces[0]['name']
-                    print(f"{COLOR_CYAN}[SESSION] Auto-selected WiFi interface: {self.interface_name}{COLOR_RESET}")
-                elif eth_ifaces:
-                    self.interface_name = eth_ifaces[0]['name']
-                    print(f"{COLOR_CYAN}[SESSION] Auto-selected Ethernet interface: {self.interface_name}{COLOR_RESET}")
+                if self.vm_mode:
+                    # VM mode: prefer VirtualBox/VM adapters
+                    vm_ifaces = get_vm_interfaces(interfaces)
+                    if vm_ifaces:
+                        self.interface_name = vm_ifaces[0]['name']
+                        desc = vm_ifaces[0].get('description', self.interface_name)
+                        print(f"{COLOR_CYAN}[SESSION] VM mode: Selected VirtualBox adapter: {desc}{COLOR_RESET}")
+                    else:
+                        print(f"{COLOR_RED}[SESSION] --vm specified but no VirtualBox/VM adapters found!{COLOR_RESET}")
+                        print(f"{COLOR_YELLOW}  Available interfaces:{COLOR_RESET}")
+                        for iface in interfaces:
+                            print(f"    {iface['description']} ({iface['name']})")
+                        print(f"{COLOR_YELLOW}\n  Use --interface to specify manually, or --list-interfaces to see all.{COLOR_RESET}")
+                        return False
                 else:
+                    # Normal mode: prefer WiFi, then Ethernet
+                    wifi_ifaces = get_wifi_interfaces(interfaces)
+                    eth_ifaces = get_ethernet_interfaces(interfaces)
+                    
+                    if wifi_ifaces:
+                        self.interface_name = wifi_ifaces[0]['name']
+                        print(f"{COLOR_CYAN}[SESSION] Auto-selected WiFi interface: {self.interface_name}{COLOR_RESET}")
+                    elif eth_ifaces:
+                        self.interface_name = eth_ifaces[0]['name']
+                        print(f"{COLOR_CYAN}[SESSION] Auto-selected Ethernet interface: {self.interface_name}{COLOR_RESET}")
+                    else:
                     # No interfaces detected — check if we're on Linux without sudo
                     if not sys.platform.startswith('win'):
                         try:
@@ -290,6 +312,7 @@ class ClassificationSession:
             stop_event=self.stop_event,
             use_all_classes=self.use_all_classes,
             mode=self.mode,
+            debug=self.debug,
         )
 
         # 3. Create classifier
@@ -300,6 +323,7 @@ class ClassificationSession:
             stop_event=self.stop_event,
             use_all_classes=self.use_all_classes,
             mode=self.mode,
+            debug=self.debug,
         )
 
         # 4. Create threat handler
@@ -512,6 +536,7 @@ def select_interface_interactive():
     # Categorize interfaces
     wifi_ifaces = get_wifi_interfaces(interfaces)
     ethernet_ifaces = get_ethernet_interfaces(interfaces)
+    vm_ifaces = get_vm_interfaces(interfaces)
 
     # Build "other" list: everything not in wifi or ethernet
     wifi_names = {i['name'] for i in wifi_ifaces}
@@ -523,6 +548,12 @@ def select_interface_interactive():
     all_ifaces = []
 
     print(f"\n{COLOR_CYAN}Available Interfaces:{COLOR_RESET}\n")
+
+    # Hint if VM adapters are detected
+    if vm_ifaces:
+        vm_descs = ', '.join(v['description'] for v in vm_ifaces[:3])
+        print(f"  {COLOR_YELLOW}TIP: For VM attacks, select the VirtualBox/VMware adapter ({vm_descs}){COLOR_RESET}")
+        print(f"  {COLOR_YELLOW}     Or use:  python classification.py --vm  to auto-select it.{COLOR_RESET}\n")
 
     def _print_group(label, group, start_idx):
         idx = start_idx
@@ -630,6 +661,14 @@ Examples:
         "--list-interfaces", action="store_true",
         help="List available network interfaces and exit"
     )
+    parser.add_argument(
+        "--vm", action="store_true",
+        help="VM mode: auto-select VirtualBox/VMware adapter for VM attack detection"
+    )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Debug mode: print detailed feature values and prediction probabilities"
+    )
 
     args = parser.parse_args()
 
@@ -682,11 +721,12 @@ Examples:
     else:
         # Live mode - get interface
         interface_name = args.interface
-        if interface_name is None:
+        if interface_name is None and not args.vm:
             interface_name = select_interface_interactive()
             if interface_name is None:
                 print(f"{COLOR_RED}[MAIN] No interface selected. Exiting.{COLOR_RESET}")
                 sys.exit(1)
+        # If --vm is set, interface_name stays None; session._start_live() will auto-select VM adapter
 
     # Create session ID based on timestamp + model + duration
     import datetime
@@ -704,6 +744,8 @@ Examples:
         session_id=session_id,
         batch_file_path=batch_file_path,
         has_batch_label=has_batch_label,
+        vm_mode=args.vm,
+        debug=args.debug,
     )
 
     # Register SIGINT handler for clean shutdown

@@ -20,6 +20,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from config import (
     CLASSIFICATION_DROP_COLUMNS, CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT,
     CLASSIFICATION_BATCH_SIZE, CLASSIFICATION_BATCH_TIMEOUT,
+    CLASSIFICATION_DEBUG_FLOWS, CLASSIFICATION_DEBUG_TOP_FEATURES,
     COLOR_CYAN, COLOR_YELLOW, COLOR_GREEN, COLOR_RESET
 )
 
@@ -41,7 +42,7 @@ class Preprocessor:
     """
 
     def __init__(self, flow_queue, classifier_queue, stop_event,
-                 model_dir=None, use_all_classes=False, batch_size=None, batch_timeout=None, mode="live"):
+                 model_dir=None, use_all_classes=False, batch_size=None, batch_timeout=None, mode="live", debug=False):
         """
         Args:
             flow_queue: queue.Queue of raw flow dicts from CICFlowMeter
@@ -52,11 +53,14 @@ class Preprocessor:
             batch_size: number of flows to batch before processing (default from config)
             batch_timeout: max seconds to wait for a full batch (default from config)
             mode: 'live' or 'batch' - batch mode uses faster queue timeouts
+            debug: if True, print detailed feature values for first N flows
         """
         self.flow_queue = flow_queue
         self.classifier_queue = classifier_queue
         self.stop_event = stop_event
         self.mode = mode
+        self.debug = debug
+        self.debug_count = 0
         self.batch_size = batch_size if batch_size is not None else CLASSIFICATION_BATCH_SIZE
         self.batch_timeout = batch_timeout if batch_timeout is not None else CLASSIFICATION_BATCH_TIMEOUT
         self.processed_count = 0
@@ -172,6 +176,32 @@ class Preprocessor:
             if not hasattr(self, '_selected_indices'):
                 self._selected_indices = [self.scaler_feature_names.index(f) for f in self.selected_features]
             final_features = features_scaled[:, self._selected_indices]
+
+            # DEBUG: Print feature values for first N flows
+            if self.debug and self.debug_count < CLASSIFICATION_DEBUG_FLOWS:
+                for i in range(min(len(flow_dicts), CLASSIFICATION_DEBUG_FLOWS - self.debug_count)):
+                    self.debug_count += 1
+                    print(f"\n{COLOR_CYAN}{'='*70}")
+                    print(f"[DEBUG PREPROCESSOR] Flow #{self.debug_count}")
+                    print(f"{'='*70}{COLOR_RESET}")
+
+                    # Show identifiers
+                    ident = identifiers_list[i]
+                    print(f"  Src: {ident.get('src_ip','?')}:{ident.get('src_port','?')} -> "
+                          f"Dst: {ident.get('dst_ip','?')}:{ident.get('dst_port','?')} "
+                          f"Proto: {ident.get('protocol','?')}")
+
+                    # Show top features by absolute scaled value (most impactful)
+                    feat_vals = list(zip(self.selected_features, final_features[i]))
+                    feat_vals.sort(key=lambda x: abs(x[1]), reverse=True)
+                    print(f"\n  Top {CLASSIFICATION_DEBUG_TOP_FEATURES} features (by |scaled value|):")
+                    for fname, fval in feat_vals[:CLASSIFICATION_DEBUG_TOP_FEATURES]:
+                        # Also show pre-scaled value
+                        pre_idx = self.scaler_feature_names.index(fname)
+                        raw_val = full_df.iloc[i][fname]
+                        print(f"    {fname:<35} raw={raw_val:<15.4f} scaled={fval:<12.6f}")
+
+                    print(f"{COLOR_CYAN}{'='*70}{COLOR_RESET}")
 
             # Build results list
             results = []

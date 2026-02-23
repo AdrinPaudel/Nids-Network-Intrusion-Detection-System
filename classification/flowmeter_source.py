@@ -30,6 +30,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from config import (
     CLASSIFICATION_IDENTIFIER_COLUMNS, CLASSIFICATION_WIFI_KEYWORDS,
     CLASSIFICATION_ETHERNET_KEYWORDS, CLASSIFICATION_EXCLUDE_KEYWORDS,
+    CLASSIFICATION_VM_KEYWORDS,
     FLOWMETER_IDLE_THRESHOLD, FLOWMETER_AGE_THRESHOLD, FLOWMETER_GC_INTERVAL,
     COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_YELLOW,
     COLOR_BLUE, COLOR_DARK_GRAY, COLOR_RESET
@@ -525,6 +526,27 @@ def get_ethernet_interfaces(interfaces):
                 ethernet_list.append(iface)
 
     return ethernet_list
+
+
+def get_vm_interfaces(interfaces):
+    """
+    Get all VM/VirtualBox adapters from the list of interfaces.
+    Returns list of interface dicts matching VM keywords (e.g. VirtualBox Host-Only).
+    
+    These are typically used when attacking a VM and the NIDS needs to capture
+    traffic on the same virtual network segment.
+    """
+    vm_keywords = CLASSIFICATION_VM_KEYWORDS
+    vm_list = []
+
+    for iface in interfaces:
+        desc_lower = iface["description"].lower()
+        name_lower = iface["name"].lower()
+        is_vm = any(kw in desc_lower or kw in name_lower for kw in vm_keywords)
+        if is_vm:
+            vm_list.append(iface)
+
+    return vm_list
 
 
 # ============================================================

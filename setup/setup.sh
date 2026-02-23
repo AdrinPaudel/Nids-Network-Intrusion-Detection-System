@@ -50,11 +50,16 @@ if command -v python3 > /dev/null 2>&1; then
 else
     echo "  [ERROR] Python3 is not installed."
     echo ""
-    echo "    Install it yourself:"
+    echo "    INSTALL using package manager for your distro:"
     echo "      Ubuntu/Debian:  sudo apt install python3 python3-venv python3-dev"
     echo "      Fedora/RHEL:    sudo dnf install python3 python3-devel"
     echo "      Arch Linux:     sudo pacman -S python"
-    echo "      Other:          https://www.python.org/downloads/"
+    echo "      Alpine:         apk add python3 python3-dev"
+    echo ""
+    echo "    OR download from: https://www.python.org/downloads/"
+    echo ""
+    echo "    After install, verify: python3 --version"
+    echo "    Then re-run this script."
     echo ""
     FAIL=true
 fi
@@ -75,21 +80,31 @@ if [ "$LIBPCAP_FOUND" = true ]; then
     echo "  [OK] libpcap found"
 else
     echo "  [ERROR] libpcap is not installed."
-    echo "          Scapy (packet capture library) needs libpcap to work."
+    echo "          Scapy (packet capture) needs libpcap to work."
     echo ""
-    echo "    Copy-paste the install command for your distro:"
-    echo ""
+    echo "    INSTALL using your package manager:"
     echo "      Ubuntu/Debian:  sudo apt install libpcap-dev"
     echo "      Fedora/RHEL:    sudo dnf install libpcap-devel"
     echo "      Arch Linux:     sudo pacman -S libpcap"
+    echo "      Alpine:         apk add libpcap-dev"
+    echo "      CentOS:         sudo yum install libpcap-devel"
+    echo ""
+    echo "    After install, verify: ldconfig -p | grep libpcap"
+    echo "    Then re-run this script."
     echo ""
     FAIL=true
 fi
 
 if [ "$FAIL" = true ]; then
     echo "================================================================================"
-    echo "  SETUP CANNOT CONTINUE"
-    echo "  Install the missing software above, then re-run this script."
+    echo "  SETUP CANNOT CONTINUE — Missing required software"
+    echo "================================================================================"
+    echo ""
+    echo "  STEPS TO FIX:"
+    echo "    1. Copy-paste the install command from above for your distro"
+    echo "    2. After install, verify each component installed"
+    echo "    3. Re-run this script: ./setup/setup.sh"
+    echo ""
     echo "================================================================================"
     exit 1
 fi
@@ -108,10 +123,15 @@ else
         echo ""
         echo "  [ERROR] Failed to create virtual environment."
         echo ""
-        echo "    Most likely cause: the python3-venv package is not installed."
-        echo "    Fix:"
+        echo "    Most likely cause: python3-venv is not installed."
+        echo ""
+        echo "    FIX - Install venv for your distro:"
         echo "      Ubuntu/Debian:  sudo apt install python3-venv"
-        echo "      Then re-run this script."
+        echo "      Fedora/RHEL:    sudo dnf install python3-venv"
+        echo "      Arch Linux:     (already included with python)"
+        echo "      Alpine:         apk add python3-venv"
+        echo ""
+        echo "    After install, re-run: ./setup/setup.sh"
         echo ""
         exit 1
     fi

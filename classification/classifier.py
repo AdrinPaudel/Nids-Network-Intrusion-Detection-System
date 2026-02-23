@@ -23,6 +23,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from config import (
     CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT,
     CLASSIFICATION_CLASSIFIER_BATCH_SIZE, CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT,
+    CLASSIFICATION_DEBUG_FLOWS,
     COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_RESET
 )
 
@@ -34,7 +35,7 @@ class Classifier:
     """
 
     def __init__(self, classifier_queue, threat_queue, report_queue, stop_event,
-                 model_dir=None, use_all_classes=False, mode="live"):
+                 model_dir=None, use_all_classes=False, mode="live", debug=False):
         """
         Args:
             classifier_queue: queue.Queue of preprocessed flow dicts
@@ -44,12 +45,15 @@ class Classifier:
             model_dir: path to trained_model directory
             use_all_classes: if True, use trained_model_all/
             mode: 'live' or 'batch' - batch mode uses faster queue timeouts
+            debug: if True, print detailed prediction probabilities for first N flows
         """
         self.classifier_queue = classifier_queue
         self.threat_queue = threat_queue
         self.report_queue = report_queue
         self.stop_event = stop_event
         self.mode = mode
+        self.debug = debug
+        self.debug_count = 0
         self.classified_count = 0
         self.batch_size = CLASSIFICATION_CLASSIFIER_BATCH_SIZE
         self.batch_timeout = CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT
@@ -139,6 +143,22 @@ class Classifier:
                 if "actual_label" in preprocessed:
                     result["actual_label"] = preprocessed["actual_label"]
                 results.append(result)
+
+                # DEBUG: Print full probability distribution for first N flows
+                if self.debug and self.debug_count < CLASSIFICATION_DEBUG_FLOWS:
+                    self.debug_count += 1
+                    ident = preprocessed.get("identifiers", {})
+                    print(f"\n{COLOR_CYAN}{'='*70}")
+                    print(f"[DEBUG CLASSIFIER] Flow #{self.debug_count}")
+                    print(f"{'='*70}{COLOR_RESET}")
+                    print(f"  Src: {ident.get('src_ip','?')}:{ident.get('src_port','?')} -> "
+                          f"Dst: {ident.get('dst_ip','?')}:{ident.get('dst_port','?')}")
+                    print(f"  Prediction: {top3[0][0]} ({top3[0][1]*100:.2f}%)")
+                    print(f"  All class probabilities:")
+                    for cls_name, prob in predictions:
+                        bar = '\u2588' * int(prob * 40)
+                        print(f"    {cls_name:<20} {prob*100:>7.3f}%  {bar}")
+                    print(f"{COLOR_CYAN}{'='*70}{COLOR_RESET}")
 
             return results
 

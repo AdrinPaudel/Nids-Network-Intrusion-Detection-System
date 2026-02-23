@@ -24,13 +24,21 @@ python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo   [ERROR] Python is not installed.
     echo.
-    echo     Download and install Python:
+    echo     DOWNLOAD and install Python from:
     echo       https://www.python.org/downloads/
     echo.
+    echo     OR use Windows Package Manager (winget):
+    echo       winget install Python.Python.3.12
+    echo.
+    echo     OR use Chocolatey:
+    echo       choco install python
+    echo.
     echo     IMPORTANT during install:
-    echo       1. Check "Add Python to PATH" at the bottom of the installer
-    echo       2. Click "Install Now" (or Customize ^> check all boxes)
-    echo       3. Close and reopen your terminal after installing
+    echo       - Check "Add Python to PATH" at the bottom
+    echo       - Click "Install Now" or Customize to install all
+    echo       - CLOSE and REOPEN this terminal after install
+    echo       - Run: python --version
+    echo       - Then run this script again
     echo.
     set "FAIL=1"
     goto :check_npcap
@@ -45,16 +53,31 @@ if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
 ) else if exist "%SystemRoot%\System32\wpcap.dll" (
     echo   [OK] WinPcap/Npcap found
 ) else (
-    echo   [ERROR] Npcap is not installed.
-    echo           Scapy ^(packet capture library^) needs Npcap to work.
+    echo   [ERROR] Npcap is not installed (needed for packet capture).
     echo.
-    echo     Download and install Npcap:
-    echo       https://npcap.com
+    echo     OPTION 1: Download and run installer:
+    echo       Link: https://npcap.com/
+    echo       - Download npcap-X.XX.exe
+    echo       - Run the installer
+    echo       - CHECK "Install Npcap in WinPcap API-compatible Mode"
     echo.
-    echo     IMPORTANT during install:
-    echo       Check "Install Npcap in WinPcap API-compatible Mode"
+    echo     OPTION 2: Download via PowerShell (auto-run):
+    echo       powershell -Command "Invoke-WebRequest -Uri 'https://npcap.com/dist/npcap-1.81.exe' -OutFile 'npcap-installer.exe'; Start-Process 'npcap-installer.exe' -Wait"
     echo.
-    set "FAIL=1"
+    echo     OPTION 3: Use Chocolatey:
+    echo       choco install npcap
+    echo.
+    echo     After install, CLOSE and REOPEN this terminal, then run script again.
+    echo. — Missing required software
+    echo ================================================================================
+    echo.
+    echo   STEPS TO FIX:
+    echo     1. Install the software shown above
+    echo     2. CLOSE this terminal completely
+    echo     3. OPEN a NEW terminal (critical for PATH updates)
+    echo     4. Navigate to this folder: cd Z:\Nids
+    echo     5. Run this script again: setup\setup.bat
+    echo
 )
 
 if "%FAIL%"=="1" (

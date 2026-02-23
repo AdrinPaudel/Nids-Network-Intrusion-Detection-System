@@ -429,11 +429,20 @@ CLASSIFICATION_SUBPROCESS_TIMEOUT_JOIN = 30  # Timeout for reader thread join (f
 # Linux:   matched against interface name (e.g. "wlan0", "wlp2s0") since descriptions are unavailable
 CLASSIFICATION_WIFI_KEYWORDS = ["wi-fi", "wifi", "wireless", "wlan", "wlp"]
 CLASSIFICATION_ETHERNET_KEYWORDS = ["ethernet", "eth", "enp", "ens", "eno"]
-CLASSIFICATION_EXCLUDE_KEYWORDS = ["virtual", "direct", "bluetooth", "loopback", "miniport", "virtualbox",
+CLASSIFICATION_EXCLUDE_KEYWORDS = ["direct", "bluetooth", "loopback", "miniport",
                                     "docker", "virbr", "br-", "veth", "lo"]
+
+# VM / VirtualBox interface detection keywords
+# When --vm flag is used, these adapters are preferred over WiFi/Ethernet
+CLASSIFICATION_VM_KEYWORDS = ["virtualbox", "vbox", "host-only", "vmware", "vmnet",
+                              "hyper-v", "virtual ethernet"]
 
 # Periodic status updates
 CLASSIFICATION_STATUS_UPDATE_INTERVAL = 30   # Print status every N seconds
+
+# Debug mode settings
+CLASSIFICATION_DEBUG_FLOWS = 5               # Number of flows to print detailed debug info for
+CLASSIFICATION_DEBUG_TOP_FEATURES = 15       # Number of top features to show in debug output
 
 # Report generation settings
 CLASSIFICATION_REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
