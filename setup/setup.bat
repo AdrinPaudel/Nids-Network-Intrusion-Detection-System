@@ -17,7 +17,6 @@ if %errorlevel% neq 0 (
     echo DOWNLOAD OPTIONS:
     echo   Link: https://www.python.org/downloads/
     echo   Command: winget install Python.Python.3.12
-    echo   Command: choco install python
     echo.
     pause
     exit /b 1
@@ -37,9 +36,9 @@ if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
     echo DOWNLOAD OPTIONS:
     echo   Link: https://npcap.com/
     echo   Command: choco install npcap
-    echo   Command: powershell -Command "Invoke-WebRequest -Uri 'https://npcap.com/dist/npcap-1.81.exe' -OutFile 'npcap.exe'; Start-Process 'npcap.exe'"
+    echo   Command: winget install Nmap.Npcap
     echo.
-)
+    echo IMPORTANT: Check "Install Npcap in WinPcap API-compatible Mode" during install
 echo.
 
 REM Step 3: Create venv

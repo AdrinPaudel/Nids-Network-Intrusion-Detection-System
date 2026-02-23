@@ -23,7 +23,6 @@ if %errorlevel% neq 0 (
     echo DOWNLOAD OPTIONS:
     echo   Link: https://www.python.org/downloads/
     echo   Command: winget install Python.Python.3.12
-    echo   Command: choco install python
     echo.
     pause
     exit /b 1
