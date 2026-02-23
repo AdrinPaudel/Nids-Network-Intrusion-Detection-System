@@ -70,8 +70,8 @@ if %errorlevel% neq 0 (
     echo ERROR: pip install failed
     echo.
     echo Try manually:
-    echo   venv\Scripts\activate
-    echo   pip install -r requirements.txt
+    echo   venv\Scripts\activate.bat
+    echo   pip install -r ..\requirements.txt
     echo.
     pause
     exit /b 1
