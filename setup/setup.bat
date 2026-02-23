@@ -85,7 +85,7 @@ echo SUCCESS - Setup Complete!
 echo ================================================================================
 echo.
 echo Next steps:
-echo   1. Activate venv: venv\Scripts\activate
+echo   1. Activate venv: venv\Scripts\activate.bat
 echo   2. Run: python classification.py
 echo.
 pause

@@ -81,7 +81,7 @@ python -m venv venv
 
 # Activate it
 # Windows:
-venv\Scripts\activate
+venv\Scripts\activate.bat
 # Linux/macOS:
 source venv/bin/activate
 
@@ -96,7 +96,7 @@ The pre-trained 5-class model is included, so live classification works right af
 ```bash
 # Step 1: Activate virtual environment
 source venv/bin/activate          # Linux/macOS
-# or: venv\Scripts\activate       # Windows
+# or: venv\Scripts\activate.bat   # Windows
 
 # Step 2: Test without elevated privileges (detects interfaces)
 python classification.py
@@ -161,7 +161,7 @@ chmod +x setup/setup.sh
 After running the setup script, you still need to activate the venv in each new terminal:
 ```bash
 # Windows:
-venv\Scripts\activate
+venv\Scripts\activate.bat
 
 # Linux:
 source venv/bin/activate

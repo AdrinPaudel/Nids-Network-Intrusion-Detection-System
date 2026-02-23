@@ -124,7 +124,7 @@ echo SUCCESS - Complete Setup Done!
 echo ================================================================================
 echo.
 echo You can now:
-echo   1. Activate venv: venv\Scripts\activate
+echo   1. Activate venv: venv\Scripts\activate.bat
 echo   2. Train ML model: python ml_model.py --full
 echo   3. Run classification: python classification.py
 echo.

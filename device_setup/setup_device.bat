@@ -340,7 +340,7 @@ if defined NIDS_DIR (
 ) else (
     echo     cd Nids
 )
-echo     venv\Scripts\activate
+echo     venv\Scripts\activate.bat
 echo     python classification.py --duration 600
 echo.
 echo   Then from your attacker machine:
