@@ -244,8 +244,8 @@ class ClassificationSession:
                         self.interface_name = eth_ifaces[0]['name']
                         print(f"{COLOR_CYAN}[SESSION] Auto-selected Ethernet interface: {self.interface_name}{COLOR_RESET}")
                     else:
-                    # No interfaces detected — check if we're on Linux without sudo
-                    if not sys.platform.startswith('win'):
+                        # No interfaces detected — check if we're on Linux without sudo
+                        if not sys.platform.startswith('win'):
                         try:
                             if os.geteuid() != 0:
                                 print(f"{COLOR_RED}[SESSION] No network interfaces detected.{COLOR_RESET}")
