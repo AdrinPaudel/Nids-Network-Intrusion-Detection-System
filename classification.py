@@ -246,19 +246,19 @@ class ClassificationSession:
                     else:
                         # No interfaces detected — check if we're on Linux without sudo
                         if not sys.platform.startswith('win'):
-                        try:
-                            if os.geteuid() != 0:
-                                print(f"{COLOR_RED}[SESSION] No network interfaces detected.{COLOR_RESET}")
-                                print(f"{COLOR_YELLOW}\nThis is expected on Linux without elevated privileges.{COLOR_RESET}")
-                                print(f"{COLOR_YELLOW}\nRun with sudo:{COLOR_RESET}")
-                                print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
-                                print(f"{COLOR_YELLOW}\nOr grant Python capabilities (one-time):{COLOR_RESET}")
-                                import subprocess
-                                python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
-                                print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
-                                return False
-                        except Exception:
-                            pass
+                            try:
+                                if os.geteuid() != 0:
+                                    print(f"{COLOR_RED}[SESSION] No network interfaces detected.{COLOR_RESET}")
+                                    print(f"{COLOR_YELLOW}\nThis is expected on Linux without elevated privileges.{COLOR_RESET}")
+                                    print(f"{COLOR_YELLOW}\nRun with sudo:{COLOR_RESET}")
+                                    print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
+                                    print(f"{COLOR_YELLOW}\nOr grant Python capabilities (one-time):{COLOR_RESET}")
+                                    import subprocess
+                                    python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
+                                    print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+                                    return False
+                            except Exception:
+                                pass
                     
                     print(f"{COLOR_RED}[SESSION] No network interfaces available!{COLOR_RESET}")
                     return False
