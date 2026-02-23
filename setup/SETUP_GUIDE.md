@@ -78,7 +78,7 @@ python -m venv venv
 
 # Activate it
 # Windows:
-venv\Scripts\activate
+venv\Scripts\activate.bat
 # Linux/macOS:
 source venv/bin/activate
 
@@ -95,7 +95,7 @@ Every time you open a new terminal, you must activate the venv:
 
 ```bash
 # Windows:
-venv\Scripts\activate
+venv\Scripts\activate.bat
 
 # Linux/macOS:
 source venv/bin/activate
@@ -329,7 +329,7 @@ This uses cached/default hyperparameters and skips RandomizedSearchCV completely
 source venv/bin/activate
 
 # Windows:
-venv\Scripts\activate
+venv\Scripts\activate.bat
 ```
 
 ### 2. Test Live Classification (Without Privileges)
@@ -392,7 +392,7 @@ Activate the venv first (required):
 source venv/bin/activate
 
 # Windows:
-venv\Scripts\activate
+venv\Scripts\activate.bat
 ```
 
 ### "No network interfaces detected" or "No network interfaces available"
