@@ -29,7 +29,10 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo   [ERROR] This script must be run as Administrator.
     echo.
-    echo   Right-click setup_device.bat and select "Run as Administrator"
+    echo   How to fix:
+    echo     1. Right-click setup_device.bat
+    echo     2. Select "Run as Administrator"
+    echo     3. Click "Yes" at the UAC prompt
     echo.
     pause
     exit /b 1
@@ -51,6 +54,8 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4"') do (
     echo   IP: %%a
 )
 echo.
+echo [Detected IPs shown above - press any key to continue...]
+pause
 
 REM ==================================================================
 REM Step 2: Check SSH Server
@@ -117,6 +122,9 @@ if %errorlevel% equ 0 (
     )
 )
 echo.
+echo [SSH check complete - press any key to continue...]
+pause
+echo.
 
 REM ==================================================================
 REM Step 3: Check Web Server (needed for DoS/DDoS attacks)
@@ -149,6 +157,9 @@ if %errorlevel% equ 0 (
         set /a ISSUES+=1
     )
 )
+echo.
+echo [Web server check complete - press any key to continue...]
+pause
 echo.
 
 REM ==================================================================
@@ -229,6 +240,9 @@ if %FW_MISSING% gtr 0 (
         set /a ISSUES+=1
     )
 ) else (
+echo [Firewall check complete - press any key to continue...]
+pause
+echo.
     echo   [OK] All firewall rules present
 )
 echo.
@@ -249,6 +263,9 @@ if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
     echo       Check "Install Npcap in WinPcap API-compatible Mode" during install
     set /a ISSUES+=1
 )
+echo.
+echo [Npcap check complete - press any key to continue...]
+pause
 echo.
 
 REM ==================================================================
@@ -306,7 +323,7 @@ if %ISSUES% equ 0 (
 )
 echo ================================================================================
 echo.
-echo   Your device IP:
+echo   Your device IP(s):
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4" ^| findstr /v "127.0.0"') do (
     echo     =^> %%a
 )

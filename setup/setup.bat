@@ -83,9 +83,18 @@ if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
 if "%FAIL%"=="1" (
     echo.
     echo ================================================================================
-    echo   SETUP CANNOT CONTINUE
-    echo   Install the missing software above, then re-run this script.
+    echo   SETUP CANNOT CONTINUE - Missing required software
     echo ================================================================================
+    echo.
+    echo   STEPS TO FIX:
+    echo     1. Install the software shown above
+    echo     2. CLOSE this terminal completely
+    echo     3. OPEN a NEW terminal (critical for PATH updates)
+    echo     4. Navigate to this folder: cd Z:\Nids
+    echo     5. Run this script again: setup\setup.bat
+    echo.
+    echo ================================================================================
+    echo.
     pause
     exit /b 1
 )
@@ -103,6 +112,12 @@ if exist venv (
     python -m venv venv
     if not exist venv (
         echo   [ERROR] Failed to create venv
+        echo.
+        echo   Troubleshooting:
+        echo     - Check Python is installed: python --version
+        echo     - Check Python location: where python
+        echo     - Check disk space available
+        echo.
         pause
         exit /b 1
     )
@@ -118,6 +133,10 @@ echo.
 call venv\Scripts\activate.bat
 if errorlevel 1 (
     echo   [ERROR] Failed to activate venv
+    echo.
+    echo   Try manually:
+    echo     venv\Scripts\activate.bat
+    echo.
     pause
     exit /b 1
 )
@@ -126,6 +145,13 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt
 if errorlevel 1 (
     echo   [ERROR] pip install failed
+    echo.
+    echo   Troubleshooting:
+    echo     1. Check internet connection
+    echo     2. Try manually: pip install --upgrade pip
+    echo     3. Then: pip install -r requirements.txt
+    echo     4. If errors about packages, try: pip install --upgrade pip
+    echo.
     pause
     exit /b 1
 )
@@ -170,6 +196,8 @@ echo.
 echo   NOTE: If you open a NEW terminal, activate the venv first:
 echo      venv\Scripts\activate
 echo.
+echo ================================================================================
+echo   Press any key to close this window...
 echo ================================================================================
 echo.
 
