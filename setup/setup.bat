@@ -27,21 +27,21 @@ if %errorlevel% neq 0 (
 echo OK - Python installed
 echo.
 
-REM Step 2: Check Npcap
-echo Step 2: Checking Npcap...
+REM Step 2: Check Win10Pcap
+echo Step 2: Checking Win10Pcap...
 if exist "%SystemRoot%\System32\Npcap\wpcap.dll" (
     echo OK - Npcap found
 ) else if exist "%SystemRoot%\System32\wpcap.dll" (
-    echo OK - WinPcap found
+    echo OK - WinPcap/Win10Pcap found
 ) else (
-    echo WARNING - Npcap not found (optional for live capture)
+    echo WARNING - Win10Pcap not found (optional for live capture)
     echo.
     echo DOWNLOAD OPTIONS:
-    echo   Link: https://npcap.com/
-    echo   Command: choco install npcap
-    echo   Command: winget install Nmap.Npcap
+    echo   Link: https://www.win10pcap.org/
+    echo   Command: choco install win10pcap
+    echo   Command: winget install Win10Pcap -e
     echo.
-    echo IMPORTANT: Check "Install Npcap in WinPcap API-compatible Mode" during install
+    echo IMPORTANT: Win10Pcap is compatible with WinPcap API
 echo.
 
 REM Step 3: Create venv
