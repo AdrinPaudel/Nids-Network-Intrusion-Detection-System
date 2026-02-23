@@ -1,14 +1,24 @@
-@echo off
 REM Setup script for NIDS Project on Windows
 REM Checks prerequisites, creates venv, installs deps, tests interface detection
 
-REM Navigate to project root (one level up from setup/)
-cd /d "%~dp0.."
+setlocal enabledelayedexpansion
 
 echo.
 echo ================================================================================
 echo NIDS Project Setup - Windows
 echo ================================================================================
+echo.
+
+REM Navigate to project root (one level up from setup/)
+cd /d "%~dp0.." || (
+    echo [ERROR] Failed to navigate to project root
+    echo Current location: %cd%
+    echo Script location: %~dp0
+    pause
+    exit /b 1
+)
+
+echo [DEBUG] Now in directory: %cd%
 echo.
 
 REM ==================================================================
