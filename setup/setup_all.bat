@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Navigate to project root (parent of setup folder)
+cd /d "%~dp0.."
+
 echo.
 echo ================================================================================
 echo NIDS Complete Setup - Windows
