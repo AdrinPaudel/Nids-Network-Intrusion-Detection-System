@@ -61,10 +61,10 @@ echo Step 4: Installing dependencies...
 call venv\Scripts\activate.bat
 echo.
 echo Upgrading pip (optional)...
-pip install --upgrade pip
+python -m pip install --upgrade pip >nul 2>&1
 echo.
 echo Installing packages from requirements.txt...
-pip install -r requirements.txt
+pip install -r ..\requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: pip install failed
