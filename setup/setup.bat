@@ -67,14 +67,14 @@ echo Upgrading pip (optional)...
 python -m pip install --upgrade pip >nul 2>&1
 echo.
 echo Installing packages from requirements.txt...
-pip install -r ..\requirements.txt
+pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: pip install failed
     echo.
     echo Try manually:
     echo   venv\Scripts\activate.bat
-    echo   pip install -r ..\requirements.txt
+    echo   pip install -r requirements.txt
     echo.
     pause
     exit /b 1
