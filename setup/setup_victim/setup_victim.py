@@ -128,6 +128,68 @@ def win_port_listening(port):
     return success and stdout.strip() != ""
 
 
+def win_uninstall_openssh():
+    """Uninstall corrupted OpenSSH."""
+    print("      Uninstalling OpenSSH...")
+    
+    # Method 1: PowerShell capability
+    success, _, _ = run_ps(
+        'Remove-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 2>&1',
+        timeout=60,
+        silent=True
+    )
+    if success:
+        print("      [OK] OpenSSH uninstalled via PowerShell")
+        return True
+    
+    # Method 2: Manual file deletion
+    print("      Trying manual removal...")
+    run_cmd('net stop sshd 2>nul', silent=True)
+    time.sleep(1)
+    run_cmd('sc delete sshd 2>nul', silent=True)
+    
+    # Delete files
+    for path in ["C:\\ProgramData\\ssh", "C:\\Program Files\\OpenSSH", "C:\\Windows\\System32\\OpenSSH"]:
+        if os.path.exists(path):
+            try:
+                shutil.rmtree(path)
+                print(f"      Deleted: {path}")
+            except:
+                pass
+    
+    return True
+
+
+def win_install_git_ssh():
+    """Install Git for Windows (includes SSH)."""
+    print("      Installing Git for Windows...")
+    
+    # Check if already installed
+    success, stdout, _ = run_cmd("git --version 2>nul", silent=True)
+    if success:
+        print("      [OK] Git already installed")
+        return True
+    
+    # Try winget
+    print("      Trying winget...")
+    success, stdout, _ = run_cmd("winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements 2>&1", silent=True, timeout=120)
+    
+    if success or "already" in stdout.lower():
+        time.sleep(3)
+        # Verify
+        success, stdout, _ = run_cmd("git --version 2>nul", silent=True)
+        if success:
+            print("      [OK] Git installed successfully")
+            print()
+            print("      Git includes SSH (OpenSSH-compatible)")
+            print("      SSH executable: C:\\Program Files\\Git\\usr\\bin\\ssh.exe")
+            return True
+    
+    print("      [!] Git installation failed")
+    print("      Download from: https://git-scm.com/download/win")
+    return False
+
+
 # ==================================================================
 # Windows: Service Management
 # ==================================================================
@@ -180,17 +242,33 @@ def win_start_sshd():
         print("      [OK] SSH service started")
         return True
     
-    print("      [!] SSH service won't start - checking why...")
+    # Check for common OpenSSH errors
+    print("      [!] SSH service won't start - checking issues...\n")
     
-    # Find sshd.exe and test it
+    sshd_exe = None
     for sshd_path in ["C:\\Windows\\System32\\OpenSSH\\sshd.exe", "C:\\Program Files\\OpenSSH\\sshd.exe"]:
         if os.path.exists(sshd_path):
-            print(f"      Found: {sshd_path}")
-            # Run config test
-            success, stdout, stderr = run_cmd(f'"{sshd_path}" -T', silent=True, timeout=5)
-            if not success:
-                print(f"      Config error: {stderr[:80]}")
+            sshd_exe = sshd_path
             break
+    
+    if sshd_exe:
+        print(f"      Found sshd.exe: {sshd_exe}")
+        
+        # Run in test mode - this will show crypto errors
+        print("      Running config test...")
+        success, stdout, stderr = run_cmd(f'"{sshd_exe}" -T', silent=True, timeout=5)
+        
+        if "entry point" in stderr.lower() or "libcrypto" in stderr.lower() or "bn_init" in stderr.lower():
+            print("      [!] CRYPTO LIBRARY ERROR detected!")
+            print("      This means OpenSSH is corrupted/incomplete.")
+            print()
+            print("      Fix options:")
+            print("      1. Uninstall OpenSSH (corrupted)")
+            print("      2. Use Git for Windows SSH instead (more stable)")
+            print()
+            return False
+        elif not success:
+            print(f"      Config error: {stderr[:150]}")
     
     return False
 
@@ -349,7 +427,27 @@ def setup_windows():
         print("      [!] Port 22 NOT open")
         if ask_yes_no("Start SSH service?"):
             if not win_start_sshd():
-                issues += 1
+                print()
+                print("      OpenSSH is corrupted or misconfigured.")
+                print()
+                if ask_yes_no("Uninstall OpenSSH and use Git for Windows SSH instead?"):
+                    if win_uninstall_openssh():
+                        print()
+                        if win_install_git_ssh():
+                            print("      [OK] Git SSH installed - port 22 should work now")
+                            time.sleep(2)
+                            if win_port_listening(22):
+                                print("      [OK] Port 22 is now listening!")
+                            else:
+                                print("      [!] Port 22 still not listening")
+                                print("      Note: Git SSH may need terminal restart to function")
+                                issues += 1
+                        else:
+                            issues += 1
+                    else:
+                        issues += 1
+                else:
+                    issues += 1
     else:
         print("      [OK] Port 22 listening")
     print()
