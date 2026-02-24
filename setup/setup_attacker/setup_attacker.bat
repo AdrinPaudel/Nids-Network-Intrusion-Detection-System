@@ -66,7 +66,7 @@ REM Step 2: Check Python
 REM ==================================================================
 echo Step 2: Checking Python...
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo   [ERROR] Python is not installed.
     echo.
@@ -92,7 +92,7 @@ if exist venv (
 ) else (
     echo   Creating virtual environment...
     python -m venv venv
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo   [ERROR] Failed to create venv
         pause
         exit /b 1
@@ -113,7 +113,7 @@ python -m pip install --upgrade pip >nul 2>&1
 
 echo   Installing base packages (from project root)...
 pip install -r requirements.txt
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo   [!] Base requirements install failed
 )
 echo.
@@ -121,7 +121,7 @@ echo.
 echo   Installing attack dependencies (paramiko + psutil)...
 if exist "setup\setup_attacker\requirements.txt" (
     pip install -r setup\setup_attacker\requirements.txt
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo   [ERROR] Attack requirements install failed
         echo.
         echo   Try manually:
@@ -152,8 +152,8 @@ echo.
 REM Check paramiko
 echo   Checking paramiko...
 python -c "import paramiko" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo     [OK] paramiko (SSH attacks)
+if !errorlevel! equ 0 (
+    echo     [OK] paramiko ^(SSH attacks^)
 ) else (
     echo     [!] paramiko MISSING
     set VERIFY_OK=0
@@ -162,7 +162,7 @@ if %errorlevel% equ 0 (
 REM Check requests
 echo   Checking requests...
 python -c "import requests" >nul 2>&1
-if %errorlevel% equ 0 (
+if !errorlevel! equ 0 (
     echo     [OK] requests
 ) else (
     echo     [!] requests MISSING
@@ -172,7 +172,7 @@ if %errorlevel% equ 0 (
 REM Check psutil
 echo   Checking psutil...
 python -c "import psutil" >nul 2>&1
-if %errorlevel% equ 0 (
+if !errorlevel! equ 0 (
     echo     [OK] psutil
 ) else (
     echo     [!] psutil MISSING
