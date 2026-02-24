@@ -1,15 +1,19 @@
 #!/bin/sh
 # ==============================================================================
-# Victim Device Setup - Linux
+# Victim Device Setup - Linux (All Distros)
 # ==============================================================================
 # Run this ON THE TARGET DEVICE (VM or server) to check readiness for attacks.
+# Works on: Ubuntu/Debian, Fedora/RHEL/CentOS, Arch, openSUSE, Alpine
 #
 # Usage:
 #   chmod +x setup/setup_victim/setup_victim.sh
 #   sudo ./setup/setup_victim/setup_victim.sh
 # ==============================================================================
 
-cd "$(dirname "$0")/../.."  || exit 1
+# Navigate to project root (two levels up from this script)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT" || { echo "[ERROR] Cannot cd to project root"; exit 1; }
 
 echo ""
 echo "================================================================================"
@@ -22,48 +26,48 @@ echo ""
 
 # Check root
 if [ "$(id -u)" -ne 0 ]; then
-    echo "  [ERROR] Run with sudo:"
+    echo "  [ERROR] This script must be run as root."
     echo "    sudo ./setup/setup_victim/setup_victim.sh"
     exit 1
 fi
-
 echo "  [OK] Running as root"
 echo ""
 
-# Use venv python if available, otherwise system python
-if [ -f "venv/bin/python3" ]; then
-    echo "  Using venv Python..."
-    . venv/bin/activate 2>/dev/null
-    python3 setup/setup_victim/setup_victim.py
-    exit_code=$?
-elif [ -f "venv/bin/python" ]; then
-    echo "  Using venv Python..."
-    . venv/bin/activate 2>/dev/null
-    python setup/setup_victim/setup_victim.py
-    exit_code=$?
+# Find Python (venv first, then system)
+PYTHON=""
+
+if [ -x "$PROJECT_ROOT/venv/bin/python3" ]; then
+    PYTHON="$PROJECT_ROOT/venv/bin/python3"
+elif [ -x "$PROJECT_ROOT/venv/bin/python" ]; then
+    PYTHON="$PROJECT_ROOT/venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="python"
 else
-    echo "  Using system Python (venv not found)..."
-    python3 setup/setup_victim/setup_victim.py
-    exit_code=$?
+    echo "  [ERROR] Python not found."
+    echo "  Install Python 3.10+ using your package manager."
+    exit 1
 fi
+
+echo "  Using Python: $PYTHON"
+echo ""
+
+# Activate venv if it exists (so imports work)
+if [ -f "$PROJECT_ROOT/venv/bin/activate" ]; then
+    . "$PROJECT_ROOT/venv/bin/activate" 2>/dev/null
+fi
+
+# Run the setup script
+"$PYTHON" "$PROJECT_ROOT/setup/setup_victim/setup_victim.py"
+exit_code=$?
 
 echo ""
 echo "================================================================================"
 if [ $exit_code -eq 0 ]; then
-    echo "  [OK] Victim setup check complete"
+    echo "  [OK] Victim setup check complete."
 else
-    echo "  [!] Some issues were found (see above)"
+    echo "  [!] Some issues were found - see above."
 fi
 echo "================================================================================"
-echo ""
-echo "  Next steps:"
-echo ""
-echo "  1. Start NIDS on this device to detect attacks:"
-echo "       See: PROJECT_RUN.md (in project root)"
-echo ""
-echo "  2. To understand all setup options:"
-echo "       See: setup/SETUPS.md"
-echo ""
-echo "  3. For project overview:"
-echo "       See: README.md (in project root)"
 echo ""
