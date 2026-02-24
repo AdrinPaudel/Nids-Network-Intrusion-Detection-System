@@ -25,10 +25,10 @@ import string
 import base64
 import json
 
-# TCP receive buffer size matching CICIDS2018 training data.
-# Setting SO_RCVBUF before connect() controls the TCP SYN window size,
-# which the model uses for classification (Init Fwd Win Byts feature).
-_RCVBUF_BOTNET = 8192
+# TCP receive buffer sizes → Init Fwd Win Byts feature.
+# Values derived from CICIDS2018 training data medians.
+# Bot training data: median Init Fwd Win Byts = 2053
+_RCVBUF_BOTNET = 2053        # Training median: 2053 (was 8192)
 
 USER_AGENTS = [
     # Ares/Zeus bots often use generic or outdated user agents
@@ -64,200 +64,147 @@ class BotnetAttack:
             self.beacon_count += n
 
     # ──────────────────────────────────────────────────────
-    # C2 Beaconing — Periodic HTTP callbacks
-    #   Ares bot checks in with C2 server via HTTP at regular
-    #   intervals. Uses keep-alive connections.
+    # C2 Beaconing — Short HTTP callbacks, NEW connection per beacon
     #
-    #   CICFlowMeter signature: Long-lived flow with periodic
-    #   bursts of traffic, high Idle Mean, moderate packet count,
-    #   distinctive User-Agent, consistent intervals.
+    # CICIDS2018 training data profile (Bot class):
+    #   Tot Fwd Pkts:    mean=2.56, median=2
+    #   TotLen Fwd Pkts: mean=159.5, median=0
+    #   Fwd Seg Size Min: 20
+    #   Init Fwd Win Byts: median=2053
+    #   Dst Port: 8080
+    #
+    # CRITICAL: Training shows very short flows (2 fwd pkts).
+    # Each beacon must be a NEW connection, not keep-alive.
     # ──────────────────────────────────────────────────────
     def c2_beacon(self):
         """C2 beaconing: Simulates Ares-style HTTP callbacks.
-        Opens a persistent connection and sends periodic check-in requests,
-        then receives commands. The connection stays alive with idle periods
-        between beacons, matching real botnet C2 behavior."""
+        Each beacon is a NEW TCP connection with 1-2 requests,
+        matching the training data profile of ~2 fwd pkts per flow."""
         end_time = time.time() + self.duration
         c2_port = random.choice([80, 8080])
         bot_id = _random_string(16)
+        seq = 0
 
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(15)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BOTNET)
                 sock.connect((self.target_ip, c2_port))
 
-                # Multiple beacons on same connection (keep-alive)
-                beacons_per_conn = random.randint(5, 20)
-                for i in range(beacons_per_conn):
-                    if not self.running or time.time() >= end_time:
-                        break
+                # Send 1 beacon request per connection (matching training ~2 fwd pkts)
+                path = f"/api/check?id={bot_id}&seq={seq}&t={int(time.time())}"
+                req = (
+                    f"GET {path} HTTP/1.1\r\n"
+                    f"Host: {self.target_ip}\r\n"
+                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                    f"Cookie: session={bot_id}\r\n"
+                    f"Accept: application/json\r\n"
+                    f"Connection: close\r\n"
+                    f"\r\n"
+                )
+                sock.sendall(req.encode())
+                self._inc_count()
+                seq += 1
 
-                    # Beacon check-in (GET with bot ID in URL/cookie)
-                    path = f"/api/check?id={bot_id}&seq={i}&t={int(time.time())}"
-                    req = (
-                        f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Cookie: session={bot_id}\r\n"
-                        f"Accept: application/json\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                    )
-                    sock.sendall(req.encode())
-                    self._inc_count()
-
-                    # Read C2 response (command)
-                    try:
-                        sock.settimeout(2)
-                        response = sock.recv(4096)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(15)
-
-                    # Report back result (POST)
-                    result_body = json.dumps({
-                        "id": bot_id,
-                        "status": "ok",
-                        "uptime": random.randint(100, 100000),
-                        "os": "Windows 10",
-                        "hostname": f"PC-{_random_string(6).upper()}",
-                    })
-                    report_req = (
-                        f"POST /api/report HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/json\r\n"
-                        f"Content-Length: {len(result_body)}\r\n"
-                        f"Cookie: session={bot_id}\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                        f"{result_body}"
-                    )
-                    sock.sendall(report_req.encode())
-                    self._inc_count()
-
-                    try:
-                        sock.settimeout(2)
-                        sock.recv(4096)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(15)
-
-                    # Wait between beacons (botnet style: regular intervals with jitter)
-                    time.sleep(random.uniform(3, 8))
+                # Read C2 response
+                try:
+                    sock.settimeout(2)
+                    sock.recv(4096)
+                except socket.timeout:
+                    pass
 
                 sock.close()
             except Exception:
                 pass
 
-            # Brief pause before reconnecting
-            time.sleep(random.uniform(1, 3))
+            # Wait between beacons (botnet style: regular intervals with jitter)
+            time.sleep(random.uniform(3, 8))
 
     # ──────────────────────────────────────────────────────
-    # Data Exfiltration — Upload "stolen" data
-    #   Ares bot exfiltrates data via HTTP POST with large payloads.
+    # Data Exfiltration — Upload "stolen" data, NEW connection per upload
     #
-    #   CICFlowMeter signature: High TotLen Fwd Pkts, high Fwd
-    #   Pkt Len Mean/Max (large uploads), long flow duration,
-    #   asymmetric traffic (much more forward than backward).
+    # CICIDS2018 training data shows short flows for Bot class.
+    # Each exfil upload must be a NEW TCP connection.
     # ──────────────────────────────────────────────────────
     def data_exfiltration(self):
-        """Data exfiltration: Upload large payloads simulating stolen data.
-        Sends multiple large HTTP POST requests on a keep-alive connection,
-        mimicking credential dumps, keylogger data, and file exfiltration."""
+        """Data exfiltration: Upload payloads simulating stolen data.
+        Each upload is a NEW TCP connection with 1 POST request,
+        matching the training data profile of ~2 fwd pkts per flow."""
         end_time = time.time() + self.duration
         exfil_port = random.choice([80, 8080])
         bot_id = _random_string(16)
 
-        # Simulated exfiltration data types
         data_types = ["credentials", "keylog", "clipboard", "screenshots",
                       "browser_history", "cookies", "system_info", "files"]
 
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(15)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BOTNET)
                 sock.connect((self.target_ip, exfil_port))
 
-                uploads_per_conn = random.randint(3, 10)
-                for _ in range(uploads_per_conn):
-                    if not self.running or time.time() >= end_time:
-                        break
+                # Send 1 exfil POST per connection (matching training ~2 fwd pkts)
+                data_type = random.choice(data_types)
+                if data_type in ("screenshots", "files"):
+                    payload_size = random.randint(4096, 32768)
+                elif data_type in ("credentials", "cookies", "browser_history"):
+                    payload_size = random.randint(1024, 8192)
+                else:
+                    payload_size = random.randint(256, 2048)
 
-                    data_type = random.choice(data_types)
+                exfil_data = _random_data(payload_size)
+                body = (
+                    f'{{"id":"{bot_id}","type":"{data_type}",'
+                    f'"data":"{base64.b64encode(exfil_data).decode()}",'
+                    f'"ts":{int(time.time())}}}'
+                )
 
-                    # Generate exfiltration payload (large, base64-encoded "data")
-                    if data_type in ("screenshots", "files"):
-                        # Large payload (simulate file/screenshot exfil)
-                        payload_size = random.randint(4096, 32768)
-                    elif data_type in ("credentials", "cookies", "browser_history"):
-                        # Medium payload
-                        payload_size = random.randint(1024, 8192)
-                    else:
-                        # Small payload (keylog, clipboard)
-                        payload_size = random.randint(256, 2048)
+                req = (
+                    f"POST /api/upload HTTP/1.1\r\n"
+                    f"Host: {self.target_ip}\r\n"
+                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                    f"Content-Type: application/json\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    f"Cookie: session={bot_id}\r\n"
+                    f"Connection: close\r\n"
+                    f"\r\n"
+                    f"{body}"
+                )
+                sock.sendall(req.encode())
+                self._inc_count()
 
-                    exfil_data = _random_data(payload_size)
-
-                    body = (
-                        f'{{"id":"{bot_id}","type":"{data_type}",'
-                        f'"data":"{base64.b64encode(exfil_data).decode()}",'
-                        f'"ts":{int(time.time())}}}'
-                    )
-
-                    req = (
-                        f"POST /api/upload HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/json\r\n"
-                        f"Content-Length: {len(body)}\r\n"
-                        f"Cookie: session={bot_id}\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                        f"{body}"
-                    )
-                    sock.sendall(req.encode())
-                    self._inc_count()
-
-                    # Read server acknowledgement
-                    try:
-                        sock.settimeout(2)
-                        sock.recv(4096)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(15)
-
-                    # Exfiltration happens in bursts with pauses
-                    time.sleep(random.uniform(2, 6))
+                # Read server ack
+                try:
+                    sock.settimeout(2)
+                    sock.recv(4096)
+                except socket.timeout:
+                    pass
 
                 sock.close()
             except Exception:
                 pass
 
-            time.sleep(random.uniform(3, 8))
+            # Exfil happens in bursts with pauses
+            time.sleep(random.uniform(2, 6))
 
     # ──────────────────────────────────────────────────────
-    # Keylogger + Command execution loop
-    #   Periodically sends small keylog packets and polls
-    #   for commands. Creates steady bidirectional flow.
+    # Keylogger + Command execution — NEW connection per cycle
     #
-    #   CICFlowMeter signature: Many small forward packets
-    #   at regular intervals, moderate backward traffic,
-    #   long flow with idle periods.
+    # CICIDS2018 training data shows ~2 fwd pkts per Bot flow.
+    # Each keylog/command cycle must be a NEW TCP connection.
     # ──────────────────────────────────────────────────────
     def keylog_and_command(self):
-        """Keylogger + command polling: sends small keylog packets and
-        polls for commands at regular intervals on a persistent connection."""
+        """Keylogger + command polling: sends small keylog POST and
+        polls for commands. Each cycle is a NEW TCP connection,
+        matching the training data profile of ~2 fwd pkts per flow."""
         end_time = time.time() + self.duration
         bot_id = _random_string(16)
         c2_port = random.choice([80, 8080])
 
-        # Simulated keystrokes (what a keylogger would capture)
         keylog_snippets = [
             "admin password123 enter",
             "https://bank.example.com tab username tab password enter",
@@ -272,67 +219,41 @@ class BotnetAttack:
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(15)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BOTNET)
                 sock.connect((self.target_ip, c2_port))
 
-                cycles_per_conn = random.randint(10, 40)
-                for _ in range(cycles_per_conn):
-                    if not self.running or time.time() >= end_time:
-                        break
+                # Send 1 keylog POST per connection (matching training ~2 fwd pkts)
+                keylog = random.choice(keylog_snippets) + f" [{int(time.time())}]"
+                body = json.dumps({"id": bot_id, "keylog": keylog})
 
-                    # Send keylog data
-                    keylog = random.choice(keylog_snippets) + f" [{int(time.time())}]"
-                    body = json.dumps({"id": bot_id, "keylog": keylog})
+                req = (
+                    f"POST /api/keylog HTTP/1.1\r\n"
+                    f"Host: {self.target_ip}\r\n"
+                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                    f"Content-Type: application/json\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    f"Connection: close\r\n"
+                    f"\r\n"
+                    f"{body}"
+                )
+                sock.sendall(req.encode())
+                self._inc_count()
 
-                    req = (
-                        f"POST /api/keylog HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/json\r\n"
-                        f"Content-Length: {len(body)}\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                        f"{body}"
-                    )
-                    sock.sendall(req.encode())
-                    self._inc_count()
-
-                    # Poll for command
-                    try:
-                        sock.settimeout(2)
-                        sock.recv(4096)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(15)
-
-                    # Poll C2 for pending commands  
-                    cmd_req = (
-                        f"GET /api/cmd?id={bot_id} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                    )
-                    sock.sendall(cmd_req.encode())
-                    self._inc_count()
-
-                    try:
-                        sock.settimeout(2)
-                        sock.recv(4096)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(15)
-
-                    # Regular interval between cycles (botnet heartbeat)
-                    time.sleep(random.uniform(1, 4))
+                # Read response
+                try:
+                    sock.settimeout(2)
+                    sock.recv(4096)
+                except socket.timeout:
+                    pass
 
                 sock.close()
             except Exception:
                 pass
 
-            time.sleep(random.uniform(2, 5))
+            # Regular interval between cycles (botnet heartbeat)
+            time.sleep(random.uniform(1, 4))
 
     def run_attack(self, num_threads=6):
         """Run botnet attack with multiple threads."""

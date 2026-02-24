@@ -122,15 +122,21 @@ def save_to_config(target_ip, detected_ports):
     print(f"    DETECTED_PORTS = {detected_ports}")
 
 if __name__ == "__main__":
-    print("[*] Discovering VMs on local network...\n")
-    
-    vms = discover_vms()
-    
-    if vms:
-        vm = vms[0]
-        save_to_config(vm["ip"], vm["ports"])
-        print(f"\n[+] Ready! Run:")
-        print(f"    python device_attack.py")
-    else:
-        print("[-] No VMs found. Check network connectivity.")
+    try:
+        print("[*] Discovering VMs on local network...\n")
+        
+        vms = discover_vms()
+        
+        if vms:
+            vm = vms[0]
+            save_to_config(vm["ip"], vm["ports"])
+            print(f"\n[+] Ready! Run:")
+            print(f"    python device_attack.py")
+        else:
+            print("[-] No VMs found. Check network connectivity.")
+    except Exception as e:
+        print(f"\n[FATAL ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
         sys.exit(1)

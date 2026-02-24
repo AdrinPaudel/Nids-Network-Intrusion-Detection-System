@@ -13,11 +13,20 @@ REM ============================================================================
 
 REM Navigate to project root
 cd /d "%~dp0..\.."
+if !errorlevel! neq 0 (
+    echo [ERROR] Failed to change to project root directory
+    pause
+    exit /b 1
+)
+
+REM Get absolute path to project root
+for /f "delims=" %%i in ('cd') do set PROJECT_ROOT=%%i
+set VENV_PYTHON=!PROJECT_ROOT!\venv\Scripts\python.exe
 
 echo.
 echo ================================================================================
 echo   NIDS Full Setup - Windows (Basic + Dataset + ML Training Prep)
-echo ================================================================================
+echo =================================================================================
 echo.
 
 REM ==================================================================
@@ -31,7 +40,7 @@ echo.
 REM Step 1: Check Python
 echo Step 1: Checking Python...
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo   [ERROR] Python is not installed.
     echo.
@@ -49,11 +58,11 @@ echo.
 
 REM Step 2: Create venv
 echo Step 2: Creating virtual environment...
-if exist venv (
+if exist "!VENV_PYTHON!" (
     echo   [OK] venv already exists
 ) else (
-    python -m venv venv
-    if %errorlevel% neq 0 (
+    python -m venv "!PROJECT_ROOT!\venv"
+    if !errorlevel! neq 0 (
         echo   [ERROR] Failed to create venv
         pause
         exit /b 1
@@ -64,13 +73,13 @@ echo.
 
 REM Step 3: Install dependencies
 echo Step 3: Installing dependencies...
-call venv\Scripts\activate.bat
+call "!PROJECT_ROOT!\venv\Scripts\activate.bat"
 echo.
 echo   Upgrading pip...
 python -m pip install --upgrade pip >nul 2>&1
 echo   Installing packages from requirements.txt...
 pip install -r requirements.txt
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo   [ERROR] pip install failed
     pause
@@ -93,7 +102,7 @@ for %%p in (pandas,numpy,sklearn,imblearn,matplotlib,seaborn,joblib,tqdm,pyarrow
         set VERIFY_OK=0
     )
 )
-if %VERIFY_OK% equ 0 (
+if !VERIFY_OK! equ 0 (
     echo.
     echo   WARNING: Some packages are missing
     echo   Continue anyway? (You can manually fix with: pip install -r requirements.txt)
@@ -172,7 +181,7 @@ echo.
 
 if exist "data\raw\Thuesday-20-02-2018_TrafficForML_CICFlowMeter.csv" (
     python setup\setup_full\fix_tuesday_csv.py
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo   [!] Error fixing Tuesday CSV (continuing anyway)
     ) else (
         echo   [OK] Tuesday CSV fixed
@@ -192,7 +201,7 @@ echo.
 
 if exist "data\raw\Friday-02-03-2018_TrafficForML_CICFlowMeter.csv" (
     python setup\setup_full\verify_csv_files.py
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo   [!] Error during verification
     ) else (
         echo   [OK] Files verified
@@ -226,4 +235,7 @@ echo.
 echo   5. Low RAM? Adjust config.py settings.
 echo      See: setup/setup_full/TRAINING_CONFIG.md
 echo.
+echo   Debug log: %LOG_FILE%
+echo.
+pause
 pause

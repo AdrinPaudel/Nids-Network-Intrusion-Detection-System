@@ -12,6 +12,15 @@ REM   setup\setup_attacker\setup_attacker.bat
 REM ==============================================================================
 
 cd /d "%~dp0..\.."
+if !errorlevel! neq 0 (
+    echo [ERROR] Failed to change to project root directory
+    pause
+    exit /b 1
+)
+
+REM Get absolute path to project root
+for /f "delims=" %%i in ('cd') do set PROJECT_ROOT=%%i
+set VENV_PYTHON=!PROJECT_ROOT!\venv\Scripts\python.exe
 
 echo.
 echo ================================================================================
@@ -22,9 +31,40 @@ echo ===========================================================================
 echo.
 
 REM ==================================================================
-REM Step 1: Check Python
+REM Step 1: Enable TCP Timestamps (CRITICAL for classification)
 REM ==================================================================
-echo Step 1: Checking Python...
+echo Step 1: Enabling TCP Timestamps...
+echo.
+echo   TCP timestamps add 12 bytes to the TCP header (20 -^> 32 bytes).
+echo   This is CRITICAL because the CICIDS2018 training data was generated
+echo   from Linux (Kali) attackers that always include TCP timestamps.
+echo   The model's #1 feature (Fwd Seg Size Min) depends on this.
+echo   Without timestamps: Fwd Seg Size Min = 20 -^> classified as Benign
+echo   With timestamps:    Fwd Seg Size Min = 32 -^> classified correctly
+echo.
+
+REM Check current setting
+for /f "tokens=*" %%i in ('netsh int tcp show global ^| findstr /i "Timestamps"') do set TSLINE=%%i
+echo   Current: !TSLINE!
+
+REM Try to enable (requires admin)
+netsh int tcp set global timestamps=enabled >nul 2>&1
+if !errorlevel! equ 0 (
+    echo   [OK] TCP timestamps enabled
+) else (
+    echo   [WARNING] Could not enable TCP timestamps (need admin privileges)
+    echo.
+    echo   To fix manually, run as Administrator:
+    echo     netsh int tcp set global timestamps=enabled
+    echo.
+    echo   This is THE MOST IMPORTANT fix for classification accuracy.
+)
+echo.
+
+REM ==================================================================
+REM Step 2: Check Python
+REM ==================================================================
+echo Step 2: Checking Python...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
@@ -43,9 +83,9 @@ echo   [OK] Python %PYVER%
 echo.
 
 REM ==================================================================
-REM Step 2: Create/Check venv
+REM Step 3: Create/Check venv
 REM ==================================================================
-echo Step 2: Checking virtual environment...
+echo Step 3: Checking virtual environment...
 
 if exist venv (
     echo   [OK] venv already exists
@@ -62,9 +102,9 @@ if exist venv (
 echo.
 
 REM ==================================================================
-REM Step 3: Install base + attack dependencies
+REM Step 4: Install base + attack dependencies
 REM ==================================================================
-echo Step 3: Installing dependencies...
+echo Step 4: Installing dependencies...
 call venv\Scripts\activate.bat
 echo.
 
@@ -99,9 +139,9 @@ if exist "setup\setup_attacker\requirements.txt" (
 echo.
 
 REM ==================================================================
-REM Step 4: Verify packages and scripts
+REM Step 5: Verify packages and scripts
 REM ==================================================================
-echo Step 4: Verifying installation...
+echo Step 5: Verifying installation...
 echo.
 
 set VERIFY_OK=1

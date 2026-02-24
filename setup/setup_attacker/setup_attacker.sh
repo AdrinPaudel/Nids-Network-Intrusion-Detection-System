@@ -24,9 +24,36 @@ echo "==========================================================================
 echo ""
 
 # ==================================================================
-# Step 1: Check Python
+# Step 1: Enable TCP Timestamps (CRITICAL for classification)
 # ==================================================================
-echo "Step 1: Checking Python..."
+echo "Step 1: Verifying TCP Timestamps..."
+echo ""
+echo "  TCP timestamps add 12 bytes to the TCP header (20 -> 32 bytes)."
+echo "  This is CRITICAL because the CICIDS2018 training data was generated"
+echo "  from Linux attackers that always include TCP timestamps."
+echo "  The model's #1 feature (Fwd Seg Size Min) depends on this."
+echo ""
+
+if [ -f /proc/sys/net/ipv4/tcp_timestamps ]; then
+    ts_val=$(cat /proc/sys/net/ipv4/tcp_timestamps)
+    if [ "$ts_val" = "1" ]; then
+        echo "  [OK] TCP timestamps already enabled"
+    else
+        echo "  [WARNING] TCP timestamps disabled! Enabling..."
+        sudo sysctl -w net.ipv4.tcp_timestamps=1 2>/dev/null || {
+            echo "  [ERROR] Could not enable TCP timestamps (need sudo)"
+            echo "  Run: sudo sysctl -w net.ipv4.tcp_timestamps=1"
+        }
+    fi
+else
+    echo "  [INFO] Cannot check TCP timestamps (not on Linux)"
+fi
+echo ""
+
+# ==================================================================
+# Step 2: Check Python
+# ==================================================================
+echo "Step 2: Checking Python..."
 
 if ! command -v python3 > /dev/null 2>&1; then
     echo "  [ERROR] Python3 is not installed."

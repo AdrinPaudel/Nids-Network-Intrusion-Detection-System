@@ -13,6 +13,15 @@ REM ============================================================================
 
 REM Navigate to project root (two levels up from setup/setup_basic/)
 cd /d "%~dp0..\.."
+if !errorlevel! neq 0 (
+    echo [ERROR] Failed to change to project root
+    pause
+    exit /b 1
+)
+
+REM Get absolute path to project root
+for /f "delims=" %%i in ('cd') do set PROJECT_ROOT=%%i
+set VENV_PYTHON=!PROJECT_ROOT!\venv\Scripts\python.exe
 
 echo.
 echo ================================================================================
@@ -28,7 +37,7 @@ REM Step 1: Check Python
 REM ==================================================================
 echo Step 1: Checking Python...
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo   [ERROR] Python is not installed.
     echo.
@@ -41,7 +50,7 @@ if %errorlevel% neq 0 (
 )
 
 for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYVER=%%v
-echo   [OK] Python %PYVER%
+echo   [OK] Python !PYVER!
 echo.
 
 REM ==================================================================
@@ -69,11 +78,11 @@ REM Step 3: Create virtual environment
 REM ==================================================================
 echo Step 3: Creating virtual environment...
 
-if exist venv (
+if exist "!VENV_PYTHON!" (
     echo   [OK] venv already exists
 ) else (
     python -m venv venv
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo   [ERROR] Failed to create virtual environment
         pause
         exit /b 1
@@ -86,7 +95,7 @@ REM ==================================================================
 REM Step 4: Install dependencies
 REM ==================================================================
 echo Step 4: Installing dependencies...
-call venv\Scripts\activate.bat
+call "!PROJECT_ROOT!\venv\Scripts\activate.bat"
 echo.
 
 echo   Upgrading pip...
@@ -94,7 +103,7 @@ python -m pip install --upgrade pip >nul 2>&1
 
 echo   Installing packages from requirements.txt...
 pip install -r requirements.txt
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo   [ERROR] pip install failed
     echo.

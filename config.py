@@ -394,6 +394,23 @@ FLOWMETER_IDLE_THRESHOLD = 15       # Emit flow after N seconds of no new packet
 FLOWMETER_AGE_THRESHOLD = 30        # Emit flow after N seconds total duration
 FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (seconds)
 
+# Fwd Seg Size Min auto-correction for Windows attacker → Linux victim
+# The CICIDS2018 training data was generated from Linux (Kali) attackers where
+# TCP timestamps are always present → TCP header = 32 bytes → Fwd Seg Size Min = 32.
+# On Windows, TCP timestamps may be absent → header = 20 → Fwd Seg Size Min = 20.
+# The model's #1 most important feature depends on this OS-level difference.
+#
+# PREFERRED FIX: Enable TCP timestamps on the Windows attacker machine:
+#   netsh int tcp set global timestamps=enabled
+# This naturally produces the correct header size (32) in the captured packets.
+#
+# SAFETY NET: If timestamps can't be enabled, set this to True to auto-correct
+# flows where Fwd Seg Size Min = 20 (no timestamps) to 32 (with timestamps).
+# WARNING: This also affects benign TCP flows. Only enable if:
+#   1. TCP timestamps cannot be enabled on the attacker machine, AND
+#   2. All monitored attack traffic comes from Windows (no-timestamp) sources
+FLOWMETER_FIX_WINDOWS_FWD_SEG_MIN = False
+
 # Default classification parameters
 CLASSIFICATION_DEFAULT_DURATION = 120        # 2 minutes (seconds)
 CLASSIFICATION_DEFAULT_MODEL = "default"     # "default" (5-class) or "all" (6-class)
