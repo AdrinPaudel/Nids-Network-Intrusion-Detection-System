@@ -184,6 +184,112 @@ SECONDS_TO_MICROSECONDS = 1_000_000
 
 
 # ============================================================
+# Monkey-patch Python CICFlowMeter to match Java CICFlowMeter
+#
+# The Python cicflowmeter (pip) computes features differently
+# from the Java CICFlowMeter that generated the CICIDS2018
+# training data:
+#
+#   1. _header_size: Python returns IP header only (20 bytes).
+#      Java returns transport header only (TCP 20-40, UDP 8).
+#      Affects: Fwd Seg Size Min (#1 feature), fwd/bwd_header_len
+#
+#   2. packet_length: Python returns len(packet) which includes
+#      Ethernet(14) + IP(20) + TCP(20) + payload = 54+ bytes.
+#      Java returns TCP/UDP payload only (0 for SYN).
+#      Affects: ALL packet length features (totlen, max, min,
+#      mean, std, var, avg — 17+ features)
+#
+# These patches are applied once at import time.
+# ============================================================
+
+_CFM_PATCHED = False
+
+def _patch_cicflowmeter():
+    """Monkey-patch the Python cicflowmeter to produce feature values
+    matching the Java CICFlowMeter used to create the CICIDS2018 dataset."""
+    global _CFM_PATCHED
+    if _CFM_PATCHED:
+        return
+    _CFM_PATCHED = True
+
+    try:
+        from scapy.layers.inet import IP, TCP, UDP
+        from cicflowmeter.features.flow_bytes import FlowBytes
+        from cicflowmeter.features.packet_length import PacketLength
+
+        # ── Fix 1: _header_size → return transport header only ──
+        # Java CICFlowMeter's Fwd Seg Size Min = min transport header size:
+        #   TCP with options  → dataofs*4 = 32 (12 bytes options) or 40 (20 bytes options)
+        #   TCP without opts  → 20
+        #   UDP               → 8
+        #   Other             → 0
+        # Training data values: Benign/Hulk/GoldenEye=32, SlowHTTPTest/Slowloris=40,
+        # HOIC=20. Python version was returning IP header only (always 20) — wrong.
+        # Note: Windows data packets have no TCP timestamps (header=20) while
+        # Linux training data mostly has timestamps (header=32). The SO_RCVBUF
+        # setting in attack scripts compensates for this OS difference.
+        def _header_size_fixed(self, packet):
+            if IP in packet:
+                if TCP in packet:
+                    dataofs = packet[TCP].dataofs
+                    return (dataofs if dataofs else 5) * 4  # TCP header (20-60)
+                elif UDP in packet:
+                    return 8                                # UDP header (always 8)
+            return 0
+
+        FlowBytes._header_size = _header_size_fixed
+
+        # ── Fix 2: get_packet_length → return payload only ──
+        # Java CICFlowMeter measures TCP/UDP payload length.
+        # Training data shows: TotLen Fwd Pkts = 0 for SYN-only flows.
+        # Python version uses len(packet) which includes Ethernet+IP+TCP headers
+        # adding 54+ bytes per packet — a massive systematic error.
+        def _payload_size(packet):
+            """Extract TCP/UDP payload size from a Scapy packet,
+            matching the Java CICFlowMeter's packet length measurement."""
+            if IP in packet:
+                # IP total length (includes IP header + transport header + payload)
+                ip_total = packet[IP].len
+                if ip_total is None:
+                    # Fallback: subtract Ethernet header from raw length
+                    ip_total = len(packet) - 14
+                ip_hdr = (packet[IP].ihl if packet[IP].ihl else 5) * 4
+
+                if TCP in packet:
+                    tcp_hdr = (packet[TCP].dataofs if packet[TCP].dataofs else 5) * 4
+                    return max(0, ip_total - ip_hdr - tcp_hdr)
+                elif UDP in packet:
+                    return max(0, ip_total - ip_hdr - 8)
+                else:
+                    return max(0, ip_total - ip_hdr)
+            # Non-IP packets: use raw length as fallback
+            return len(packet)
+
+        def get_packet_length_fixed(self, packet_direction=None):
+            if packet_direction is not None:
+                return [
+                    _payload_size(packet)
+                    for packet, direction in self.flow.packets
+                    if direction == packet_direction
+                ]
+            return [_payload_size(packet) for packet, _ in self.flow.packets]
+
+        PacketLength.get_packet_length = get_packet_length_fixed
+
+        print(f"{COLOR_GREEN}[FLOWMETER] Patched cicflowmeter to match Java CICFlowMeter features{COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   - _header_size: transport header TCP/UDP (was IP-only){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   - packet_length: payload-only (was full frame){COLOR_RESET}")
+
+    except Exception as e:
+        print(f"{COLOR_RED}[FLOWMETER] WARNING: Failed to patch cicflowmeter: {e}{COLOR_RESET}")
+        print(f"{COLOR_RED}[FLOWMETER] Classification accuracy may be degraded{COLOR_RESET}")
+
+# Apply the patch at import time
+_patch_cicflowmeter()
+
+
+# ============================================================
 # QueueWriter — bridges FlowSession output to the NIDS pipeline
 # ============================================================
 

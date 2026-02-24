@@ -2,6 +2,10 @@
 
 A machine learning-based Network Intrusion Detection System built on the **CICIDS2018** dataset. Uses a Random Forest classifier to detect network attacks in real-time or from batch CSV files.
 
+**Getting started?**
+1. First: [setup/README.md](setup/README.md) — choose and run a setup
+2. Then: [PROJECT_RUN.md](PROJECT_RUN.md) — how to run the NIDS
+
 ## What It Does
 
 - **ML Pipeline** — Loads the CICIDS2018 dataset (10 CSV files, ~6 GB), preprocesses it (cleaning, encoding, SMOTE balancing, feature selection), trains a Random Forest model, and evaluates it

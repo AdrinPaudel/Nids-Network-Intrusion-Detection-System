@@ -1,0 +1,11 @@
+# Device Attack Requirements
+# Python 3.12+
+# 
+# Only needed if you're running attacks from this folder.
+# For classification/training, use the root requirements.txt
+
+# SSH Brute Force - Full SSH handshake + authentication
+paramiko>=3.0.0
+
+# System Utilities (for IP discovery)
+psutil>=5.9.0

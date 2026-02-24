@@ -5,13 +5,14 @@ Verify CICIDS2018 Raw CSV Files
 Checks that all 10 CSV files exist in data/raw/ and all have the same column count (80).
 
 Run from project root with venv activated:
-    python setup/verify_csv_files.py
+    python setup/setup_full/verify_csv_files.py
 """
 
 import os
 import sys
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Project root = two levels up from setup/setup_full/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RAW_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
 
 EXPECTED_FILES = [
@@ -75,7 +76,7 @@ def main():
         print("ALL CHECKS PASSED — data/raw/ is ready for the ML pipeline.")
     else:
         print("ISSUES FOUND — fix them before running the ML pipeline.")
-        print("If a file has wrong column count, run: python setup/fix_tuesday_csv.py")
+        print("If a file has wrong column count, run: python setup/setup_full/fix_tuesday_csv.py")
     print()
 
 

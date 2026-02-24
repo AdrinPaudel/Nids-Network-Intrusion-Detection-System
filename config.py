@@ -390,7 +390,6 @@ TARGET_INFILTRATION_F1 = 0.89  # >89% for hardest class
 
 # Python CICFlowMeter (Scapy-based flow capture) settings
 # These control how quickly flows are emitted for classification.
-# Matching the original Java CICFlowMeter's real-time behavior.
 FLOWMETER_IDLE_THRESHOLD = 15       # Emit flow after N seconds of no new packets
 FLOWMETER_AGE_THRESHOLD = 30        # Emit flow after N seconds total duration
 FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (seconds)
@@ -417,12 +416,8 @@ CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT = 1.0  # Max seconds to wait for classif
 CLASSIFICATION_BENIGN_CLASS = "Benign"       # Benign class name
 CLASSIFICATION_SUSPICIOUS_THRESHOLD = 0.25   # Confidence threshold for 2nd-highest (YELLOW alert)
 
-# CICFlowMeter source settings
+# Flow identification settings
 CLASSIFICATION_IDENTIFIER_COLUMNS = ["Flow ID", "Src IP", "Src Port", "Dst IP", "Dst Port", "Protocol", "Timestamp"]
-CLASSIFICATION_SUBPROCESS_TIMEOUT_LIST = 30  # Timeout for listing interfaces
-CLASSIFICATION_SUBPROCESS_TIMEOUT_MAIN = 45  # Timeout for main process wait (Java needs time to dump remaining flows)
-CLASSIFICATION_SUBPROCESS_TIMEOUT_FORCE = 10  # Timeout for forced termination
-CLASSIFICATION_SUBPROCESS_TIMEOUT_JOIN = 30  # Timeout for reader thread join (flows trickle in after STOP)
 
 # WiFi interface detection settings
 # Windows: matched against interface description (e.g. "Intel(R) Wi-Fi 6 AX201")

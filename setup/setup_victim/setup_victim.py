@@ -1,20 +1,23 @@
 #!/usr/bin/env python
 """
-Device Attack Setup Check - Cross-Platform
-Checks if the device (VM or server) is ready to receive attacks.
-Asks before changing anything.
+Victim Device Setup — Cross-Platform
+=====================================
+Run this ON THE TARGET DEVICE (VM or server) to check readiness for attack testing.
+Checks everything, asks before changing anything.
 
 Usage:
-    Linux:   sudo python setup_device.py
-    Windows: python setup_device.py  (run as Administrator)
+    Linux:   sudo python setup/setup_victim/setup_victim.py
+    Windows: python setup/setup_victim/setup_victim.py  (run as Administrator)
 
 What it checks:
     1. Network interfaces and device IP
     2. SSH server (installed? running?) — asks before installing/starting
-    3. Firewall rules (Windows) — asks before adding
-    4. libpcap / Npcap — tells you if missing
-    5. NIDS project, venv, trained models
-    6. Packet capture permissions (Linux) — asks before granting
+    3. Web server (Apache/IIS/Nginx) — asks before installing/starting
+    4. FTP server (vsftpd) — asks before installing/starting
+    5. Firewall rules (Windows) — asks before adding
+    6. libpcap / Npcap — tells you if missing
+    7. NIDS project, venv, trained models
+    8. Packet capture permissions (Linux) — asks before granting
 """
 
 import sys
@@ -91,29 +94,23 @@ def get_all_ips():
 
 def find_nids_dir():
     """Find the NIDS project directory"""
-    # Check script's parent directory first (most reliable)
+    # Check relative to this script (setup/setup_victim/ -> project root)
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        script_parent = os.path.dirname(script_dir)
-        if os.path.isfile(os.path.join(script_parent, "classification.py")):
-            return script_parent
+        project_root = os.path.dirname(os.path.dirname(script_dir))
+        if os.path.isfile(os.path.join(project_root, "classification.py")):
+            return project_root
     except:
         pass
-    
+
     # Check home directory variations
     home = os.path.expanduser("~")
     candidates = [
         os.path.join(home, "Nids"),
         os.path.join(home, "nids"),
         os.path.join(home, "NIDS"),
-        os.path.join(home, "Nids-Network-Intrusion-Detection-System"),
-        os.path.join(home, "nids-network-intrusion-detection-system"),
         os.path.join(home, "Desktop", "Nids"),
-        os.path.join(home, "Desktop", "Nids-Network-Intrusion-Detection-System"),
-        "/root/Nids",
-        "/root/nids",
-        "/home/Nids",
-        "/home/nids",
+        os.path.join(home, "Desktop", "NIDS"),
     ]
     for path in candidates:
         if os.path.isfile(os.path.join(path, "classification.py")):
@@ -134,7 +131,6 @@ def setup_linux():
     ssh_installed = False
     ssh_running = False
 
-    # Check installed
     ok1, _ = run_cmd("dpkg -l openssh-server 2>/dev/null | grep -q '^ii'")
     ok2, _ = run_cmd("rpm -q openssh-server 2>/dev/null")
     ok3, _ = run_cmd("command -v sshd")
@@ -150,15 +146,14 @@ def setup_linux():
             print("      Installing...")
             if os.path.exists("/usr/bin/apt-get"):
                 run_cmd("apt-get update -qq")
-                ok, _ = run_cmd("apt-get install -y -qq openssh-server")
+                run_cmd("apt-get install -y -qq openssh-server")
             elif os.path.exists("/usr/bin/dnf"):
-                ok, _ = run_cmd("dnf install -y openssh-server")
+                run_cmd("dnf install -y openssh-server")
             elif os.path.exists("/usr/bin/yum"):
-                ok, _ = run_cmd("yum install -y openssh-server")
+                run_cmd("yum install -y openssh-server")
             elif os.path.exists("/usr/bin/pacman"):
-                ok, _ = run_cmd("pacman -S --noconfirm openssh")
+                run_cmd("pacman -S --noconfirm openssh")
             else:
-                ok = False
                 print("      [!] Unknown package manager")
 
             ok_check, _ = run_cmd("command -v sshd")
@@ -170,10 +165,8 @@ def setup_linux():
                 issues += 1
         else:
             print("      [SKIP] Not installing")
-            print("      To install manually: sudo apt install openssh-server")
             issues += 1
 
-    # Check running
     if ssh_installed:
         ok1, _ = run_cmd("systemctl is-active --quiet ssh")
         ok2, _ = run_cmd("systemctl is-active --quiet sshd")
@@ -195,12 +188,11 @@ def setup_linux():
                     issues += 1
             else:
                 print("      [SKIP] SSH not started")
-                print("      To start manually: sudo systemctl start ssh")
                 issues += 1
 
     print()
 
-    # --- Web Server (needed for DoS/DDoS HTTP attacks) ---
+    # --- Web Server ---
     print("  [2] Checking Web Server (needed for DoS and DDoS HTTP attacks)...")
     print()
 
@@ -208,7 +200,6 @@ def setup_linux():
     web_running = False
     web_name = ""
 
-    # Check Apache
     ok_apache, _ = run_cmd("dpkg -l apache2 2>/dev/null | grep -q '^ii'")
     ok_httpd, _ = run_cmd("rpm -q httpd 2>/dev/null")
     if ok_apache:
@@ -220,7 +211,6 @@ def setup_linux():
         web_name = "httpd"
         print("      [OK] Apache (httpd) is installed")
 
-    # Check Nginx if no Apache
     if not web_installed:
         ok_nginx_deb, _ = run_cmd("dpkg -l nginx 2>/dev/null | grep -q '^ii'")
         ok_nginx_rpm, _ = run_cmd("rpm -q nginx 2>/dev/null")
@@ -252,31 +242,28 @@ def setup_linux():
     else:
         print("      [!] No web server installed")
         print("          A web server on port 80 is REQUIRED for DoS and DDoS attacks.")
-        print("          (Hulk, Slowloris, GoldenEye, SlowHTTPTest, LOIC, HOIC)")
         print()
         if ask_yes_no("Install Apache2?"):
             print("      Installing...")
             if os.path.exists("/usr/bin/apt-get"):
                 run_cmd("apt-get update -qq")
-                ok, _ = run_cmd("apt-get install -y -qq apache2")
+                run_cmd("apt-get install -y -qq apache2")
                 web_name = "apache2"
             elif os.path.exists("/usr/bin/dnf"):
-                ok, _ = run_cmd("dnf install -y httpd")
+                run_cmd("dnf install -y httpd")
                 web_name = "httpd"
             elif os.path.exists("/usr/bin/yum"):
-                ok, _ = run_cmd("yum install -y httpd")
+                run_cmd("yum install -y httpd")
                 web_name = "httpd"
             elif os.path.exists("/usr/bin/pacman"):
-                ok, _ = run_cmd("pacman -S --noconfirm apache")
+                run_cmd("pacman -S --noconfirm apache")
                 web_name = "apache"
             else:
-                ok = False
                 print("      [!] Unknown package manager")
 
             if web_name:
-                ok_check, _ = run_cmd(f"systemctl list-unit-files {web_name}.service 2>/dev/null | grep -q {web_name}")
-                ok_check2, _ = run_cmd(f"command -v {web_name}")
-                if ok_check or ok_check2 or ok:
+                ok_check, _ = run_cmd(f"command -v {web_name}")
+                if ok_check:
                     web_installed = True
                     print("      [OK] Installed")
                     if ask_yes_no(f"Start {web_name} now?"):
@@ -288,17 +275,15 @@ def setup_linux():
                     issues += 1
         else:
             print("      [SKIP] Not installing web server")
-            print("      To install manually: sudo apt install apache2 && sudo systemctl start apache2")
             issues += 1
 
     print()
 
-    # --- FTP Server (needed for FTP Brute Force) ---
+    # --- FTP Server ---
     print("  [3] Checking FTP Server (needed for FTP Brute Force attack)...")
     print()
 
     ftp_installed = False
-    ftp_running = False
 
     ok_ftp_deb, _ = run_cmd("dpkg -l vsftpd 2>/dev/null | grep -q '^ii'")
     ok_ftp_rpm, _ = run_cmd("rpm -q vsftpd 2>/dev/null")
@@ -308,21 +293,20 @@ def setup_linux():
         print("      [OK] vsftpd is installed")
     else:
         print("      [!] vsftpd FTP server NOT installed")
-        print("          Needed for FTP Brute Force attack (CICIDS2018 used Patator on FTP)")
         print()
         if ask_yes_no("Install vsftpd?"):
             print("      Installing...")
             if os.path.exists("/usr/bin/apt-get"):
                 run_cmd("apt-get update -qq")
-                ok, _ = run_cmd("apt-get install -y -qq vsftpd")
+                run_cmd("apt-get install -y -qq vsftpd")
             elif os.path.exists("/usr/bin/dnf"):
-                ok, _ = run_cmd("dnf install -y vsftpd")
+                run_cmd("dnf install -y vsftpd")
             elif os.path.exists("/usr/bin/yum"):
-                ok, _ = run_cmd("yum install -y vsftpd")
+                run_cmd("yum install -y vsftpd")
             elif os.path.exists("/usr/bin/pacman"):
-                ok, _ = run_cmd("pacman -S --noconfirm vsftpd")
+                run_cmd("pacman -S --noconfirm vsftpd")
             else:
-                ok = False
+                print("      [!] Unknown package manager")
 
             ok_check, _ = run_cmd("command -v vsftpd")
             ok_check2, _ = run_cmd("dpkg -l vsftpd 2>/dev/null | grep -q '^ii'")
@@ -333,12 +317,10 @@ def setup_linux():
                 print("      [!] Installation failed")
         else:
             print("      [SKIP] Not installing FTP")
-            print("      FTP brute force won't work, but SSH brute force will.")
 
     if ftp_installed:
         ok_run, _ = run_cmd("systemctl is-active --quiet vsftpd")
         if ok_run:
-            ftp_running = True
             print("      [OK] vsftpd service is running")
         else:
             print("      [!] vsftpd is installed but NOT running")
@@ -384,20 +366,8 @@ def setup_linux():
 
     print()
 
-    # --- net-tools ---
-    print("  [5] Checking network tools...")
-    print()
-    ok, _ = run_cmd("command -v ifconfig")
-    if ok:
-        print("      [OK] net-tools installed")
-    else:
-        print("      [-] net-tools not installed (optional)")
-        print("      To install: sudo apt install net-tools")
-
-    print()
-
     # --- Packet capture permissions ---
-    print("  [6] Checking packet capture permissions...")
+    print("  [5] Checking packet capture permissions...")
     print()
 
     nids_dir = find_nids_dir()
@@ -412,10 +382,8 @@ def setup_linux():
                 ok_cap, caps = run_cmd(f"getcap {real_path}")
                 if ok_cap and "cap_net_raw" in caps:
                     print(f"      [OK] cap_net_raw already set on: {real_path}")
-                    print("      (Can run classification.py without sudo)")
                 else:
                     print(f"      [!] cap_net_raw NOT set on: {real_path}")
-                    print("          Without this you must use sudo to run NIDS.")
                     print()
                     if ask_yes_no("Grant packet capture permission?"):
                         run_cmd(f"setcap cap_net_raw,cap_net_admin=eip {real_path}")
@@ -427,15 +395,8 @@ def setup_linux():
                     else:
                         print("      [SKIP] Not granting")
                         print(f"      To do manually: sudo setcap cap_net_raw,cap_net_admin=eip {real_path}")
-                        print("      Or use: sudo ./venv/bin/python classification.py")
-            else:
-                print("      [!] Could not resolve python path")
-                print("      Use: sudo ./venv/bin/python classification.py")
-        else:
-            print("      [!] venv python binary not found — run setup.sh first")
     else:
         print("      [SKIP] No NIDS venv found")
-        print("      Use: sudo ./venv/bin/python classification.py")
 
     print()
     return issues
@@ -453,7 +414,6 @@ def setup_windows():
 
     ok, _ = run_cmd("sc query sshd")
     if ok:
-        # Installed — check running
         ok_run, out = run_cmd('sc query sshd | findstr "RUNNING"')
         if ok_run:
             print("      [OK] OpenSSH Server is installed and running")
@@ -471,61 +431,46 @@ def setup_windows():
                     issues += 1
             else:
                 print("      [SKIP] SSH not started")
-                print("      To start manually:")
-                print("        sc config sshd start= auto")
-                print("        net start sshd")
                 issues += 1
     else:
         print("      [!] OpenSSH Server is NOT installed")
-        print("          Needed for the Brute Force attack.")
         print()
         if ask_yes_no("Install OpenSSH Server?"):
             print("      Installing...")
             ok_inst, _ = run_cmd('powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"')
             if ok_inst:
                 print("      [OK] Installed")
-                print()
                 if ask_yes_no("Start SSH now?"):
                     run_cmd("sc config sshd start= auto")
                     run_cmd("net start sshd")
                     print("      [OK] SSH started")
-                else:
-                    print("      [SKIP] SSH not started")
-                    print("      To start: net start sshd")
             else:
                 print("      [!] Failed to install")
-                print("      Install manually:")
-                print("        Settings > Apps > Optional Features > Add a feature > OpenSSH Server")
                 issues += 1
         else:
             print("      [SKIP] Not installing SSH")
-            print("      To install manually:")
-            print("        Settings > Apps > Optional Features > Add a feature > OpenSSH Server")
             issues += 1
 
     print()
 
-    # --- Web Server (needed for DoS/DDoS) ---
+    # --- Web Server ---
     print("  [2] Checking Web Server (needed for DoS and DDoS attacks)...")
     print()
 
-    # Check if IIS is running or any web server on port 80
     ok_iis, _ = run_cmd('sc query W3SVC 2>NUL | findstr "RUNNING"')
     if ok_iis:
         print("      [OK] IIS Web Server is running")
     else:
-        # Check if any process is listening on port 80
         ok_80, out_80 = run_cmd('netstat -an | findstr ":80 "')
         if ok_80 and "LISTEN" in out_80.upper():
             print("      [OK] A web server is listening on port 80")
         else:
             print("      [!] No web server running on port 80")
-            print("          DoS/DDoS attacks (Hulk, Slowloris, LOIC, HOIC) need a web server.")
+            print("          DoS/DDoS attacks need a web server on port 80.")
             print()
             print("      Options:")
             print("        1. Install IIS via: Settings > Apps > Optional Features > IIS")
-            print("        2. Or install Apache/Nginx manually")
-            print("        3. Or use Python:  python -m http.server 80  (simple test server)")
+            print("        2. Or: python -m http.server 80  (simple test server)")
             issues += 1
 
     print()
@@ -567,12 +512,6 @@ def setup_windows():
                 print(f"      [OK] Added: {name}")
         else:
             print("      [SKIP] Not adding rules")
-            print("      To add manually:")
-            for name, proto, port in missing_rules:
-                if port:
-                    print(f"        netsh advfirewall firewall add rule name=\"{name}\" dir=in action=allow protocol={proto} localport={port}")
-                else:
-                    print(f"        netsh advfirewall firewall add rule name=\"{name}\" dir=in action=allow protocol={proto}")
             issues += 1
 
     print()
@@ -592,7 +531,6 @@ def setup_windows():
     else:
         print("      [!] Npcap NOT found — NIDS packet capture won't work")
         print('      Download from: https://npcap.com')
-        print('      Check "Install Npcap in WinPcap API-compatible Mode" during install')
         issues += 1
 
     print()
@@ -613,23 +551,22 @@ def check_nids_project():
         if os.path.isdir(os.path.join(nids_dir, "venv")):
             print("      [OK] Virtual environment exists")
         else:
-            print("      [!] No venv — run setup.sh / setup.bat first")
+            print("      [!] No venv — run basic setup first")
             issues += 1
 
         if os.path.isfile(os.path.join(nids_dir, "trained_model", "random_forest_model.joblib")):
-            print("      [OK] Default model (5-class: Benign, Botnet, Brute Force, DDoS, DoS)")
+            print("      [OK] Default model (5-class)")
         else:
             print("      [!] No default model found")
             issues += 1
 
         if os.path.isfile(os.path.join(nids_dir, "trained_model_all", "random_forest_model.joblib")):
-            print("      [OK] All model (6-class: + Infilteration)")
+            print("      [OK] All model (6-class)")
         else:
             print("      [-] No 6-class model (optional)")
             warnings += 1
     else:
         print("      [!] NIDS project not found")
-        print("      Make sure you git cloned and ran the setup script")
         issues += 1
 
     return nids_dir, issues, warnings
@@ -642,31 +579,28 @@ def main():
     os_name = platform.system()
 
     print(f"\n{'='*60}")
-    print(f"  Device Attack Setup Check — {os_name}")
+    print(f"  Victim Device Setup Check — {os_name}")
     print(f"{'='*60}")
-    print(f"  Checks if your device (VM or server) is ready to receive attacks.")
+    print(f"  Checks if this device is ready to receive attacks.")
     print(f"  Will NOT change anything without asking first.")
     print(f"{'='*60}\n")
 
     if not is_admin():
         if os_name == "Linux":
-            print("  [ERROR] Run with sudo:  sudo python setup_device.py")
+            print("  [ERROR] Run with sudo:  sudo python setup/setup_victim/setup_victim.py")
         else:
             print("  [ERROR] Run as Administrator")
         sys.exit(1)
 
     print("  [OK] Running with admin privileges\n")
 
-    # Network interface guidance
-    print("  [INFO] Recommended network interface setup:")
-    print("    For VMs:     At least 1 Host-Only adapter (attacker-to-target communication)")
-    print("                 + 1 Bridged or NAT adapter (internet access)")
-    print("    For servers: At least 1 NIC with a reachable IP from your attacker machine")
+    print("  [INFO] Recommended network setup:")
+    print("    For VMs:     Host-Only adapter (attacker communication) + NAT (internet)")
+    print("    For servers: At least 1 NIC reachable from attacker machine")
     print()
 
-    # Step 1: Show IPs
-    print("  [*] Network interfaces:")
     ips = get_all_ips()
+    print("  Network interfaces:")
     if ips:
         for ip in ips:
             print(f"      -> {ip}")
@@ -674,20 +608,17 @@ def main():
         print("      [!] Could not detect IPs")
     print()
 
-    # Platform-specific checks
     if os_name == "Linux":
         issues = setup_linux()
     elif os_name == "Windows":
         issues = setup_windows()
     else:
-        print(f"  [!] Untested OS: {os_name} — trying Linux checks")
+        print(f"  [!] Untested OS: {os_name}")
         issues = setup_linux()
 
-    warnings = 0  # Initialize warnings tracker
+    warnings = 0
 
-    # NIDS project check (both platforms)
-    step_num = 7 if os_name == "Linux" else 5
-    print(f"  [{step_num}] Checking NIDS project...")
+    print("  Checking NIDS project...")
     print()
     nids_dir, nids_issues, nids_warnings = check_nids_project()
     issues += nids_issues
@@ -698,45 +629,36 @@ def main():
     print(f"{'='*60}")
     if issues == 0:
         if warnings == 0:
-            print(f"  ✓ ALL CHECKS PASSED — Device is ready for attacks!")
+            print(f"  ALL CHECKS PASSED — Device is ready for attacks!")
         else:
-            print(f"  ✓ CRITICAL CHECKS PASSED — {warnings} optional feature(s) not configured")
+            print(f"  CRITICAL CHECKS PASSED — {warnings} optional warning(s)")
     else:
-        print(f"  ✗ CHECKS DONE — {issues} critical issue(s), {warnings} warning(s) (see above)")
+        print(f"  {issues} issue(s) found, {warnings} warning(s)")
     print(f"{'='*60}\n")
 
-    print("  Your device IP:")
     if ips:
-        for ip in ips:
-            print(f"    -> {ip}")
-    else:
-        print("    Run: ip addr show  (Linux) or ipconfig (Windows)")
-
+        print(f"  Your device IP: {ips[0]}")
     print()
-    print("  Required services for attacks:")
-    print("    Web server (Apache/IIS) - port 80  -> DoS (Hulk, Slowloris, GoldenEye) + DDoS (LOIC, HOIC)")
-    print("    SSH server              - port 22  -> Brute Force SSH")
-    print("    FTP server (vsftpd)     - port 21  -> Brute Force FTP")
+    print("  Required services:")
+    print("    Web server  - port 80  -> DoS + DDoS attacks")
+    print("    SSH server  - port 22  -> Brute Force SSH")
+    print("    FTP server  - port 21  -> Brute Force FTP")
     print()
-    print("  To start NIDS:")
+    print("  To start NIDS on this device:")
     if nids_dir:
         print(f"    cd {nids_dir}")
-    else:
-        print("    cd ~/Nids")
-
     if os_name == "Linux":
         print("    source venv/bin/activate")
         print("    sudo ./venv/bin/python classification.py --duration 600")
     else:
         print("    venv\\Scripts\\activate")
         print("    python classification.py --duration 600")
-
     print()
     print("  Then from your attacker machine:")
     if ips:
-        print(f"    python run_all_attacks.py {ips[0]}")
+        print(f"    python setup/setup_attacker/device_attack.py {ips[0]}")
     else:
-        print("    python run_all_attacks.py <DEVICE_IP>")
+        print("    python setup/setup_attacker/device_attack.py <DEVICE_IP>")
     print(f"\n{'='*60}\n")
 
 

@@ -14,8 +14,9 @@ Usage:
     python classification.py                     # Live capture, auto-detect, 120s, 5-class model
     python classification.py --duration 300      # Live capture for 5 minutes
     python classification.py --model all         # Use 'all' model (6-class with Infilteration)
-    python classification.py --interface "..."   # Specify network interface
-    python classification.py --batch             # Batch CSV classification (interactive)
+    python classification.py --interface         # Interactive interface selection menu
+    python classification.py --interface "WiFi"  # Use specific interface by name
+    python classification.py --batch             # Batch CSV classification (interactive file selection)
     python classification.py --batch file.csv    # Batch CSV classification (specific file)
     python classification.py --help              # Show all options
     
@@ -654,8 +655,8 @@ Examples:
         help="Model variant: 'default' or 'all' (with Infilteration)"
     )
     parser.add_argument(
-        "--interface", type=str, default=None,
-        help="Network interface device name (default: interactive selection)"
+        "--interface", type=str, nargs='?', const='SELECT', default=None,
+        help="Network interface: optionally specify adapter name (default: interactive selection)"
     )
     parser.add_argument(
         "--list-interfaces", action="store_true",
@@ -720,13 +721,30 @@ Examples:
                 use_all = detected_all
     else:
         # Live mode - get interface
-        interface_name = args.interface
-        if interface_name is None and not args.vm:
+        interface_name = None
+        
+        if args.vm:
+            # VM mode: auto-select, don't ask user
+            interface_name = None
+        elif args.interface == 'SELECT' or args.interface is None:
+            # Interactive mode: show menu and let user choose
             interface_name = select_interface_interactive()
             if interface_name is None:
                 print(f"{COLOR_RED}[MAIN] No interface selected. Exiting.{COLOR_RESET}")
                 sys.exit(1)
-        # If --vm is set, interface_name stays None; session._start_live() will auto-select VM adapter
+        else:
+            # Explicit interface provided — verify it exists
+            interface_name = args.interface
+            all_interfaces = list_interfaces()
+            iface_names = {iface['name'] for iface in all_interfaces}
+            
+            if interface_name not in iface_names:
+                print(f"{COLOR_RED}[MAIN] Interface not found: {interface_name}{COLOR_RESET}")
+                print(f"{COLOR_YELLOW}Available interfaces:{COLOR_RESET}")
+                for iface in all_interfaces:
+                    print(f"  {iface['name']:<40} {iface['description']}")
+                print(f"\n{COLOR_YELLOW}Use --list-interfaces to see all, or omit --interface for interactive selection.{COLOR_RESET}")
+                sys.exit(1)
 
     # Create session ID based on timestamp + model + duration
     import datetime

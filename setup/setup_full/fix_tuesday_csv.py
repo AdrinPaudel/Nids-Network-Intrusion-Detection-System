@@ -12,15 +12,15 @@ This script:
   4. Overwrites the file
 
 Run from project root with venv activated:
-    python setup/fix_tuesday_csv.py
+    python setup/setup_full/fix_tuesday_csv.py
 """
 
 import os
 import sys
 import pandas as pd
 
-# Project root = one level up from setup/
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Project root = two levels up from setup/setup_full/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RAW_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
 
 TUESDAY_FILE = "Thuesday-20-02-2018_TrafficForML_CICFlowMeter.csv"
