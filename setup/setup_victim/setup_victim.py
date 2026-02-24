@@ -40,11 +40,13 @@ def is_admin():
         return os.geteuid() == 0
 
 
-def run_cmd(cmd, shell=True, check=False):
+def run_cmd(cmd, shell=True, check=False, timeout=30):
     """Run a command and return (success, output)"""
     try:
-        result = subprocess.run(cmd, shell=shell, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, shell=shell, capture_output=True, text=True, timeout=timeout)
         return result.returncode == 0, result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
     except Exception as e:
         return False, str(e)
 
@@ -413,6 +415,10 @@ def setup_windows():
     print("  [1] Checking SSH Server (needed for Brute Force attack)...")
     print()
     
+    # Get Windows version
+    ok_ver, out_ver = run_cmd("ver")
+    is_win10 = "Windows 10" in out_ver if ok_ver else False
+    
     # Try multiple possible service names
     ssh_found = False
     ssh_service_name = "sshd"
@@ -429,7 +435,6 @@ def setup_windows():
         sshd_exe_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "sshd.exe")
         if os.path.exists(sshd_exe_path):
             ssh_found = True
-            print(f"      [DEBUG] Found sshd.exe at: {sshd_exe_path}")
     
     if ssh_found:
         ok_run, out = run_cmd(f'sc query {ssh_service_name} | findstr "RUNNING"')
@@ -455,52 +460,89 @@ def setup_windows():
                 issues += 1
     else:
         print("      [!] OpenSSH Server is NOT installed")
+        if is_win10:
+            print("      [INFO] On Windows 10, OpenSSH may not be available in all builds")
+            print()
         print()
+        
         if ask_yes_no("Install OpenSSH Server?"):
-            print("      Installing (this may take 1-2 minutes)...")
-            print("      Running: Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0")
-            ok_inst, out_inst = run_cmd('powershell -NoProfile -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0; $?"')
-            print(f"      [DEBUG] Installation result: {out_inst}")
+            print("      Installing (downloading ~100MB from Microsoft, may take 2-5 minutes)...")
+            print("      Attempting fastest method (DISM)...")
             
-            if ok_inst and "True" in out_inst:
-                print("      [OK] Installation complete. Waiting for service to register...")
-                time.sleep(4)  # Give Windows time to register the new service
+            # Try DISM first (usually faster)
+            ok_dism, out_dism = run_cmd('dism /online /enable-feature /featurename:OpenSSH-Server /all /norestart', timeout=600)
+            
+            if ok_dism or "completed successfully" in out_dism.lower() or "feature was already" in out_dism.lower():
+                print("      [OK] DISM installation successful")
+                ok_inst = True
+            else:
+                # Fallback to PowerShell if DISM fails
+                print("      DISM method didn't work, trying PowerShell (slower)...")
+                ok_inst, out_inst = run_cmd('powershell -NoProfile -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction Stop; exit $?"', timeout=600)
                 
-                # Try to ensure service exists and is running
-                run_cmd("sc config sshd start= auto")
-                time.sleep(1)
-                run_cmd("net start sshd")
-                time.sleep(2)
-                
-                ok_check, _ = run_cmd('sc query sshd | findstr "RUNNING"')
-                if ok_check:
-                    print("      [OK] SSH installed and running")
+                if ok_inst:
+                    print("      [OK] PowerShell installation successful")
                 else:
-                    print("      [!] SSH installed but not running yet")
-                    print("      Trying to start manually...")
-                    run_cmd("net stop sshd 2>nul")
+                    print("      [!] Both installation methods failed")
+                    ok_inst = False
+            
+            if out_dism == "TIMEOUT" or out_inst == "TIMEOUT":
+                print("      [!] Installation timed out (Windows Capability download is very slow)")
+                print("      Your internet may be slow, or Windows Update is running")
+                print("      Try:")
+                print("        1. Close Windows Update (Settings > Update & Security)")
+                print("        2. Restart your computer")
+                print("        3. Try running setup_victim.bat again")
+                issues += 1
+            elif ok_inst:
+                time.sleep(4)  # Give Windows time to register
+                
+                # Check if it actually got installed
+                ssh_found_after = False
+                for service_name in ["sshd", "OpenSSH-Server", "SSHServer"]:
+                    ok, _ = run_cmd(f"sc query {service_name}")
+                    if ok:
+                        ssh_service_name = service_name
+                        ssh_found_after = True
+                        break
+                
+                if not ssh_found_after:
+                    sshd_exe_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "sshd.exe")
+                    if os.path.exists(sshd_exe_path):
+                        ssh_found_after = True
+                
+                if ssh_found_after:
+                    print("      [OK] Installation complete")
+                    # Try to start
+                    run_cmd("sc config sshd start= auto")
                     time.sleep(1)
                     run_cmd("net start sshd")
                     time.sleep(2)
-                    ok_check2, _ = run_cmd('sc query sshd | findstr "RUNNING"')
-                    if ok_check2:
-                        print("      [OK] SSH now running")
+                    ok_check, _ = run_cmd('sc query sshd | findstr "RUNNING"')
+                    if ok_check:
+                        print("      [OK] SSH installed and running")
                     else:
-                        print("      [!] SSH service exists but won't start")
-                        print("      Try: Restart Windows, then re-run this script")
+                        print("      [!] SSH installed but not starting")
+                        print("      Try: Restart your computer, then re-run this script")
                         issues += 1
-            else:
-                print("      [!] Installation may have failed")
-                print("      [DEBUG] Output: " + out_inst)
-                print()
-                print("      Manual fix:")
-                print("        1. Press Windows Key + X, select 'Run'")
-                print("        2. Type: ms-settings:optionalfeatures")
-                print("        3. Click '+ Add a feature'")
-                print("        4. Search for 'OpenSSH Server'")
-                print("        5. Install it and restart")
-                print("        6. Re-run this script")
-                issues += 1
+                else:
+                    print("      [!] Installation failed")
+                    if is_win10:
+                        print()
+                        print("      Windows 10 issue - OpenSSH Server may not be available")
+                        print("      in this Windows 10 build.")
+                        print()
+                        print("      Options:")
+                        print("        A) Update Windows 10 to latest version (Settings > Update)")
+                        print("        B) Upgrade to Windows 11 (has better SSH support)")
+                        print("        C) Use WSL2 (Windows Subsystem for Linux) for SSH")
+                        print()
+                        print("      For now, continue - you may still test other attacks")
+                        issues += 1
+                    else:
+                        print("      Manual installation: Settings > Apps > Optional Features")
+                        print("                         > '+ Add a feature' > OpenSSH Server")
+                        issues += 1
         else:
             print("      [SKIP] Not installing SSH")
             issues += 1
