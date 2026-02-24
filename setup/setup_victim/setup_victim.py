@@ -413,9 +413,26 @@ def setup_windows():
     print("  [1] Checking SSH Server (needed for Brute Force attack)...")
     print()
     
-    ok, _ = run_cmd("sc query sshd")
-    if ok:
-        ok_run, out = run_cmd('sc query sshd | findstr "RUNNING"')
+    # Try multiple possible service names
+    ssh_found = False
+    ssh_service_name = "sshd"
+    
+    for service_name in ["sshd", "OpenSSH-Server", "SSHServer"]:
+        ok, _ = run_cmd(f"sc query {service_name}")
+        if ok:
+            ssh_service_name = service_name
+            ssh_found = True
+            break
+    
+    # Also check for sshd.exe in System32
+    if not ssh_found:
+        sshd_exe_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "sshd.exe")
+        if os.path.exists(sshd_exe_path):
+            ssh_found = True
+            print(f"      [DEBUG] Found sshd.exe at: {sshd_exe_path}")
+    
+    if ssh_found:
+        ok_run, out = run_cmd(f'sc query {ssh_service_name} | findstr "RUNNING"')
         if ok_run:
             print("      [OK] OpenSSH Server is installed and running")
         else:
@@ -423,15 +440,15 @@ def setup_windows():
             print()
             if ask_yes_no("Start SSH service?"):
                 print("      Starting...")
-                run_cmd("sc config sshd start= auto")
-                run_cmd("net start sshd")
+                run_cmd(f"sc config {ssh_service_name} start= auto")
+                run_cmd(f"net start {ssh_service_name}")
                 time.sleep(2)  # Wait for service to start
-                ok_run2, _ = run_cmd('sc query sshd | findstr "RUNNING"')
+                ok_run2, _ = run_cmd(f'sc query {ssh_service_name} | findstr "RUNNING"')
                 if ok_run2:
                     print("      [OK] SSH started")
                 else:
                     print("      [!] Failed to start SSH")
-                    print("      Try: net start sshd  (manually in Admin cmd)")
+                    print(f"      Try manually: net start {ssh_service_name}  (in Admin cmd)")
                     issues += 1
             else:
                 print("      [SKIP] SSH not started")
@@ -441,10 +458,13 @@ def setup_windows():
         print()
         if ask_yes_no("Install OpenSSH Server?"):
             print("      Installing (this may take 1-2 minutes)...")
-            ok_inst, _ = run_cmd('powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"')
-            if ok_inst:
+            print("      Running: Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0")
+            ok_inst, out_inst = run_cmd('powershell -NoProfile -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0; $?"')
+            print(f"      [DEBUG] Installation result: {out_inst}")
+            
+            if ok_inst and "True" in out_inst:
                 print("      [OK] Installation complete. Waiting for service to register...")
-                time.sleep(3)  # Give Windows time to register the new service
+                time.sleep(4)  # Give Windows time to register the new service
                 
                 # Try to ensure service exists and is running
                 run_cmd("sc config sshd start= auto")
@@ -457,7 +477,7 @@ def setup_windows():
                     print("      [OK] SSH installed and running")
                 else:
                     print("      [!] SSH installed but not running yet")
-                    print("      Trying once more...")
+                    print("      Trying to start manually...")
                     run_cmd("net stop sshd 2>nul")
                     time.sleep(1)
                     run_cmd("net start sshd")
@@ -466,13 +486,20 @@ def setup_windows():
                     if ok_check2:
                         print("      [OK] SSH now running")
                     else:
-                        print("      [!] SSH still not running. Try manual start:")
-                        print("          1. Open Admin Command Prompt")
-                        print("          2. Run: net start sshd")
+                        print("      [!] SSH service exists but won't start")
+                        print("      Try: Restart Windows, then re-run this script")
                         issues += 1
             else:
-                print("      [!] Failed to install OpenSSH")
-                print("      Manual fix: Settings > Apps > Optional Features > '+ Add a feature' > OpenSSH Server")
+                print("      [!] Installation may have failed")
+                print("      [DEBUG] Output: " + out_inst)
+                print()
+                print("      Manual fix:")
+                print("        1. Press Windows Key + X, select 'Run'")
+                print("        2. Type: ms-settings:optionalfeatures")
+                print("        3. Click '+ Add a feature'")
+                print("        4. Search for 'OpenSSH Server'")
+                print("        5. Install it and restart")
+                print("        6. Re-run this script")
                 issues += 1
         else:
             print("      [SKIP] Not installing SSH")
