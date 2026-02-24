@@ -26,7 +26,7 @@ from config import (
     CLASSIFICATION_EXCLUDE_KEYWORDS, COLOR_CYAN, COLOR_GREEN, COLOR_RED,
     COLOR_YELLOW, COLOR_RESET
 )
-from classification.flowmeter_source import start_flowmeter_capture
+from classification.flowmeter_source import FlowMeterSource
 
 # Create temp folder
 TEMP_DIR = os.path.join(PROJECT_ROOT, "temp_flows")
@@ -178,18 +178,16 @@ def main():
     print(f"{COLOR_CYAN}[CAPTURE] Starting live capture for {args.duration}s...{COLOR_RESET}")
     print(f"{COLOR_CYAN}[CAPTURE] Temp folder: {TEMP_DIR}{COLOR_RESET}\n")
     
-    capture_thread = threading.Thread(
-        target=start_flowmeter_capture,
-        args=(interface, flow_queue, args.duration, False),
-        daemon=True
-    )
-    capture_thread.start()
+    # Create and start FlowMeterSource
+    flowmeter = FlowMeterSource(flow_queue=flow_queue, interface_name=interface)
+    flowmeter.start()
     
-    # Save flows
+    # Save flows (this will run until max_time expires or KeyboardInterrupt)
     csv_path = save_flows_to_csv(flow_queue, max_time=args.duration + 10)
     
-    # Wait for capture to finish
-    capture_thread.join(timeout=args.duration + 5)
+    # Stop capture
+    flowmeter.stop()
+    time.sleep(1)
     
     if csv_path:
         print(f"\n{COLOR_GREEN}[SUCCESS] Flows saved! Analyze with:{COLOR_RESET}")
