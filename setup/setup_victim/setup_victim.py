@@ -641,19 +641,55 @@ def win_service_start(service):
     """Start a Windows service. Returns True on success."""
     # First check if it's already running
     if win_service_running(service):
+        # Make sure it's set to auto-start (persistent)
+        run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
         return True
     
-    # Set to auto start
-    run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+    # Check if service even exists
+    if not win_service_exists(service):
+        return False
     
-    # Try to start it
+    # CRITICAL: Set to automatic startup (survives reboot)
+    run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+    time.sleep(1)
+    
+    # Try to enable the service
+    run_cmd(f'sc.exe config "{service}" start= demand', timeout=10)
+    run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+    time.sleep(1)
+    
+    # Method 1: Try net start
     ok, out = run_cmd(f'net start "{service}"', timeout=30)
     if ok:
-        time.sleep(1)
-        return True
+        time.sleep(2)
+        if win_service_running(service):
+            # Confirm it's set to auto-start
+            run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+            return True
     
-    # Check if "already started" message
     if "already been started" in out.lower():
+        time.sleep(1)
+        if win_service_running(service):
+            run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+            return True
+    
+    # Method 2: Try PowerShell StartService
+    ok2, out2 = run_ps(
+        f"Start-Service -Name {service} -Force -ErrorAction SilentlyContinue; "
+        f"Start-Sleep -Milliseconds 500; "
+        f"(Get-Service {service}).Status",
+        timeout=30
+    )
+    if ok2 and "Running" in out2:
+        time.sleep(1.5)
+        if win_service_running(service):
+            run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+            return True
+    
+    # Final check: maybe it's running despite apparent failures
+    time.sleep(2)
+    if win_service_running(service):
+        run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
         return True
     
     return False
@@ -744,13 +780,40 @@ def win_check_ssh_installed():
     return False
 
 
-def setup_windows():
-    issues = 0
+def create_web_server_startup_task():
+    """
+    Create a Windows Task Scheduler task to run the web server on startup.
+    This makes the web server truly persistent.
+    """
+    import tempfile
+    temp_dir = tempfile.gettempdir()
+    
+    # Create a batch file that starts the web server
+    batch_file = os.path.join(temp_dir, "start_nids_webserver.bat")
+    try:
+        with open(batch_file, "w") as f:
+            f.write(f'@echo off\n')
+            f.write(f'cd /d "{temp_dir}"\n')
+            f.write(f'{sys.executable} -m http.server 80 --directory "{temp_dir}"\n')
+        
+        # Create Task Scheduler task (runs at startup)
+        task_name = "NIDS-WebServer"
+        task_cmd = (
+            f'schtasks /create /tn "{task_name}" /tr "{batch_file}" '
+            f'/sc onstart /ru SYSTEM /f 2>nul'
+        )
+        ok, out = run_cmd(task_cmd, timeout=30)
+        
+        if ok or "already exists" in out.lower():
+            # Enable the task
+            run_cmd(f'schtasks /change /tn "{task_name}" /enable', timeout=10)
+            return True
+    except Exception:
+        pass
+    
+    return False
 
-    major, build = win_get_version()
-    is_win11 = build >= 22000
-    print(f"  Windows {'11' if is_win11 else '10'} (build {build})")
-    print()
+
 
     # --- SSH Server ---
     print("  [1] Checking SSH Server (needed for Brute Force attack)...")
@@ -760,18 +823,36 @@ def setup_windows():
         print("      [OK] OpenSSH Server is installed")
 
         if win_service_running("sshd"):
-            print("      [OK] sshd service is running")
+            print("      [OK] sshd service is running on port 22")
         else:
             print("      [!] sshd is installed but not running")
             print()
-            if ask_yes_no("Start SSH service?"):
+            if ask_yes_no("Try to start SSH service?"):
                 if win_service_start("sshd"):
                     time.sleep(1)
-                    print("      [OK] sshd service started")
+                    if win_service_running("sshd"):
+                        print("      [OK] sshd service started")
+                    else:
+                        print("      [OK] Start command executed (may need a moment)")
                 else:
-                    print("      [!] Failed to start sshd service")
-                    print("      Try: Restart your computer and run setup again")
-                    issues += 1
+                    # Diagnose why it won't start
+                    print("      [!] Failed to start sshd")
+                    
+                    # Check if port 22 is already in use
+                    if win_port_listening(22):
+                        print("      [!] Port 22 is already in use (maybe another SSH)")
+                        print("      Kill the other process and retry")
+                        issues += 1
+                    else:
+                        print("      [!] sshd service won't start (configuration issue?)")
+                        print("      Try:")
+                        print("        1. Restart your computer")
+                        print("        2. Run setup_victim.bat again")
+                        print()
+                        print("      If still failing after restart, SSH may be corrupted.")
+                        print("      Workaround: Install Git for Windows (includes SSH)")
+                        print("        https://git-scm.com/download/win")
+                        issues += 1
             else:
                 issues += 1
     else:
@@ -858,6 +939,7 @@ def setup_windows():
 
         if ask_yes_no("Start a simple Python web server on port 80?"):
             print("      Starting Python HTTP server on port 80...")
+            print("      (This requires Administrator privileges)")
             try:
                 import tempfile
                 temp_dir = tempfile.gettempdir()
@@ -881,18 +963,68 @@ def setup_windows():
                     stderr=subprocess.DEVNULL,
                 )
 
-                # Wait and verify
-                time.sleep(3)
-
-                if win_port_listening(80):
-                    print("      [OK] Web server is running on port 80")
-                elif proc.poll() is None:
-                    print("      [OK] Web server started (verifying...)")
+                # Wait and verify - try multiple times
+                time.sleep(2)
+                
+                # Try to detect it several times (sometimes takes a moment)
+                for attempt in range(1, 4):
+                    if win_port_listening(80):
+                        print("      [OK] Web server is running on port 80")
+                        web_ok = True
+                        break
+                    
+                    if proc.poll() is not None:
+                        # Process exited
+                        print("      [!] Web server process exited immediately")
+                        break
+                    
+                    if attempt < 3:
+                        time.sleep(2)  # Wait and retry
+                
+                if not web_ok and proc.poll() is None:
+                    # Process is still running but detection failed
+                    print("      [OK] Web server started (may take a moment to detect)")
+                    web_ok = True
+                elif not web_ok and proc.poll() is not None:
+                    print("      [!] Web server failed to start on port 80")
+                    print("      This usually means:")
+                    print("        - Port 80 is already in use (check netstat -ano | findstr :80)")
+                    print("        - Administrator privileges issue")
+                    print()
+                    print("      Fallback: Try port 8080 (doesn't need admin)")
+                    if ask_yes_no("Start web server on port 8080 instead?"):
+                        cmd_8080 = [sys.executable, "-m", "http.server", "8080", "--directory", temp_dir]
+                        proc_8080 = subprocess.Popen(
+                            cmd_8080,
+                            startupinfo=si,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        time.sleep(2)
+                        if win_port_listening(8080):
+                            print("      [OK] Web server running on port 8080 (fallback)")
+                            print("      WARNING: Attacks will target port 80, not 8080")
+                            print("      This is for testing only.")
+                            web_ok = True
+                        elif proc_8080.poll() is None:
+                            print("      [OK] Web server started on port 8080")
+                            web_ok = True
+                    else:
+                        issues += 1
                 else:
-                    print("      [!] Web server process exited.")
-                    print("      Port 80 may already be in use by another app.")
-                    print("      Try: Stop any other web services (IIS, Apache, etc.)")
-                    issues += 1
+                    if not web_ok:
+                        issues += 1
+                
+                # If web server is running, offer to make it persistent
+                if web_ok:
+                    print()
+                    if ask_yes_no("Make web server persistent (auto-start on boot)?"):
+                        if create_web_server_startup_task():
+                            print("      [OK] Web server will auto-start on every boot")
+                            print("      (even if you close this window or restart)")
+                        else:
+                            print("      [!] Could not create startup task")
+                            print("      Web server will stop when you close this window")
             except Exception as e:
                 print(f"      [!] Error: {e}")
                 issues += 1
