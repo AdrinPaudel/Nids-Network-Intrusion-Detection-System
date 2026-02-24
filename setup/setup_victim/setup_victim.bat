@@ -1,6 +1,6 @@
 @echo off
+setlocal enabledelayedexpansion
 REM ==============================================================================
-REM Victim Device Setup - Windows
 REM ==============================================================================
 REM Run this ON THE TARGET DEVICE (VM or server) to check readiness for attacks.
 REM Right-click -> Run as Administrator
@@ -62,7 +62,4 @@ echo   3. For project overview:
 echo        See: README.md (in project root)
 echo.
 
-pause
-pause
-pause
 pause

