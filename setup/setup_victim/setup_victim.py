@@ -30,10 +30,13 @@ def is_admin():
     """Check if running with admin/root privileges."""
     try:
         if platform.system() == "Windows":
-            return ctypes.windll.shell.IsUserAnAdmin()
+            # Check if current process has admin privileges
+            import ctypes as ct
+            return ct.windll.shell32.IsUserAnAdmin() != 0
         else:
             return os.getuid() == 0
-    except:
+    except Exception as e:
+        print(f"      [DEBUG] Admin check error: {e}")
         return False
 
 
