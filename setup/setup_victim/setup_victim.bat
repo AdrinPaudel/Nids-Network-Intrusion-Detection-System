@@ -61,4 +61,8 @@ echo.
 echo   3. For project overview:
 echo        See: README.md (in project root)
 echo.
+
+pause
+pause
+pause
 pause
