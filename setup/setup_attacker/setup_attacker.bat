@@ -71,22 +71,30 @@ echo.
 echo   Upgrading pip...
 python -m pip install --upgrade pip >nul 2>&1
 
-echo   Installing base packages (requirements.txt)...
+echo   Installing base packages (from project root)...
 pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo   [!] Base requirements install failed
 )
+echo.
 
-echo   Installing attack dependencies...
-if exist setup\setup_attacker\requirements.txt (
+echo   Installing attack dependencies (paramiko + psutil)...
+if exist "setup\setup_attacker\requirements.txt" (
     pip install -r setup\setup_attacker\requirements.txt
     if %errorlevel% neq 0 (
-        echo   [!] Attack requirements install failed
+        echo   [ERROR] Attack requirements install failed
+        echo.
+        echo   Try manually:
+        echo     pip install -r setup\setup_attacker\requirements.txt
+        echo.
     ) else (
         echo   [OK] Attack dependencies installed
     )
 ) else (
-    echo   [!] setup\setup_attacker\requirements.txt not found
+    echo   [ERROR] setup\setup_attacker\requirements.txt not found!
+    echo.
+    echo   Trying individual packages...
+    pip install paramiko psutil
 )
 echo.
 

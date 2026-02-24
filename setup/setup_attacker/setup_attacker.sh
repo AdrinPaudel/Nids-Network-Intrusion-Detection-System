@@ -67,22 +67,30 @@ echo "Step 3: Installing dependencies..."
 
 pip install --upgrade pip --quiet
 
-echo "  Installing base packages (requirements.txt)..."
-pip install -r requirements.txt
+echo "  Installing base packages (from project root)..."
+pip install -r requirements.txt 2>&1 | grep -v "already satisfied" || true
 if [ $? -ne 0 ]; then
-    echo "  [!] Base requirements install failed"
+    echo "  [!] Base requirements install had issues"
 fi
+echo ""
 
-echo "  Installing attack dependencies..."
+echo "  Installing attack dependencies (paramiko + psutil)..."
 if [ -f "setup/setup_attacker/requirements.txt" ]; then
-    pip install -r setup/setup_attacker/requirements.txt
+    pip install -r setup/setup_attacker/requirements.txt 2>&1 | grep -v "already satisfied" || true
     if [ $? -ne 0 ]; then
-        echo "  [!] Attack requirements install failed"
+        echo "  [ERROR] Attack requirements install failed"
+        echo ""
+        echo "  Try manually:"
+        echo "    pip install -r setup/setup_attacker/requirements.txt"
+        echo ""
     else
         echo "  [OK] Attack dependencies installed"
     fi
 else
-    echo "  [!] setup/setup_attacker/requirements.txt not found"
+    echo "  [ERROR] setup/setup_attacker/requirements.txt not found!"
+    echo ""
+    echo "  Trying individual packages..."
+    pip install paramiko psutil
 fi
 echo ""
 
