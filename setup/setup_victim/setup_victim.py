@@ -441,26 +441,42 @@ def setup_windows():
         print("      [!] OpenSSH is NOT installed")
         print()
         if ask_yes_no("Install OpenSSH now?"):
-            print("      Installing OpenSSH...")
+            print("      Installing OpenSSH (this may take 5-10 minutes)...")
+            print("      Please wait...")
             ok_install, out_install = run_cmd('powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"', timeout=900)
             
-            if ok_install or "Success" in out_install or "already" in out_install.lower():
-                print("      [OK] OpenSSH installed")
+            print(f"      [DEBUG] Installation return code: {ok_install}")
+            print(f"      [DEBUG] Output: {out_install[:500]}")  # Show first 500 chars of output
+            
+            if ok_install or "Success" in out_install or "already" in out_install.lower() or "The requested operation completed successfully" in out_install:
+                print("      [OK] OpenSSH installed successfully")
                 time.sleep(2)
                 # Try to start it
                 run_cmd("net start sshd")
                 time.sleep(1)
                 ok_check, _ = run_cmd('sc query sshd | findstr "RUNNING"')
                 if ok_check:
-                    print("      [OK] SSH service started")
+                    print("      [OK] SSH service started and running")
                 else:
-                    print("      [!] OpenSSH installed but could not start")
+                    print("      [!] OpenSSH installed but could not start service")
                     print("      Try: net start sshd  (in Admin Command Prompt)")
                     issues += 1
             else:
                 print("      [!] Installation failed")
-                print("      Error: " + out_install[:100])
-                issues += 1
+                if "The term 'Add-WindowsCapability' is not recognized" in out_install:
+                    print("      Error: PowerShell command not found")
+                    print("      Your Windows version may not support this feature")
+                    issues += 1
+                elif "RestartNeeded" in out_install:
+                    print("      A restart may be required - restart Windows and try again")
+                    issues += 1
+                elif "not currently available" in out_install.lower():
+                    print("      Error: OpenSSH is not available in your Windows 10 build")
+                    print("      Try: Windows Update > Update Windows to latest version")
+                    issues += 1
+                else:
+                    print(f"      Error details: {out_install}")
+                    issues += 1
         else:
             print("      [SKIP] SSH not installed")
             issues += 1
