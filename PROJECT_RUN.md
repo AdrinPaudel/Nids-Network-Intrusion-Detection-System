@@ -18,15 +18,43 @@ It can:
 
 ## Before You Start
 
-Activate the Python virtual environment:
-
+**Windows:**
 ```bash
-# Windows
 venv\Scripts\activate.bat
+```
 
-# Linux
+**Linux/macOS:**
+```bash
 source venv/bin/activate
 ```
+
+### Linux: When You Need `sudo`
+
+Live packet capture on Linux requires elevated privileges (root). Here are the options:
+
+**Option 1: Use `sudo` for each run (simplest)**
+```bash
+sudo ./venv/bin/python classification.py
+```
+Do NOT activate venv first - you can't activate with sudo easily.
+
+**Option 2: Grant capabilities once (recommended)**
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+```
+Then use normally without sudo:
+```bash
+source venv/bin/activate
+python classification.py
+```
+
+**Which commands need `sudo`?**
+- ✅ **Live classification** — YES (packet capture requires root)
+- ✅ **ML training** — NO (unless writing to protected dirs)
+- ✅ **Batch classification** — NO (just file processing)
+- ✅ **Victim setup** — YES (modifying firewall, SSH, system services)
+- ✅ **Attacker setup** — NO (just installing packages)
+- ✅ **Attack simulation** — YES (crafting/sending packets requires root)
 
 ---
 
@@ -200,25 +228,37 @@ This sets up SSH, HTTP, FTP, Firewall, and NIDS project files.
 
 **Step 2: Start NIDS on victim (separate terminal)**
 
-Keep this running while you attack:
+Keep this running while you attack (requires elevated privileges on Linux):
 ```bash
+# Windows
 python classification.py --duration 600
+
+# Linux: Use sudo (or grant capabilities - see Prerequisites above)
+sudo ./venv/bin/python classification.py --duration 600
 ```
 Captures and classifies for 10 minutes.
 
 **Step 3: Find victim device (attacker machine)**
 
-From your attacker machine, scan the network:
+From your attacker machine, scan the network (no sudo needed):
 ```bash
+# Windows
+python setup/setup_attacker/discover_and_save.py
+
+# Linux
 python setup/setup_attacker/discover_and_save.py
 ```
 Saves victim IP to `setup/setup_attacker/config.py`
 
 **Step 4: Launch attacks (attacker machine)**
 
-From your attacker machine, run attacks:
+From your attacker machine, run attacks (requires elevated privileges on Linux):
 ```bash
+# Windows
 python setup/setup_attacker/device_attack.py
+
+# Linux: Use sudo (packet crafting requires root)
+sudo python setup/setup_attacker/device_attack.py
 ```
 
 **Attack options:**

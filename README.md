@@ -70,6 +70,36 @@ NIDS/
 └── data/raw/                     # ← YOU download CICIDS2018 CSVs here
 ```
 
+## Linux Permissions Note
+
+On **Linux/macOS**, live packet capture (and attack simulation) require elevated privileges. You have two options:
+
+**Option 1: Use `sudo` for each run (simplest)**
+```bash
+sudo ./venv/bin/python classification.py
+```
+(Do NOT activate venv first - you can't activate with sudo)
+
+**Option 2: Grant Python capabilities once (recommended)**
+```bash
+sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+```
+Then use normally without sudo:
+```bash
+source venv/bin/activate
+python classification.py
+```
+
+**Command sudo requirements:**
+- ✅ **Live classification** — YES (packet capture)
+- ✅ **ML training** — NO (unless writing to /root)
+- ✅ **Batch classification** — NO (just file processing)
+- ✅ **Victim setup** — YES (modifying firewall/SSH)
+- ✅ **Attacker setup** — NO (just installing packages)
+- ✅ **Attack simulation** — YES (crafting packets)
+
+---
+
 ## Quick Start
 
 > **Full step-by-step instructions:** See **[setup/SETUP_GUIDE.md](setup/SETUP_GUIDE.md)**

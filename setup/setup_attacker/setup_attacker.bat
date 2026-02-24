@@ -107,22 +107,36 @@ echo.
 set VERIFY_OK=1
 
 echo   Checking attack packages:
+echo.
+
+REM Check paramiko
+echo   Checking paramiko...
 python -c "import paramiko" >nul 2>&1
-if !errorlevel! equ 0 (
+if %errorlevel% equ 0 (
     echo     [OK] paramiko (SSH attacks)
 ) else (
     echo     [!] paramiko MISSING
     set VERIFY_OK=0
 )
 
-for %%p in (requests,psutil) do (
-    python -c "import %%p" >nul 2>&1
-    if !errorlevel! equ 0 (
-        echo     [OK] %%p
-    ) else (
-        echo     [!] %%p MISSING
-        set VERIFY_OK=0
-    )
+REM Check requests
+echo   Checking requests...
+python -c "import requests" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo     [OK] requests
+) else (
+    echo     [!] requests MISSING
+    set VERIFY_OK=0
+)
+
+REM Check psutil
+echo   Checking psutil...
+python -c "import psutil" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo     [OK] psutil
+) else (
+    echo     [!] psutil MISSING
+    set VERIFY_OK=0
 )
 
 echo.
