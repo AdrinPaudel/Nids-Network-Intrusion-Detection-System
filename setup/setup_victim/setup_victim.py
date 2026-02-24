@@ -607,32 +607,55 @@ def win_get_version():
         return 10, 0
 
 
+def win_port_listening(port):
+    """Check if any service is listening on the given port."""
+    try:
+        ok, out = run_cmd(f'netstat -ano | findstr ":{port} "', timeout=10)
+        if ok and out:
+            for line in out.splitlines():
+                if "LISTENING" in line.upper() or "LISTEN" in line.upper():
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def win_service_exists(service):
     """Check if a Windows service exists."""
-    ok, out = run_cmd(f'sc.exe query "{service}"', timeout=10)
+    ok, out = run_cmd(f'sc.exe query "{service}" 2>nul', timeout=10)
     if ok:
         return True
-    # "1060" = service does not exist
-    return "1060" not in out
+    if "1060" in out:  # Service not found
+        return False
+    # If we got other output, service probably exists
+    return not "not found" in out.lower()
 
 
 def win_service_running(service):
     """Check if a Windows service is running."""
-    ok, out = run_cmd(f'sc.exe query "{service}"', timeout=10)
-    if ok and "RUNNING" in out:
-        return True
-    return False
+    ok, out = run_cmd(f'sc.exe query "{service}" 2>nul', timeout=10)
+    return ok and "RUNNING" in out
 
 
 def win_service_start(service):
     """Start a Windows service. Returns True on success."""
+    # First check if it's already running
+    if win_service_running(service):
+        return True
+    
     # Set to auto start
     run_cmd(f'sc.exe config "{service}" start= auto', timeout=10)
+    
+    # Try to start it
     ok, out = run_cmd(f'net start "{service}"', timeout=30)
     if ok:
+        time.sleep(1)
         return True
+    
+    # Check if "already started" message
     if "already been started" in out.lower():
         return True
+    
     return False
 
 
@@ -640,12 +663,11 @@ def win_install_ssh():
     """
     Install OpenSSH Server on Windows 10/11.
     Tries multiple methods for maximum compatibility.
-    Returns True on success.
+    Returns (success: bool, error_msg: str)
     """
     major, build = win_get_version()
 
     # Method 1: PowerShell Add-WindowsCapability (Win10 1809+ / Win11)
-    # This is the most reliable method on modern Windows
     print("      Trying PowerShell method...")
     ok, out = run_ps(
         "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0",
@@ -653,48 +675,70 @@ def win_install_ssh():
     )
     if ok or "already installed" in out.lower():
         print("      [OK] OpenSSH installed via PowerShell")
-        return True
+        return True, None
+
+    # Check if installation is stuck (need manual restart)
+    if "restart" in out.lower() and "required" in out.lower():
+        return False, "RESTART: Windows says a restart is required"
 
     # Method 2: DISM capability (works on most Win10/11)
-    print("      PowerShell method failed, trying DISM...")
+    print("      PowerShell failed, trying DISM...")
     ok, out = run_cmd(
-        "dism /online /Add-Capability /CapabilityName:OpenSSH.Server~~~~0.0.1.0",
+        "dism /online /Add-Capability /CapabilityName:OpenSSH.Server~~~~0.0.1.0 /NoRestart",
         timeout=300,
     )
     if ok or "successfully" in out.lower():
         print("      [OK] OpenSSH installed via DISM capability")
-        return True
+        return True, None
 
-    # Method 3: DISM feature (older Win10 builds)
+    if "restart" in out.lower() and ("required" in out.lower() or "pending" in out.lower()):
+        return False, "RESTART: DISM says restart is needed"
+
+    if "0x800f0954" in out or "DISM" in out.lower() and "error" in out.lower():
+        return False, "WINUPDATE: Windows Update may be blocking — try closing it"
+
+    # Method 3: DISM feature (older Win10)
+    print("      DISM capability failed, trying DISM feature...")
     ok, out = run_cmd(
         "dism /online /enable-feature /featurename:OpenSSH-Server /all /norestart",
         timeout=300,
     )
     if ok or "successfully" in out.lower() or "already" in out.lower():
         print("      [OK] OpenSSH installed via DISM feature")
-        return True
+        return True, None
 
-    print("      [!] All install methods failed")
-    if "0x800f0954" in out or "update" in out.lower():
-        print("      Windows Update may be interfering — close it and retry")
-    print("      Alternative: Install Git for Windows (includes SSH)")
-    print("          https://git-scm.com/download/win")
-    return False
+    # Return the last error message (from Method 3, which is most complete)
+    if "restart" in out.lower():
+        return False, "RESTART: Installation needs restart"
+    
+    return False, out[:300]  # Return first part of error
 
 
 def win_check_ssh_installed():
     """Check if OpenSSH Server is installed on Windows."""
-    # Check if service exists
+    # Method 1: Check if port 22 is already listening
+    if win_port_listening(22):
+        return True
+
+    # Method 2: Check if service exists
     if win_service_exists("sshd"):
         return True
 
-    # Check via PowerShell capability query
+    # Method 3: Check via PowerShell capability
     ok, out = run_ps(
         "Get-WindowsCapability -Online -Name OpenSSH.Server* "
         "| Select-Object -ExpandProperty State",
         timeout=30,
     )
     if ok and "installed" in out.lower():
+        return True
+
+    # Method 4: Check via registry (SSH key in Windows features)
+    ok, out = run_cmd(
+        'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Services\\sshd" /v ImagePath 2>nul',
+        timeout=10,
+    )
+    if ok:
         return True
 
     return False
@@ -722,14 +766,11 @@ def setup_windows():
             print()
             if ask_yes_no("Start SSH service?"):
                 if win_service_start("sshd"):
-                    time.sleep(2)
-                    if win_service_running("sshd"):
-                        print("      [OK] sshd started")
-                    else:
-                        print("      [OK] sshd start command succeeded (may need a moment)")
+                    time.sleep(1)
+                    print("      [OK] sshd service started")
                 else:
-                    print("      [!] Failed to start sshd")
-                    print("      Try: Restart your computer, then run setup again")
+                    print("      [!] Failed to start sshd service")
+                    print("      Try: Restart your computer and run setup again")
                     issues += 1
             else:
                 issues += 1
@@ -737,24 +778,42 @@ def setup_windows():
         print("      [!] OpenSSH Server is NOT installed")
         print()
         if ask_yes_no("Install OpenSSH Server?"):
-            print("      Installing... (this can take a minute)")
-            if win_install_ssh():
-                time.sleep(3)
+            print("      Installing... (this can take 1-2 minutes)")
+            success, error_msg = win_install_ssh()
+            
+            if success:
+                time.sleep(2)
                 if win_service_start("sshd"):
-                    time.sleep(2)
-                    print("      [OK] sshd service started")
+                    time.sleep(1)
+                    print("      [OK] SSH service started and running")
                 else:
-                    print("      [!] Installed but service won't start")
-                    print("      Try: Restart your computer, then run setup again")
+                    print("      [OK] SSH installed (service will start after restart)")
                     issues += 1
             else:
                 issues += 1
                 print()
-                if ask_yes_no("Skip SSH and continue?"):
+                if error_msg and error_msg.startswith("RESTART"):
+                    print("      [!] Installation needs a restart to complete")
+                    print("      Please restart your computer, then run setup_victim.bat again")
+                elif error_msg and error_msg.startswith("WINUPDATE"):
+                    print("      [!] Windows Update is blocking the installation")
+                    print("      1. Open Settings > System > Windows Update")
+                    print("      2. Click 'Pause updates for 7 days'")
+                    print("      3. Restart your computer")
+                    print("      4. Run setup_victim.bat again")
+                else:
+                    print("      [!] Installation failed")
+                    if error_msg:
+                        print(f"      Error: {error_msg}")
+                print()
+                print("      Workaround: Install Git for Windows (includes SSH)")
+                print("      Download: https://git-scm.com/download/win")
+                print()
+                if ask_yes_no("Skip SSH and continue with other checks?"):
                     print("      [SKIP] Continuing without SSH")
                     print("      Note: DoS/DDoS attacks will still work with a web server")
-                else:
-                    pass
+                    # Don't count as issue if they choose to skip
+                    issues -= 1
         else:
             print("      [SKIP] SSH not installed")
             issues += 1
@@ -767,20 +826,30 @@ def setup_windows():
 
     web_ok = False
 
-    # Check IIS
+    # Check IIS first (most reliable)
     if win_service_running("W3SVC"):
-        print("      [OK] IIS Web Server is running")
+        print("      [OK] IIS Web Server is running on port 80")
         web_ok = True
 
-    # Check if anything is listening on port 80
+    # Check if anything is listening on port 80 (multiple methods)
     if not web_ok:
-        ok, out = run_cmd('netstat -ano | findstr ":80 "', timeout=10)
-        if ok and out:
-            for line in out.splitlines():
-                if "LISTENING" in line.upper() or "LISTEN" in line.upper():
-                    print("      [OK] A web server is listening on port 80")
-                    web_ok = True
-                    break
+        if win_port_listening(80):
+            print("      [OK] A service is listening on port 80")
+            web_ok = True
+
+    # Alternative check using netstat with different syntax
+    if not web_ok:
+        try:
+            ok, out = run_cmd('netstat -ano 2>nul | findstr ":80 "', timeout=10)
+            if ok and out:
+                lines = out.splitlines()
+                for line in lines:
+                    if "LISTEN" in line.upper():
+                        print("      [OK] A service is listening on port 80")
+                        web_ok = True
+                        break
+        except Exception:
+            pass
 
     if not web_ok:
         print("      [!] No web server running on port 80")
@@ -796,7 +865,6 @@ def setup_windows():
                 with open(index_file, "w") as f:
                     f.write("<html><body><h1>NIDS Test Server</h1></body></html>")
 
-                # Start detached process
                 cmd = [sys.executable, "-m", "http.server", "80", "--directory", temp_dir]
 
                 CREATE_NEW_CONSOLE = 0x00000010
@@ -813,16 +881,17 @@ def setup_windows():
                     stderr=subprocess.DEVNULL,
                 )
 
+                # Wait and verify
                 time.sleep(3)
 
-                # Verify
-                ok_check, out_check = run_cmd('netstat -ano | findstr ":80 "', timeout=10)
-                if ok_check and "LISTEN" in out_check.upper():
-                    print("      [OK] Web server running on port 80")
+                if win_port_listening(80):
+                    print("      [OK] Web server is running on port 80")
                 elif proc.poll() is None:
                     print("      [OK] Web server started (verifying...)")
                 else:
-                    print("      [!] Web server process exited — port 80 may be in use")
+                    print("      [!] Web server process exited.")
+                    print("      Port 80 may already be in use by another app.")
+                    print("      Try: Stop any other web services (IIS, Apache, etc.)")
                     issues += 1
             except Exception as e:
                 print(f"      [!] Error: {e}")
@@ -851,10 +920,10 @@ def setup_windows():
 
     missing_rules = []
     for name, (proto, port) in rules.items():
-        ok, _ = run_cmd(
-            f'netsh advfirewall firewall show rule name="{name}"', timeout=10
+        ok, out = run_cmd(
+            f'netsh advfirewall firewall show rule name="{name}" 2>nul', timeout=10
         )
-        if ok:
+        if ok and "Rule Name" in out and name in out:
             label = f"port {port}" if port else proto
             print(f"      [OK] {name} ({label})")
         else:
@@ -868,24 +937,26 @@ def setup_windows():
         if ask_yes_no("Add missing firewall rules?"):
             for name, proto, port in missing_rules:
                 if port:
-                    ok, _ = run_cmd(
+                    ok, out = run_cmd(
                         f'netsh advfirewall firewall add rule name="{name}" '
-                        f'dir=in action=allow protocol={proto} localport={port}',
+                        f'dir=in action=allow protocol={proto} localport={port} 2>&1',
                         timeout=10,
                     )
                 else:
-                    ok, _ = run_cmd(
+                    ok, out = run_cmd(
                         f'netsh advfirewall firewall add rule name="{name}" '
-                        f'dir=in action=allow protocol={proto}',
+                        f'dir=in action=allow protocol={proto} 2>&1',
                         timeout=10,
                     )
-                if ok:
+                if ok or "already exists" in out.lower():
                     print(f"      [OK] Added: {name}")
                 else:
                     print(f"      [!] Failed to add: {name}")
+                    if "admin" in out.lower() or "access" in out.lower():
+                        print("           (May require running as Administrator)")
         else:
-            print("      [SKIP] Not adding rules")
-            issues += 1
+            print("      [SKIP] Not adding rules (attacks may be blocked)")
+            # Don't count as critical issue — firewall rules are optional
 
     print()
 
