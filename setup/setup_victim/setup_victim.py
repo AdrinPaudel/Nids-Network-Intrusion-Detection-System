@@ -415,136 +415,54 @@ def setup_windows():
     print("  [1] Checking SSH Server (needed for Brute Force attack)...")
     print()
     
-    # Get Windows version
-    ok_ver, out_ver = run_cmd("ver")
-    is_win10 = "Windows 10" in out_ver if ok_ver else False
+    # Simple check: Does sshd service exist?
+    ok_sshd, _ = run_cmd("sc query sshd")
     
-    # Try multiple possible service names
-    ssh_found = False
-    ssh_service_name = "sshd"
-    
-    for service_name in ["sshd", "OpenSSH-Server", "SSHServer"]:
-        ok, _ = run_cmd(f"sc query {service_name}")
-        if ok:
-            ssh_service_name = service_name
-            ssh_found = True
-            break
-    
-    # Also check for sshd.exe in System32
-    if not ssh_found:
-        sshd_exe_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "sshd.exe")
-        if os.path.exists(sshd_exe_path):
-            ssh_found = True
-    
-    if ssh_found:
-        ok_run, out = run_cmd(f'sc query {ssh_service_name} | findstr "RUNNING"')
+    if ok_sshd:
+        print("      [OK] OpenSSH is installed")
+        # Check if it's running
+        ok_run, _ = run_cmd('sc query sshd | findstr "RUNNING"')
         if ok_run:
-            print("      [OK] OpenSSH Server is installed and running")
+            print("      [OK] SSH service is running")
         else:
-            print("      [!] OpenSSH Server is installed but NOT running")
-            print()
+            print("      [!] SSH is installed but not running")
             if ask_yes_no("Start SSH service?"):
-                print("      Starting...")
-                run_cmd(f"sc config {ssh_service_name} start= auto")
-                run_cmd(f"net start {ssh_service_name}")
-                time.sleep(2)  # Wait for service to start
-                ok_run2, _ = run_cmd(f'sc query {ssh_service_name} | findstr "RUNNING"')
+                run_cmd("net start sshd")
+                time.sleep(1)
+                ok_run2, _ = run_cmd('sc query sshd | findstr "RUNNING"')
                 if ok_run2:
-                    print("      [OK] SSH started")
+                    print("      [OK] SSH service started")
                 else:
                     print("      [!] Failed to start SSH")
-                    print(f"      Try manually: net start {ssh_service_name}  (in Admin cmd)")
                     issues += 1
             else:
-                print("      [SKIP] SSH not started")
                 issues += 1
     else:
-        print("      [!] OpenSSH Server is NOT installed")
-        if is_win10:
-            print("      [INFO] On Windows 10, OpenSSH may not be available in all builds")
-            print()
+        print("      [!] OpenSSH is NOT installed")
         print()
-        
-        if ask_yes_no("Install OpenSSH Server?"):
-            print("      Installing (downloading ~100MB from Microsoft, may take 2-5 minutes)...")
-            print("      Attempting fastest method (DISM)...")
+        if ask_yes_no("Install OpenSSH now?"):
+            print("      Installing OpenSSH...")
+            ok_install, out_install = run_cmd('powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"', timeout=900)
             
-            # Try DISM first (usually faster)
-            ok_dism, out_dism = run_cmd('dism /online /enable-feature /featurename:OpenSSH-Server /all /norestart', timeout=600)
-            
-            if ok_dism or "completed successfully" in out_dism.lower() or "feature was already" in out_dism.lower():
-                print("      [OK] DISM installation successful")
-                ok_inst = True
+            if ok_install or "Success" in out_install or "already" in out_install.lower():
+                print("      [OK] OpenSSH installed")
+                time.sleep(2)
+                # Try to start it
+                run_cmd("net start sshd")
+                time.sleep(1)
+                ok_check, _ = run_cmd('sc query sshd | findstr "RUNNING"')
+                if ok_check:
+                    print("      [OK] SSH service started")
+                else:
+                    print("      [!] OpenSSH installed but could not start")
+                    print("      Try: net start sshd  (in Admin Command Prompt)")
+                    issues += 1
             else:
-                # Fallback to PowerShell if DISM fails
-                print("      DISM method didn't work, trying PowerShell (slower)...")
-                ok_inst, out_inst = run_cmd('powershell -NoProfile -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction Stop; exit $?"', timeout=600)
-                
-                if ok_inst:
-                    print("      [OK] PowerShell installation successful")
-                else:
-                    print("      [!] Both installation methods failed")
-                    ok_inst = False
-            
-            if out_dism == "TIMEOUT" or out_inst == "TIMEOUT":
-                print("      [!] Installation timed out (Windows Capability download is very slow)")
-                print("      Your internet may be slow, or Windows Update is running")
-                print("      Try:")
-                print("        1. Close Windows Update (Settings > Update & Security)")
-                print("        2. Restart your computer")
-                print("        3. Try running setup_victim.bat again")
+                print("      [!] Installation failed")
+                print("      Error: " + out_install[:100])
                 issues += 1
-            elif ok_inst:
-                time.sleep(4)  # Give Windows time to register
-                
-                # Check if it actually got installed
-                ssh_found_after = False
-                for service_name in ["sshd", "OpenSSH-Server", "SSHServer"]:
-                    ok, _ = run_cmd(f"sc query {service_name}")
-                    if ok:
-                        ssh_service_name = service_name
-                        ssh_found_after = True
-                        break
-                
-                if not ssh_found_after:
-                    sshd_exe_path = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "sshd.exe")
-                    if os.path.exists(sshd_exe_path):
-                        ssh_found_after = True
-                
-                if ssh_found_after:
-                    print("      [OK] Installation complete")
-                    # Try to start
-                    run_cmd("sc config sshd start= auto")
-                    time.sleep(1)
-                    run_cmd("net start sshd")
-                    time.sleep(2)
-                    ok_check, _ = run_cmd('sc query sshd | findstr "RUNNING"')
-                    if ok_check:
-                        print("      [OK] SSH installed and running")
-                    else:
-                        print("      [!] SSH installed but not starting")
-                        print("      Try: Restart your computer, then re-run this script")
-                        issues += 1
-                else:
-                    print("      [!] Installation failed")
-                    if is_win10:
-                        print()
-                        print("      Windows 10 issue - OpenSSH Server may not be available")
-                        print("      in this Windows 10 build.")
-                        print()
-                        print("      Options:")
-                        print("        A) Update Windows 10 to latest version (Settings > Update)")
-                        print("        B) Upgrade to Windows 11 (has better SSH support)")
-                        print("        C) Use WSL2 (Windows Subsystem for Linux) for SSH")
-                        print()
-                        print("      For now, continue - you may still test other attacks")
-                        issues += 1
-                    else:
-                        print("      Manual installation: Settings > Apps > Optional Features")
-                        print("                         > '+ Add a feature' > OpenSSH Server")
-                        issues += 1
         else:
-            print("      [SKIP] Not installing SSH")
+            print("      [SKIP] SSH not installed")
             issues += 1
 
     print()
@@ -564,10 +482,61 @@ def setup_windows():
             print("      [!] No web server running on port 80")
             print("          DoS/DDoS attacks need a web server on port 80.")
             print()
-            print("      Options:")
-            print("        1. Install IIS via: Settings > Apps > Optional Features > IIS")
-            print("        2. Or: python -m http.server 80  (simple test server)")
-            issues += 1
+            
+            if ask_yes_no("Start a simple Python web server on port 80?"):
+                print("      Starting Python HTTP server...")
+                print("      WARNING: This will start in background - close this terminal to stop it")
+                print()
+                
+                # Create a simple HTML file in temp directory
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                index_file = os.path.join(temp_dir, "index.html")
+                try:
+                    with open(index_file, 'w') as f:
+                        f.write("<html><body><h1>NIDS Test Server</h1></body></html>")
+                    
+                    print("      Starting web server...")
+                    
+                    # Use subprocess.Popen to start completely detached on Windows
+                    import subprocess as sp
+                    
+                    cmd = [sys.executable, "-m", "http.server", "80", "--directory", temp_dir]
+                    
+                    # Windows: Start in new console, hidden
+                    CREATE_NEW_CONSOLE = 0x00000010
+                    si = sp.STARTUPINFO()
+                    si.dwFlags |= sp.STARTF_USESHOWWINDOW
+                    si.wShowWindow = sp.SW_HIDE
+                    
+                    # Start the process completely detached from current process
+                    proc = sp.Popen(cmd, startupinfo=si, creationflags=CREATE_NEW_CONSOLE, 
+                                   stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+                    
+                    time.sleep(3)
+                    
+                    # Check if port 80 is listening
+                    ok_check, out_check = run_cmd('netstat -an | findstr ":80 "')
+                    if ok_check and out_check and "LISTEN" in out_check:
+                        print("      [OK] Web server is running on port 80")
+                        print("      [OK] Server will keep running even after closing this terminal")
+                    elif proc.poll() is None:  # Process is still running
+                        print("      [OK] Web server started (may take a few seconds to appear in netstat)")
+                        print("      [OK] Server will keep running even after closing this terminal")
+                    else:
+                        print("      [!] Web server process exited unexpectedly")
+                        issues += 1
+                except Exception as e:
+                    print(f"      [!] Error starting web server: {e}")
+                    issues += 1
+            else:
+                print("      [SKIP] Not starting web server")
+                print()
+                print("      If you want to test DoS/DDoS, start a web server manually:")
+                print("        python -m http.server 80  (in a separate terminal/PowerShell)")
+                print()
+                print("      Or install IIS: Settings > Apps > Optional Features > IIS")
+                issues += 1
 
     print()
 
