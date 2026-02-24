@@ -148,13 +148,13 @@ echo.
 echo   1. Activate venv (every new terminal):
 echo        venv\Scripts\activate.bat
 echo.
-echo   2. Run live classification (may need Npcap on Windows):
-echo        python classification.py
+echo   2. For details on running features:
+echo        See: PROJECT_RUN.md (in project root)
 echo.
-echo   3. Run batch classification:
-echo        python classification.py --batch setup\sample_batch.csv
+echo   3. To set up other components:
+echo        See: setup/SETUPS.md
 echo.
-echo   4. See all options:
-echo        python classification.py --help
+echo   4. For project overview:
+echo        See: README.md (in project root)
 echo.
 pause

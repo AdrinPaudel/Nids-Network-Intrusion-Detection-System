@@ -12,12 +12,13 @@ It can:
 1. **Classify live traffic** — capture packets in real-time and detect attacks
 2. **Classify batch flows** — analyze CSV files of pre-captured network flows
 3. **Train custom models** — retrain the Random Forest from scratch using your own data
+4. **Simulate attacks** — test detection capability on a target device
 
 ---
 
-## Activate Virtual Environment
+## Before You Start
 
-Before running anything, activate the Python virtual environment:
+Activate the Python virtual environment:
 
 ```bash
 # Windows
@@ -29,65 +30,140 @@ source venv/bin/activate
 
 ---
 
-## Live Network Classification
+## Features & How to Run
 
-Capture and classify network traffic in real-time:
+### 1. ML Model Training
 
+**When to use:** After running `setup_full`, retrain the Random Forest classifier from scratch using CICIDS2018 dataset.
+
+**Command:**
+```bash
+python ml_model.py --full
+```
+
+**What happens:**
+1. Loads CICIDS2018 dataset (~6GB, 10 CSV files from `data/raw/`)
+2. Preprocesses data (cleaning, encoding, SMOTE balancing, feature selection)
+3. Trains Random Forest classifier with hyperparameter tuning
+4. Evaluates on test set and saves results to `trained_model/`
+
+**Note:** Run `setup/setup_full/setup_full.bat` (or `.sh`) first to download the dataset.
+
+---
+
+### 2. Batch Classification
+
+**When to use:** Classify pre-captured network flows from CSV files (no live packet capture needed).
+
+**Interactive mode (browse and pick file):**
+```bash
+python classification.py --batch
+```
+
+**Explicit file path:**
+```
+python classification.py --batch data/default/batch_labeled/my_flows.csv
+```
+
+**What happens:**
+- Scans 4 batch folders:
+  - `data/default/batch/` — unlabeled, 5-class model
+  - `data/default/batch_labeled/` — labeled, 5-class model  
+  - `data/all/batch/` — unlabeled, 6-class model
+  - `data/all/batch_labeled/` — labeled, 6-class model
+- Auto-detects model and labels based on folder
+- Prints predictions; calculates accuracy if labels exist
+
+**Options:**
+
+| Option | Values | What |
+|---|---|---|
+| `--batch` | path or menu | Interactive (empty) or exact file path |
+| `--model` | `default` or `all` | Override model (usually auto-detected) |
+
+**Examples:**
+```bash
+# Interactive: Browse files and pick one
+python classification.py --batch
+
+# Classify specific file
+python classification.py --batch data/default/batch_labeled/my_flows.csv
+
+# Force 6-class model
+python classification.py --batch data/default/batch/flows.csv --model all
+```
+
+---
+
+### 3. Live Network Classification
+
+**When to use:** Capture and classify network traffic in real-time from a live interface.
+
+**Command:**
 ```bash
 python classification.py
 ```
 
-### Interface Selection
+**What happens:**
+- Shows interactive menu to pick network adapter
+- Captures packets for 120 seconds (default)
+- Classifies flows in real-time
+- Prints results to terminal
 
-There are typically many WiFi and Ethernet adapters, so the script has three modes:
+**Interface Selection**
 
-**Interactive (default):**
-```bash
-python classification.py --interface
-```
-The script shows a numbered list of all available adapters grouped by type (WiFi, Ethernet, Other). You pick by number.
+3 modes to pick a network adapter:
 
-**Auto-detect (fastest):**
+**Interactive menu — default (what you get when you run with no args):**
 ```bash
 python classification.py
 ```
-Auto-selects first available WiFi, then Ethernet if no WiFi found.
+Shows numbered list of all adapters (WiFi, Ethernet, Other). You pick by number.
 
-**Explicit adapter:**
+**Explicit adapter name:**
 ```bash
 python classification.py --interface "WiFi 6"
 ```
-Use exact adapter name. Get names from:
+Uses exact adapter name (get names with `--list-interfaces`, don't show a menu).
+
+**List available adapters:**
 ```bash
 python classification.py --list-interfaces
 ```
+Just shows adapters and exits, doesn't run classification.
 
-### Live Classification Options
+**VM mode — actual auto-select:**
+```bash
+python classification.py --vm
+```
+Auto-detects VirtualBox/VMware adapter without showing menu (useful for automated testing).
+
+**Options:**
 
 | Option | Values | Default | What |
 |---|---|---|---|
-| `--interface` | adapter name or menu | auto-detect | Network adapter (empty = menu, name = exact) |
-| `--duration` | seconds | 120 | Capture duration (120s = 2 min) |
-| `--model` | `default` or `all` | `default` | 5-class (default) or 6-class (all) model |
-| `--vm` | flag | off | Auto-select VirtualBox/VMware adapter |
-| `--debug` | flag | off | Print detailed predictions |
+| `--interface` | adapter name | none | Explicit adapter name (shows menu if not provided) |
+| `--list-interfaces` | flag | off | List adapters and exit |
+| `--duration` | seconds | 120 | How long to capture (120s = 2 min) |
+| `--model` | `default` or `all` | `default` | 5-class or 6-class model |
+| `--vm` | flag | off | Auto-detect VirtualBox/VMware adapter (no menu) |
+| `--debug` | flag | off | Print detailed prediction scores |
 
-### Examples
-
+**Examples:**
 ```bash
-# Auto-detect, 2 min capture, print results
+# Interactive menu (default), 2 min capture
 python classification.py
 
-# Interactive interface chooser, 5 min, 6-class model
-python classification.py --interface --duration 300 --model all
+# Interactive menu, 5 min, 6-class model
+python classification.py --duration 300 --model all
 
-# Specific adapter, 10 min, save results
-python classification.py --interface "Ethernet" --duration 600 --save-flows results.csv
+# Specify exact adapter (no menu), 10 min
+python classification.py --interface "Ethernet" --duration 600
 
 # List available adapters
 python classification.py --list-interfaces
 
-# VM mode: auto-select VirtualBox adapter (for attack testing)
+# VM mode auto-select (no menu), 5 min
 python classification.py --vm --duration 300
 
 # Debug mode: see prediction scores
@@ -96,116 +172,98 @@ python classification.py --debug
 
 ---
 
-## Batch Classification
+### 4. Attack Simulation
 
-Classify CSV files without live capture. Like interface selection, you either browse a menu or provide a specific file.
+**When to use:** Test NIDS detection by simulating real attacks on a victim device (VM or server).
 
-**Interactive (default):**
+**Prerequisites:** Before starting attacks, run setup on **attacker machine**:
 ```bash
-python classification.py --batch
+# Windows
+setup\setup_attacker\setup_attacker.bat
+
+# Linux
+./setup/setup_attacker/setup_attacker.sh
 ```
-The script scans 4 batch folders and displays CSV files grouped by model/labels. You pick by number:
-- `data/default/batch/` — unlabeled, 5-class model
-- `data/default/batch_labeled/` — labeled, 5-class model  
-- `data/all/batch/` — unlabeled, 6-class model
-- `data/all/batch_labeled/` — labeled, 6-class model
-
-Model and labels are auto-detected based on which folder the file is in.
-
-**Explicit file path:**
-```bash
-python classification.py --batch data/default/batch_labeled/my_flows.csv
-```
-Use exact file path. Model is auto-detected from folder location. If file has labels, accuracy is calculated.
-
-### Batch Options
-
-| Option | Values | What |
-|---|---|---|
-| `--batch` | path or menu | Interactive selection (empty) or exact file path |
-| `--model` | `default` or `all` | Override model (usually auto-detected from folder) |
-| `--save-flows` | filename | Save predictions/results to CSV |
-
-### Examples
-
-```bash
-# Interactive: Browse files and pick one
-python classification.py --batch
-
-# Classify specific file (model auto-detected from folder)
-python classification.py --batch data/default/batch_labeled/my_flows.csv
-
-# Classify and save results
-python classification.py --batch data/default/batch/flows.csv --save-flows output.csv
-
-# Force 6-class model even if file is in default folder
-python classification.py --batch data/default/batch/flows.csv --model all
-```
-
----
-
-## ML Model Training
-
-Retrain the Random Forest model from scratch:
-
-```bash
-python ml_model.py --full
-```
-
-This command:
-1. Loads the CICIDS2018 dataset (~6GB, 10 CSV files from `data/raw/`)
-2. Preprocesses data (cleaning, encoding, SMOTE balancing, feature selection)
-3. Trains a Random Forest classifier with hyperparameter tuning
-4. Evaluates the model and saves results
-
-**Note:** Run `setup/setup_full/setup_full.bat` (or `.sh`) first to download the dataset.
-
----
-
-## Attack Simulation (Test Network)
-
-To test NIDS detection, simulate attacks on a target machine:
+This installs paramiko, scapy, and other attack dependencies.
 
 **Step 1: Prepare victim device**
+
+Run on the device you want to attack (VM, server, etc.):
 ```bash
+# Windows (Run as Administrator)
+setup\setup_victim\setup_victim.bat
+
+# Linux
 sudo ./setup/setup_victim/setup_victim.sh
 ```
+This sets up SSH, HTTP, FTP, Firewall, and NIDS project files.
 
-**Step 2: Start NIDS on victim (in separate terminal)**
+**Step 2: Start NIDS on victim (separate terminal)**
+
+Keep this running while you attack:
 ```bash
 python classification.py --duration 600
 ```
+Captures and classifies for 10 minutes.
 
-**Step 3: From attacker machine, run attacks**
+**Step 3: Find victim device (attacker machine)**
+
+From your attacker machine, scan the network:
 ```bash
-python setup/setup_attacker/discover_and_save.py          # Find victim
-python setup/setup_attacker/device_attack.py --duration 120
+python setup/setup_attacker/discover_and_save.py
 ```
+Saves victim IP to `setup/setup_attacker/config.py`
+
+**Step 4: Launch attacks (attacker machine)**
+
+From your attacker machine, run attacks:
+```bash
+python setup/setup_attacker/device_attack.py
+```
+
+**Attack options:**
+
+| Option | What |
+|---|---|
+| `--dos` | DoS attack only |
+| `--ddos` | DDoS attack only |
+| `--brute` | SSH Brute Force only |
+| `--botnet` | Botnet simulation only |
+| `--infiltration` | Infiltration/port scan only |
+| `--duration` | How long to attack (seconds) |
+| `--all` | Run all 6 attacks in sequence |
+
+**Examples:**
+```bash
+# Run default attacks (shuffled, 120s default)
+python setup/setup_attacker/device_attack.py
+
+# Just DoS for 60 seconds
+python setup/setup_attacker/device_attack.py --dos --duration 60
+
+# All attacks for 5 minutes
+python setup/setup_attacker/device_attack.py --all --duration 300
+
+# Only DDoS and Brute Force
+python setup/setup_attacker/device_attack.py --ddos --brute
+```
+
+**Result:** NIDS on victim detects and classifies attacks in real-time. View results in terminal where NIDS is running.
 
 ---
 
-## Model Selection
+## Models & Output
+
+**Available Models:**
 
 | Model | Classes | Use When |
 |---|---|---|
 | **default** (5-class) | Benign, DoS, DDoS, Brute Force, Botnet | Standard classification |
 | **all** (6-class) | Benign + 5 above + Infiltration | Need port scanning detection |
 
-```bash
-# Use 5-class (default)
-python classification.py --model default
-
-# Use 6-class (all)
-python classification.py --model all
-```
-
----
-
-## Output Files
-
-- **Live mode** — results printed to terminal in real-time
+**Output:**
+- **Live mode** — results printed to terminal in real-time; also saved to `reports/` folder as text files
 - **Batch mode** — results printed after all flows are classified
-- **--save-flows** — CSV file with predicted labels (if input was labeled, also shows accuracy)
 
 ---
 

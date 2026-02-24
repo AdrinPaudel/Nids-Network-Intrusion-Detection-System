@@ -50,5 +50,15 @@ if %exit_code% equ 0 (
 )
 echo ================================================================================
 echo.
-
+echo   Next steps:
+echo.
+echo   1. Start NIDS on this device to detect attacks:
+echo        See: PROJECT_RUN.md (in project root)
+echo.
+echo   2. To understand all setup options:
+echo        See: setup/SETUPS.md
+echo.
+echo   3. For project overview:
+echo        See: README.md (in project root)
+echo.
 pause
