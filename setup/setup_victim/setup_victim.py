@@ -446,27 +446,11 @@ def setup_windows():
             print("      Installing OpenSSH (this may take 5-10 minutes)...")
             print("      Please wait...")
             
-            # Method 1: Try Add-WindowsCapability
-            ok_install, out_install = run_cmd('powershell -NoProfile -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"', timeout=900)
+            # Use DISM directly (more reliable on Windows 10 than PowerShell)
+            ok_dism, out_dism = run_cmd('dism /online /enable-feature /featurename:OpenSSH-Server /all /norestart', timeout=600)
             
-            if not ok_install:
-                print(f"      [DEBUG] PowerShell method failed")
-                print(f"      [DEBUG] Return code indicated failure, trying alternative...")
-                
-                # Method 2: Try using DISM (more reliable on Windows 10)
-                print("      Trying DISM method (may be more reliable)...")
-                ok_dism, out_dism = run_cmd('dism /online /enable-feature /featurename:OpenSSH-Server /all /norestart', timeout=600)
-                
-                if ok_dism or "completed successfully" in out_dism.lower():
-                    print("      [OK] DISM installation succeeded")
-                    ok_install = True
-                    out_install = out_dism
-                else:
-                    print(f"      [DEBUG] DISM also failed or not available")
-                    print(f"      [DEBUG] DISM output: {out_dism[:300]}")
-            
-            if ok_install or "Success" in out_install or "already" in out_install.lower() or "completed successfully" in out_install.lower():
-                print("      [OK] OpenSSH installation command succeeded")
+            if ok_dism or "completed successfully" in out_dism.lower() or "feature was already" in out_dism.lower():
+                print("      [OK] OpenSSH installation succeeded")
                 time.sleep(3)
                 
                 # Try to start the service
@@ -482,20 +466,20 @@ def setup_windows():
                     issues += 1
             else:
                 print("      [!] Installation failed")
-                if out_install:
-                    # Show the actual error
-                    if len(out_install) > 200:
-                        print(f"      Error (first 200 chars): {out_install[:200]}")
+                if out_dism:
+                    if len(out_dism) > 200:
+                        print(f"      Error (first 200 chars): {out_dism[:200]}")
                     else:
-                        print(f"      Error: {out_install}")
+                        print(f"      Error: {out_dism}")
                 
                 print()
                 print("      Troubleshooting:")
                 print("        1. Make sure you're running this as Administrator")
-                print("        2. Windows 10 may not support OpenSSH - try:")
-                print("           - Update Windows 10 to latest version")
+                print("        2. Windows 10 may not support OpenSSH in all builds - try:")
+                print("           - Update Windows 10 to latest version (Settings > Update)")
                 print("           - Upgrade to Windows 11")
-                print("           - Install Git: https://git-scm.com/download/win")
+                print("           - Install Git: https://git-scm.com/download/win (has SSH)")
+                print("        3. SSH is optional - you can still test other attacks")
                 issues += 1
         else:
             print("      [SKIP] SSH not installed")
