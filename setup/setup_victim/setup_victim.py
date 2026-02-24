@@ -25,6 +25,7 @@ import os
 import subprocess
 import socket
 import platform
+import time
 
 
 def is_admin():
@@ -411,7 +412,7 @@ def setup_windows():
     # --- SSH Server ---
     print("  [1] Checking SSH Server (needed for Brute Force attack)...")
     print()
-
+    
     ok, _ = run_cmd("sc query sshd")
     if ok:
         ok_run, out = run_cmd('sc query sshd | findstr "RUNNING"')
@@ -421,13 +422,16 @@ def setup_windows():
             print("      [!] OpenSSH Server is installed but NOT running")
             print()
             if ask_yes_no("Start SSH service?"):
+                print("      Starting...")
                 run_cmd("sc config sshd start= auto")
                 run_cmd("net start sshd")
+                time.sleep(2)  # Wait for service to start
                 ok_run2, _ = run_cmd('sc query sshd | findstr "RUNNING"')
                 if ok_run2:
                     print("      [OK] SSH started")
                 else:
                     print("      [!] Failed to start SSH")
+                    print("      Try: net start sshd  (manually in Admin cmd)")
                     issues += 1
             else:
                 print("      [SKIP] SSH not started")
@@ -436,16 +440,39 @@ def setup_windows():
         print("      [!] OpenSSH Server is NOT installed")
         print()
         if ask_yes_no("Install OpenSSH Server?"):
-            print("      Installing...")
+            print("      Installing (this may take 1-2 minutes)...")
             ok_inst, _ = run_cmd('powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"')
             if ok_inst:
-                print("      [OK] Installed")
-                if ask_yes_no("Start SSH now?"):
-                    run_cmd("sc config sshd start= auto")
+                print("      [OK] Installation complete. Waiting for service to register...")
+                time.sleep(3)  # Give Windows time to register the new service
+                
+                # Try to ensure service exists and is running
+                run_cmd("sc config sshd start= auto")
+                time.sleep(1)
+                run_cmd("net start sshd")
+                time.sleep(2)
+                
+                ok_check, _ = run_cmd('sc query sshd | findstr "RUNNING"')
+                if ok_check:
+                    print("      [OK] SSH installed and running")
+                else:
+                    print("      [!] SSH installed but not running yet")
+                    print("      Trying once more...")
+                    run_cmd("net stop sshd 2>nul")
+                    time.sleep(1)
                     run_cmd("net start sshd")
-                    print("      [OK] SSH started")
+                    time.sleep(2)
+                    ok_check2, _ = run_cmd('sc query sshd | findstr "RUNNING"')
+                    if ok_check2:
+                        print("      [OK] SSH now running")
+                    else:
+                        print("      [!] SSH still not running. Try manual start:")
+                        print("          1. Open Admin Command Prompt")
+                        print("          2. Run: net start sshd")
+                        issues += 1
             else:
-                print("      [!] Failed to install")
+                print("      [!] Failed to install OpenSSH")
+                print("      Manual fix: Settings > Apps > Optional Features > '+ Add a feature' > OpenSSH Server")
                 issues += 1
         else:
             print("      [SKIP] Not installing SSH")
