@@ -409,7 +409,7 @@ FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (s
 # WARNING: This also affects benign TCP flows. Only enable if:
 #   1. TCP timestamps cannot be enabled on the attacker machine, AND
 #   2. All monitored attack traffic comes from Windows (no-timestamp) sources
-FLOWMETER_FIX_WINDOWS_FWD_SEG_MIN = False
+FLOWMETER_FIX_WINDOWS_FWD_SEG_MIN = True
 
 # Default classification parameters
 CLASSIFICATION_DEFAULT_DURATION = 120        # 2 minutes (seconds)
