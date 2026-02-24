@@ -814,6 +814,14 @@ def create_web_server_startup_task():
     return False
 
 
+def setup_windows():
+    """Setup checks for Windows victim device."""
+    issues = 0
+
+    major, build = win_get_version()
+    is_win11 = build >= 22000
+    print(f"  Windows {'11' if is_win11 else '10'} (build {build})")
+    print()
 
     # --- SSH Server ---
     print("  [1] Checking SSH Server (needed for Brute Force attack)...")
