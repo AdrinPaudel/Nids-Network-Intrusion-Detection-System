@@ -234,6 +234,35 @@ def win_is_port_open(port):
     except Exception:
         return False
 
+def is_port_open(port):
+    """Check if port is listening on Linux."""
+    try:
+        result = subprocess.run(
+            ['netstat', '-tuln'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        for line in result.stdout.split('\n'):
+            if f':{port}' in line and 'LISTEN' in line:
+                return True
+        return False
+    except Exception:
+        # Fallback: try ss command (more modern)
+        try:
+            result = subprocess.run(
+                ['ss', '-tuln'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            for line in result.stdout.split('\n'):
+                if f':{port}' in line and 'LISTEN' in line:
+                    return True
+            return False
+        except Exception:
+            return False
+
 # ============================================================================
 # WINDOWS - WEB SERVER (Persistent, detached from terminal)
 # ============================================================================
@@ -455,10 +484,16 @@ def main():
         add_firewall_rule()
         
         print("\n=== Setup Summary ===")
+        print("  Services:")
         ssh_status = "OK" if ssh_ok else "SKIPPED"
         web_status = "OK" if web_ok else "FAILED"
-        print(f"  SSH:  {ssh_status}")
-        print(f"  Web:  {web_status}")
+        print(f"    SSH (port 22):  {ssh_status}")
+        print(f"    HTTP (port 80): {web_status}")
+        print(f"    FTP (port 21):  Not configured")
+        print("\n  Open Ports:")
+        print(f"    Port 22 (SSH):  {'✓ OPEN' if win_is_port_open(22) else '✗ CLOSED'}")
+        print(f"    Port 80 (HTTP): {'✓ OPEN' if win_is_port_open(80) else '✗ CLOSED'}")
+        print(f"    Port 21 (FTP):  {'✓ OPEN' if win_is_port_open(21) else '✗ CLOSED'}")
         
     elif system == 'Linux':
         # Linux setup
@@ -466,7 +501,14 @@ def main():
         linux_start_web_server()
         
         print("\n=== Setup Summary ===")
-        print("  [OK] Linux victim setup complete.")
+        print("  Services:")
+        print(f"    SSH (port 22):  OK")
+        print(f"    HTTP (port 80): OK")
+        print(f"    FTP (port 21):  Not configured")
+        print("\n  Open Ports:")
+        print(f"    Port 22 (SSH):  {'✓ OPEN' if is_port_open(22) else '✗ CLOSED'}")
+        print(f"    Port 80 (HTTP): {'✓ OPEN' if is_port_open(80) else '✗ CLOSED'}")
+        print(f"    Port 21 (FTP):  {'✓ OPEN' if is_port_open(21) else '✗ CLOSED'}")
     
     else:
         print(f"[ERROR] Unsupported system: {system}")
