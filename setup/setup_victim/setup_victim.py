@@ -14,13 +14,13 @@ import time
 import json
 from pathlib import Path
 
-# Color codes for output
+# No color - Windows cmd doesn't support ANSI codes
 class Color:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    END = '\033[0m'
+    GREEN = ''
+    RED = ''
+    YELLOW = ''
+    BLUE = ''
+    END = ''
 
     @staticmethod
     def on_windows():
@@ -256,21 +256,25 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
 with socketserver.TCPServer(("", 80), QuietHandler) as httpd:
-    print("[OK] Web server running on port 80", flush=True)
     httpd.serve_forever()
 """.format(project_root=get_project_root())
         
-        # Windows: Use DETACHED_PROCESS so it survives terminal close
+        # Windows: completely hide the window
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = subprocess.SW_HIDE
         
+        creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        # Suppress window creation completely (Python 3.7+)
+        if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+            creationflags |= subprocess.CREATE_NO_WINDOW
+        
         proc = subprocess.Popen(
             [sys.executable, '-c', script],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            creationflags=creationflags,
             startupinfo=si
         )
         
