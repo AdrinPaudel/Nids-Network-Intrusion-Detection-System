@@ -4,7 +4,7 @@ Simple Flow Capture Utility - No Classification
 Captures network flows and saves to temp folder for comparison with dataset.
 
 Usage:
-    python capture_flows.py --interface enp0s3 --duration 60 --output flows_attack.csv
+    sudo python capture_flows.py --interface enp0s3 --duration 60 --output flows_attack.csv
     
 Then compare with dataset:
     python compare_flows.py temp/flows_attack.csv data/raw/Friday-02-03-2018_TrafficForML_CICFlowMeter.csv
@@ -15,10 +15,12 @@ import sys
 import argparse
 import time
 import csv
+import queue
+import threading
 from pathlib import Path
 from datetime import datetime
 
-# Add project root to path so we can import classification modules
+# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from classification.flowmeter_source import FlowMeterSource
@@ -42,75 +44,87 @@ def capture_flows(interface, duration, output_file):
     temp_dir = create_temp_folder()
     output_path = temp_dir / output_file
     
-    flows_captured = 0
-    start_time = time.time()
-    
     try:
-        # Initialize flow meter using the same working code as classification
-        flow_meter = FlowMeterSource(interface=interface)
+        # Create queue and stop event for flow capture
+        flow_queue = queue.Queue(maxsize=10000)
+        stop_event = threading.Event()
+        
+        # Initialize flow meter source
+        flow_meter = FlowMeterSource(
+            flow_queue=flow_queue,
+            interface_name=interface,
+            stop_event=stop_event
+        )
         
         # Start capture
-        flow_meter.start()
+        print(f"[*] Starting packet capture on {interface}...")
+        if not flow_meter.start():
+            print(f"[ERROR] Failed to start flow capture")
+            return None
         
         # Collect flows for specified duration
-        end_time = time.time() + duration
         all_flows = []
+        start_time = time.time()
+        end_time = start_time + duration
+        flows_captured = 0
         
-        print(f"[*] Scanning for flows...")
+        print(f"[*] Collecting flows...")
         
         while time.time() < end_time:
             try:
-                # Get available flows
-                flows = flow_meter.get_flows()
-                if flows:
-                    all_flows.extend(flows)
-                    flows_captured = len(all_flows)
-                    print(f"\r[*] Flows captured: {flows_captured}", end="", flush=True)
-                time.sleep(0.5)
+                # Try to get flows from queue with timeout
+                flow_dict = flow_queue.get(timeout=0.5)
+                all_flows.append(flow_dict)
+                flows_captured += 1
+                
+                if flows_captured % 10 == 0:
+                    elapsed = time.time() - start_time
+                    print(f"\r[*] Flows captured: {flows_captured} ({elapsed:.1f}s)", end="", flush=True)
+            except queue.Empty:
+                # No flows in queue, continue waiting
+                continue
             except KeyboardInterrupt:
                 print("\n[*] Capture interrupted by user")
                 break
             except Exception as e:
                 print(f"\r[!] Error: {e}", flush=True)
         
-        # Stop capture
-        flow_meter.stop()
+        # Signal stop and wait a bit for any remaining flows
+        print(f"\n[*] Stopping capture...")
+        stop_event.set()
         
-        # Get any remaining flows
-        remaining_flows = flow_meter.get_flows()
-        if remaining_flows:
-            all_flows.extend(remaining_flows)
-            flows_captured = len(all_flows)
+        # Collect any remaining flows in queue
+        remaining_time = 10  # Wait up to 10 seconds for final flows
+        remaining_end = time.time() + remaining_time
+        while time.time() < remaining_end:
+            try:
+                flow_dict = flow_queue.get(timeout=0.1)
+                all_flows.append(flow_dict)
+                flows_captured += 1
+            except queue.Empty:
+                break
         
-        print(f"\n[*] Stops capture and processing flows...")
+        elapsed = time.time() - start_time
+        print(f"[*] Capture complete!")
+        print(f"[*] Total flows captured: {flows_captured}")
+        print(f"[*] Total duration: {elapsed:.1f}s")
         
         # Save flows to CSV
         if all_flows:
-            # Write CSV with all flows and their features
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                # Write header
-                if isinstance(all_flows[0], dict):
-                    writer = csv.DictWriter(f, fieldnames=all_flows[0].keys())
-                    writer.writeheader()
-                    writer.writerows(all_flows)
-                else:
-                    # If flows are objects, extract attributes
-                    first_flow = all_flows[0]
-                    keys = [attr for attr in dir(first_flow) if not attr.startswith('_')]
-                    writer = csv.DictWriter(f, fieldnames=keys)
-                    writer.writeheader()
-                    for flow in all_flows:
-                        flow_dict = {key: getattr(flow, key, None) for key in keys}
-                        writer.writerow(flow_dict)
+            # Get fieldnames from first flow
+            fieldnames = list(all_flows[0].keys())
             
-            elapsed = time.time() - start_time
-            print(f"\n[+] Capture complete!")
-            print(f"[+] Flows captured: {flows_captured}")
-            print(f"[+] Duration: {elapsed:.1f}s")
+            # Write CSV
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(all_flows)
+            
+            file_size = output_path.stat().st_size / 1024
             print(f"[+] Saved to: {output_path}")
-            print(f"[+] File size: {output_path.stat().st_size / 1024:.1f} KB")
+            print(f"[+] File size: {file_size:.1f} KB")
             print(f"\n[*] To examine the flows:")
-            print(f"    head -10 {output_path} | cut -d',' -f1-10")
+            print(f"    head -10 {output_path} | cut -d',' -f1-12")
             print(f"    wc -l {output_path}")
             
             return output_path
@@ -126,6 +140,47 @@ def capture_flows(interface, duration, output_file):
         import traceback
         traceback.print_exc()
         return None
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Simple Flow Capture Tool - No Classification",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  sudo python capture_flows.py --interface enp0s3 --duration 60
+  sudo python capture_flows.py --interface eth0 --duration 30 --output flows_test.csv
+  
+Output files are saved to: temp/
+        """
+    )
+    
+    parser.add_argument('--interface', required=True, help='Network interface to capture from (e.g., enp0s3, eth0)')
+    parser.add_argument('--duration', type=int, default=60, help='Capture duration in seconds (default: 60)')
+    parser.add_argument('--output', default='flows_capture.csv', help='Output filename (default: flows_capture.csv)')
+    
+    args = parser.parse_args()
+    
+    # Capture flows
+    output_file = capture_flows(args.interface, args.duration, args.output)
+    
+    if output_file:
+        print(f"\n[OK] Flow capture saved successfully\n")
+        sys.exit(0)
+    else:
+        print(f"\n[ERROR] Flow capture failed\n")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[*] Aborted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n[FATAL] {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(
