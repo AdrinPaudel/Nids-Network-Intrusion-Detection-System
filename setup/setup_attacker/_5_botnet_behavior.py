@@ -26,9 +26,9 @@ import base64
 import json
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data medians.
-# Bot training data: CICIDS2018 uses 8192 as the most common TCP window
-_RCVBUF_BOTNET = 8192        # Training mode: 8192 (56.8% of TCP flows) ✓
+# Values derived from CICIDS2018 training data per-class medians.
+# Bot training data: Botnet flows have a LOWER window size than normal traffic.
+_RCVBUF_BOTNET = 2053        # Botnet training median: 2053 (characteristic low value)
 
 USER_AGENTS = [
     # Ares/Zeus bots often use generic or outdated user agents
@@ -52,8 +52,16 @@ def _random_data(size):
 
 
 class BotnetAttack:
-    def __init__(self, target_ip, duration=60):
+    def __init__(self, target_ip, duration=60, target_port=8080):
+        """Initialize botnet attack.
+        
+        Default target_port=8080 matches CICIDS2018 training data where
+        Botnet Dst Port median=8080 (the Ares C2 server port).
+        Using port 80 would produce flows that look like normal HTTP
+        on the #2 most important feature (Dst Port, 8.7% importance).
+        """
         self.target_ip = target_ip
+        self.target_port = target_port
         self.duration = duration
         self.running = True
         self.beacon_count = 0
@@ -81,7 +89,7 @@ class BotnetAttack:
         Each beacon is a NEW TCP connection with 1-2 requests,
         matching the training data profile of ~2 fwd pkts per flow."""
         end_time = time.time() + self.duration
-        c2_port = random.choice([80, 8080])
+        c2_port = self.target_port
         bot_id = _random_string(16)
         seq = 0
 
@@ -133,7 +141,7 @@ class BotnetAttack:
         Each upload is a NEW TCP connection with 1 POST request,
         matching the training data profile of ~2 fwd pkts per flow."""
         end_time = time.time() + self.duration
-        exfil_port = random.choice([80, 8080])
+        exfil_port = self.target_port
         bot_id = _random_string(16)
 
         data_types = ["credentials", "keylog", "clipboard", "screenshots",
@@ -203,7 +211,7 @@ class BotnetAttack:
         matching the training data profile of ~2 fwd pkts per flow."""
         end_time = time.time() + self.duration
         bot_id = _random_string(16)
-        c2_port = random.choice([80, 8080])
+        c2_port = self.target_port
 
         keylog_snippets = [
             "admin password123 enter",
@@ -285,9 +293,10 @@ class BotnetAttack:
         print(f"[Botnet] Completed in {elapsed:.2f}s — Made {self.beacon_count} C2 connections")
 
 
-def run_botnet(target_ip, duration=60, threads=6):
-    """Convenience function to run botnet attack"""
-    attack = BotnetAttack(target_ip, duration)
+def run_botnet(target_ip, target_port=8080, duration=60, threads=6):
+    """Convenience function to run botnet attack.
+    Default port=8080 matches CICIDS2018 training data (Botnet Dst Port median=8080)."""
+    attack = BotnetAttack(target_ip, duration, target_port=target_port)
     attack.run_attack(num_threads=threads)
 
 

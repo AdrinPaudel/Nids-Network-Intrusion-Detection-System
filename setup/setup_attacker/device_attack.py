@@ -26,12 +26,119 @@ import time
 import random
 import argparse
 import socket
+import platform
+import subprocess
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Default settings (no config file needed)
 DEFAULTS = {"duration": 300}
+
+
+def check_and_enable_tcp_timestamps():
+    """Check and enable TCP timestamps on the attacker machine.
+    
+    This is CRITICAL for classification accuracy because:
+    - Fwd Seg Size Min is the #1 most important feature (9.3% importance)
+    - CICIDS2018 training data was from Linux (Kali) where TCP timestamps are always ON
+    - TCP timestamps add 12 bytes to header: 20 -> 32 bytes
+    - Without timestamps, Fwd Seg Size Min = 20, but model expects 32 for DoS/DDoS
+    - This single feature mismatch can drop confidence from >90% to <40%
+    """
+    os_name = platform.system()
+    
+    if os_name == "Windows":
+        print("[*] Checking TCP timestamps (CRITICAL for attack classification)...")
+        print("[*] The model's #1 feature (Fwd Seg Size Min) requires TCP timestamps = enabled")
+        print()
+        
+        # Check current TCP timestamp setting via netsh
+        try:
+            result = subprocess.run(
+                ["netsh", "int", "tcp", "show", "global"],
+                capture_output=True, text=True, timeout=10
+            )
+            output = result.stdout.lower()
+            
+            # Check if timestamps are disabled
+            timestamps_disabled = "timestamps" in output and "disabled" in output
+            timestamps_enabled = "timestamps" in output and "enabled" in output
+            
+            if timestamps_enabled:
+                print("[OK] TCP timestamps are ENABLED")
+                print()
+                return True
+            elif timestamps_disabled:
+                print("[!] TCP timestamps are DISABLED!")
+                print("[!] This will cause most attacks to be misclassified as Benign.")
+                print()
+                print("[*] Attempting to enable TCP timestamps...")
+                print("[*] Running: netsh int tcp set global timestamps=enabled")
+                print()
+                
+                try:
+                    enable_result = subprocess.run(
+                        ["netsh", "int", "tcp", "set", "global", "timestamps=enabled"],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if enable_result.returncode == 0:
+                        print("[OK] TCP timestamps ENABLED successfully!")
+                        print()
+                        return True
+                    else:
+                        print("[!] Failed to enable TCP timestamps (need Administrator privileges)")
+                        print("[!] Please run this command manually as Administrator:")
+                        print("    netsh int tcp set global timestamps=enabled")
+                        print()
+                        print("[!] Or run this script as Administrator.")
+                        print("[!] Continuing anyway, but attacks will likely be misclassified...")
+                        print()
+                        return False
+                except Exception as e:
+                    print(f"[!] Error enabling timestamps: {e}")
+                    print("[!] Please run manually as Administrator:")
+                    print("    netsh int tcp set global timestamps=enabled")
+                    print()
+                    return False
+            else:
+                print("[?] Could not determine TCP timestamp status")
+                print("[*] Attempting to enable TCP timestamps...")
+                try:
+                    subprocess.run(
+                        ["netsh", "int", "tcp", "set", "global", "timestamps=enabled"],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    print("[OK] TCP timestamps enable command sent")
+                except Exception:
+                    print("[!] Could not enable timestamps. Run as Administrator:")
+                    print("    netsh int tcp set global timestamps=enabled")
+                print()
+                return True
+                
+        except Exception as e:
+            print(f"[!] Error checking TCP timestamps: {e}")
+            print("[!] Please ensure TCP timestamps are enabled:")
+            print("    netsh int tcp set global timestamps=enabled")
+            print()
+            return False
+    
+    elif os_name == "Linux":
+        try:
+            with open("/proc/sys/net/ipv4/tcp_timestamps", "r") as f:
+                val = f.read().strip()
+            if val == "1":
+                print("[OK] TCP timestamps are enabled (Linux)")
+                return True
+            else:
+                print("[!] TCP timestamps are disabled! Enabling...")
+                os.system("sudo sysctl -w net.ipv4.tcp_timestamps=1")
+                return True
+        except Exception:
+            print("[?] Could not check TCP timestamps on Linux")
+            return True
+    
+    return True
 
 from _1_dos_attack import run_dos
 from _2_ddos_simulation import run_ddos
@@ -84,16 +191,23 @@ def prompt_for_ip():
             print("[-] Invalid IP address format")
 
 def prompt_for_ports():
-    """Prompt user for all target ports (SSH, HTTP, FTP)"""
+    """Prompt user for all target ports (SSH, HTTP, FTP, C2)"""
     ports = {}
-    port_names = ["SSH", "HTTP", "FTP"]
-    port_defaults = {"SSH": 22, "HTTP": 80, "FTP": 21}
+    port_names = ["SSH", "HTTP", "FTP", "C2"]
+    port_defaults = {"SSH": 22, "HTTP": 80, "FTP": 21, "C2": 8080}
+    port_notes = {
+        "SSH": "",
+        "HTTP": " (DoS/DDoS target)",
+        "FTP": "",
+        "C2": " (Botnet C2 — training data uses 8080)",
+    }
     
     print("\n[*] Enter target ports:")
     
     for port_name in port_names:
         while True:
-            port_str = input(f"[?] Enter {port_name} port (default {port_defaults[port_name]}): ").strip()
+            note = port_notes.get(port_name, "")
+            port_str = input(f"[?] Enter {port_name} port{note} (default {port_defaults[port_name]}): ").strip()
             
             if not port_str:
                 ports[port_name] = port_defaults[port_name]
@@ -131,7 +245,7 @@ def run_attack_sequence(target_ip, target_ports, attacks_to_run, total_duration,
     
     print(f"\n[*] Attack sequence:")
     print(f"[*] Target: {target_ip}")
-    print(f"[*] Ports - SSH: {target_ports['SSH']}, HTTP: {target_ports['HTTP']}, FTP: {target_ports['FTP']}")
+    print(f"[*] Ports - SSH: {target_ports['SSH']}, HTTP: {target_ports['HTTP']}, FTP: {target_ports['FTP']}, C2: {target_ports['C2']}")
     print(f"[*] Total duration: {total_duration}s")
     print(f"[*] Attacks: {', '.join(attacks_to_run)}")
     print(f"[*] Time per attack: {duration_per_attack}s")
@@ -145,7 +259,7 @@ def run_attack_sequence(target_ip, target_ports, attacks_to_run, total_duration,
         "ddos": ("_2_ddos_simulation", run_ddos, target_ports["HTTP"]),
         "brute_force": ("_3_brute_force_ssh", run_brute_force, target_ports["SSH"]),
         "infiltration": ("_4_infiltration", run_infiltration, target_ports["SSH"]),
-        "botnet": ("_5_botnet_behavior", run_botnet, target_ports["HTTP"]),
+        "botnet": ("_5_botnet_behavior", run_botnet, target_ports["C2"]),
     }
     
     for i, attack_name in enumerate(attacks_to_run, 1):
@@ -155,13 +269,19 @@ def run_attack_sequence(target_ip, target_ports, attacks_to_run, total_duration,
         
         module_name, default_func, port = attack_mapping[attack_name]
         
-        # Thread counts from CICIDS2018 specifications
-        threads_for_attack = 10 if attack_name in ["ddos", "infiltration"] else 5
+        # Thread counts: match the new weighted defaults in each attack script
+        threads_for_attack = {
+            "dos": 10,           # 4x HULK + 3x GoldenEye + 1x each slow technique
+            "ddos": 10,          # 4x LOIC-HTTP + 3x HOIC + 3x LOIC-UDP
+            "brute_force": 5,    # SSH + FTP + Web brute force
+            "infiltration": 5,   # TCP scan + service enum + UDP scan + aggressive
+            "botnet": 6,         # C2 beacon + exfil + keylog
+        }.get(attack_name, 5)
         
         print(f"\n[>>> Attack {i}/{len(attacks_to_run)}] Starting {attack_name.upper()}")
         print(f"[>>>] Target: {target_ip}:{port}")
         print(f"[>>>] Duration: {duration_per_attack}s")
-        print(f"[>>>] Threads: {threads_for_attack} (matching CICIDS2018 intensity)")
+        print(f"[>>>] Threads: {threads_for_attack}")
         
         try:
             if port:
@@ -204,6 +324,10 @@ def main():
     print("[*] NIDS Attack Generator - Interactive Mode\n")
     
     args = parse_args()
+    
+    # CRITICAL: Check TCP timestamps before any attack
+    # This is the #1 most important feature for classification
+    check_and_enable_tcp_timestamps()
     
     # Prompt for target information
     print("[*] Enter target information:")

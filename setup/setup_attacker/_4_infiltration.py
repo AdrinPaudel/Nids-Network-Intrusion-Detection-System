@@ -307,8 +307,10 @@ class InfiltrationAttack:
         print(f"[Infiltration] Completed in {elapsed:.2f}s — Scanned {self.scan_count} ports/services")
 
 
-def run_infiltration(target_ip, duration=60, threads=3):
-    """Convenience function to run infiltration attack"""
+def run_infiltration(target_ip, target_port=None, duration=60, threads=3):
+    """Convenience function to run infiltration attack.
+    target_port is accepted for API compatibility but not used
+    (infiltration scans many ports by nature)."""
     attack = InfiltrationAttack(target_ip, duration)
     attack.run_attack(num_threads=threads)
 

