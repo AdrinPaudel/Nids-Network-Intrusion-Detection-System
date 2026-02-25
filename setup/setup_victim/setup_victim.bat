@@ -54,66 +54,24 @@ if %errorlevel% equ 0 (
     )
 )
 
-REM --- Find a working Python (venv first, then system) ---
-set "PYTHON="
+REM --- Find and activate Python venv, or use system Python ---
+set "VENV_ACTIVATE=%PROJECT_ROOT%\venv\Scripts\activate.bat"
 
-REM Try venv python
-if exist "%PROJECT_ROOT%\venv\Scripts\python.exe" (
-    set "PYTHON=%PROJECT_ROOT%\venv\Scripts\python.exe"
-    goto :found_python
+if exist "%VENV_ACTIVATE%" (
+    echo   Using venv Python
+    call "%VENV_ACTIVATE%"
+) else (
+    echo   Venv not found, using system Python
+    where python >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo.
+        echo   [ERROR] Python not found.
+        echo   Install Python 3.10+ from https://www.python.org/downloads/
+        echo.
+        pause
+        exit /b 1
+    )
 )
-
-REM Try system python
-where python >nul 2>&1
-if %errorlevel% equ 0 (
-    set "PYTHON=python"
-    goto :found_python
-)
-
-where python3 >nul 2>&1
-if %errorlevel% equ 0 (
-    set "PYTHON=python3"
-    goto :found_python
-)
-
-REM Try common install locations
-if exist "C:\Python312\python.exe" (
-    set "PYTHON=C:\Python312\python.exe"
-    goto :found_python
-)
-if exist "C:\Python311\python.exe" (
-    set "PYTHON=C:\Python311\python.exe"
-    goto :found_python
-)
-if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
-    set "PYTHON=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
-    goto :found_python
-)
-if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
-    set "PYTHON=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
-    goto :found_python
-)
-
-echo.
-echo   [ERROR] Python not found.
-echo   Install Python 3.10+ from https://www.python.org/downloads/
-echo   Make sure to check "Add Python to PATH" during install.
-echo.
-pause
-exit /b 1
-
-:found_python
-echo   Using Python: %PYTHON%
 
 REM --- Run the setup script ---
-"%PYTHON%" "%PROJECT_ROOT%\setup\setup_victim\setup_victim.py"
-set "EXIT_CODE=%errorlevel%"
-
-echo.
-if %EXIT_CODE% equ 0 (
-    echo   [OK] Victim setup check complete.
-) else (
-    echo   [!] Some issues were found - see above.
-)
-echo.
-pause
+python "%PROJECT_ROOT%\setup\setup_victim\setup_victim.py"
