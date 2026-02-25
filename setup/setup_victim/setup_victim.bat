@@ -100,19 +100,16 @@ echo ===========================================================================
 echo.
 echo   Next steps:
 echo.
-echo   1. Verify SSH is running:
-echo        netstat -an ^| find ":22"
+echo   1. Activate venv (every new terminal):
+echo        venv\Scripts\activate.bat
 echo.
-echo   2. Test SSH connection from attacker:
-echo        ssh -l username victim_ip
-echo.
-echo   3. For project details:
+echo   2. For details on running features:
 echo        See: PROJECT_RUN.md (in project root)
 echo.
-echo   4. To set up other components:
+echo   3. To set up other components:
 echo        See: setup/SETUPS.md
 echo.
-echo   5. For project overview:
+echo   4. For project overview:
 echo        See: README.md (in project root)
 echo.
 pause
