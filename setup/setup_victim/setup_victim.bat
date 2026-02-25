@@ -30,6 +30,30 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+REM --- Check and setup SSH (Windows built-in or standalone) ---
+echo.
+echo   Checking SSH server...
+
+REM Try to query OpenSSH service
+sc query sshd >nul 2>&1
+if %errorlevel% equ 0 (
+    echo   [OK] OpenSSH service found.
+) else (
+    echo   [!] OpenSSH not installed. Attempting to enable Windows built-in OpenSSH...
+    
+    REM Try to add Windows built-in OpenSSH (Win10 1809+ and Win11)
+    powershell -NoProfile -Command "Get-WindowsCapability -Online | Where-Object {$_.Name -like 'OpenSSH.Server*'} | Add-WindowsCapability -Online" >nul 2>&1
+    
+    timeout /t 2 /nobreak >nul 2>&1
+    
+    sc query sshd >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo   [!] Windows built-in OpenSSH unavailable. Will download standalone version...
+    ) else (
+        echo   [OK] Windows built-in OpenSSH enabled successfully.
+    )
+)
+
 REM --- Find a working Python (venv first, then system) ---
 set "PYTHON="
 

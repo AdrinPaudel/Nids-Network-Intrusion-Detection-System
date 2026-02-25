@@ -1,524 +1,450 @@
 #!/usr/bin/env python3
 """
-Setup check for NIDS victim devices (Windows & Linux).
-
-Windows:  Run as Administrator
-Linux:    Run with sudo
-
-Real fixes for common issues:
-  - SSH service won't start → Try to fix service config and run sshd directly
-  - Web server won't persist → Use DETACHED_PROCESS so it survives terminal close
+Victim Device Setup Checker - Windows & Linux
+Checks and sets up SSH and web server for attack simulations.
+Uses Windows built-in or standalone OpenSSH (no Git dependency).
 """
 
 import os
 import sys
 import platform
+import subprocess
 import socket
 import time
-import ctypes
-import subprocess
-import tempfile
-import shutil
+import json
 from pathlib import Path
 
+# Color codes for output
+class Color:
+    GREEN = '\033[92m'
+    RED = '\033[91m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    END = '\033[0m'
 
-# ==================================================================
-# Admin Check & Version
-# ==================================================================
+    @staticmethod
+    def on_windows():
+        return platform.system() == 'Windows'
 
-def is_admin():
-    """Check if running with admin/root privileges."""
-    try:
-        if platform.system() == "Windows":
-            # Check if current process has admin privileges
-            import ctypes as ct
-            return ct.windll.shell32.IsUserAnAdmin() != 0
-        else:
-            return os.getuid() == 0
-    except Exception as e:
-        print(f"      [DEBUG] Admin check error: {e}")
-        return False
+# ============================================================================
+# WINDOWS - SSH SERVER SETUP (Standalone OpenSSH, no Git)
+# ============================================================================
 
-
-def win_get_version():
-    """Get Windows version as (major, build)."""
-    try:
-        import platform as _p
-        version_str = _p.version()
-        parts = version_str.split('.')
-        major = int(parts[0])
-        build = int(parts[2]) if len(parts) > 2 else 0
-        return major, build
-    except:
-        return 10, 0
-
-
-# ==================================================================
-# Command Execution
-# ==================================================================
-
-def run_cmd(cmd, shell=True, timeout=10, silent=False):
-    """Run shell command, return (success, stdout, stderr)."""
+def win_check_openssh_service():
+    """Check if OpenSSH service is installed on Windows."""
     try:
         result = subprocess.run(
-            cmd,
-            shell=shell,
-            timeout=timeout,
+            ['sc', 'query', 'sshd'],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=5
         )
-        return result.returncode == 0, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        if not silent:
-            print(f"      [!] Command timed out")
-        return False, "", "timeout"
+        return result.returncode == 0
     except Exception as e:
-        if not silent:
-            print(f"      [!] Error: {e}")
-        return False, "", str(e)
+        print(f"  {Color.RED}[!] Error checking OpenSSH: {e}{Color.END}")
+        return False
 
-
-def run_ps(cmd, timeout=10, silent=False):
-    """Run PowerShell command."""
-    ps_cmd = f'powershell -NoProfile -Command "{cmd}"'
-    return run_cmd(ps_cmd, timeout=timeout, silent=silent)
-
-
-# ==================================================================
-# Network Detection
-# ==================================================================
-
-def get_all_ips():
-    """Get all IPv4 addresses."""
-    ips = set()
-
+def win_enable_builtin_openssh():
+    """Try to enable Windows built-in OpenSSH (Win10 1809+ and Win11)."""
+    print("  Attempting to enable Windows built-in OpenSSH...")
     try:
-        hostname = socket.gethostname()
-        _, _, ip_list = socket.gethostbyname_ex(hostname)
-        ips.update(ip_list)
-    except:
-        pass
-
-    if platform.system() == "Windows":
-        success, stdout, _ = run_cmd("ipconfig", silent=True)
-        if success:
-            for line in stdout.split('\n'):
-                if "IPv4 Address" in line:
-                    try:
-                        ip = line.split(':')[1].strip()
-                        if ip:
-                            ips.add(ip)
-                    except:
-                        pass
-
-    return sorted(list(ips))
-
-
-# ==================================================================
-# Windows: Port Detection
-# ==================================================================
-
-def win_port_listening(port):
-    """Check if Windows port is listening."""
-    success, stdout, _ = run_cmd(
-        f"netstat -an 2>nul | findstr /R \":{port}.*LISTENING\"",
-        timeout=3,
-        silent=True
-    )
-    return success and stdout.strip() != ""
-
-
-def win_fix_git_ssh():
-    """Fix or reinstall Git with proper crypto libraries."""
-    print("      Git SSH is broken (missing crypto libraries)...")
-    print()
-    
-    # Option 1: Remove and reinstall Git
-    print("      Attempting to fix Git installation...")
-    
-    # Uninstall Git
-    print("      Uninstalling Git...")
-    run_cmd('wmic product where name="Git" call uninstall /nointeractive 2>nul', silent=True, timeout=60)
-    time.sleep(3)
-    
-    # Clear git from PATH
-    run_cmd('setx PATH "%PATH:C:\\Program Files\\Git\\cmd;=%"', silent=True, timeout=5)
-    
-    # Reinstall with full options
-    print("      Reinstalling Git with all components...")
-    success, stdout, stderr = run_cmd(
-        'winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements 2>&1',
-        silent=True,
-        timeout=180
-    )
-    
-    if success or "successfully" in stdout.lower():
-        print("      [OK] Git reinstalled")
-        time.sleep(3)
+        # This command adds Windows built-in OpenSSH capability
+        result = subprocess.run(
+            [
+                'powershell', '-NoProfile', '-Command',
+                "Get-WindowsCapability -Online | Where-Object {$_.Name -like 'OpenSSH.Server*'} | Add-WindowsCapability -Online"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        time.sleep(2)  # Let system settle
         
-        # Verify
-        success, stdout, _ = run_cmd("git --version 2>nul", silent=True)
-        if success:
-            print(f"      [OK] Git working: {stdout.strip()}")
-            
-            # Test SSH
-            time.sleep(2)
-            success, stdout, stderr = run_cmd('ssh -V 2>&1', silent=True, timeout=5)
-            if success:
-                print(f"      [OK] Git SSH working: {stdout.strip()}")
-                return True
-            else:
-                print(f"      [!] Git SSH still broken: {stderr[:80]}")
-                return False
+        if win_check_openssh_service():
+            print(f"  {Color.GREEN}[OK] Windows built-in OpenSSH enabled.{Color.END}")
+            return True
+        else:
+            print(f"  {Color.YELLOW}[!] Built-in OpenSSH not available for this Windows version.{Color.END}")
+            return False
+    except Exception as e:
+        print(f"  {Color.YELLOW}[!] Could not enable built-in OpenSSH: {e}{Color.END}")
+        return False
+
+def win_download_standalone_openssh():
+    """Download standalone OpenSSH MSI for old Windows systems."""
+    print("  Downloading standalone OpenSSH for Windows...")
     
-    print("      [!] Git reinstallation failed")
-    return False
+    try:
+        import urllib.request
+        
+        # Use an older OpenSSH version that works with old Windows 10
+        # Version 8.1.0.0 is known to work on older systems
+        url = "https://github.com/PowerShell/Win32-OpenSSH/releases/download/v8.1.0.0p1-Beta/OpenSSH-Win64.msi"
+        installer_path = os.path.join(os.environ.get('TEMP', 'C:\\temp'), 'OpenSSH-Win64.msi')
+        
+        print(f"  Downloading from: {url}")
+        urllib.request.urlretrieve(url, installer_path)
+        
+        if os.path.exists(installer_path):
+            print(f"  {Color.GREEN}[OK] Downloaded to {installer_path}{Color.END}")
+            return installer_path
+        else:
+            print(f"  {Color.RED}[ERROR] Download failed.{Color.END}")
+            return None
+            
+    except Exception as e:
+        print(f"  {Color.RED}[ERROR] Download failed: {e}{Color.END}")
+        return None
 
-
-def win_skip_ssh():
-    """Option to skip SSH and just use web server."""
-    print()
-    print("      SSH is problematic on this system.")
-    print("      For testing purposes, web server on port 80 is often sufficient.")
-    print()
-    if ask_yes_no("Skip SSH and focus on web server setup?"):
-        print("      [OK] Skipping SSH - proceeding with web server only")
-        return True
-    return False
-
-
-# ==================================================================
-# Windows: Service Management
-# ==================================================================
-
-def win_service_running(service_name):
-    """Check if Windows service is running."""
-    success, stdout, _ = run_cmd(
-        f'sc query "{service_name}"',
-        silent=True
-    )
-    return success and "RUNNING" in stdout
-
-
-# ==================================================================
-# Windows: SSH Service Fix
-# ==================================================================
+def win_install_standalone_openssh(installer_path):
+    """Install standalone OpenSSH MSI."""
+    print(f"  Installing OpenSSH from: {installer_path}")
+    
+    try:
+        # Silent install: /quiet, /norestart
+        result = subprocess.run(
+            ['msiexec.exe', '/i', installer_path, '/quiet', '/norestart'],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        time.sleep(3)  # Let system settle after install
+        
+        if win_check_openssh_service():
+            print(f"  {Color.GREEN}[OK] OpenSSH installed and service found.{Color.END}")
+            return True
+        else:
+            print(f"  {Color.YELLOW}[!] OpenSSH installed but service not detected yet.{Color.END}")
+            return True  # Installation succeeded, service may start on reboot
+            
+    except Exception as e:
+        print(f"  {Color.RED}[ERROR] Installation failed: {e}{Color.END}")
+        return False
 
 def win_start_sshd():
-    """Start SSH service - actually fix it this time."""
-    print("      Attempting to start SSH...")
-    
-    # Method 1: Check if already running
-    if win_port_listening(22):
-        print("      [OK] Port 22 already listening")
-        return True
-    
-    # Method 2: Try net start
-    success, stdout, stderr = run_cmd("net start sshd", silent=True)
-    if success or "already" in stderr.lower():
-        time.sleep(2)
-        if win_port_listening(22):
-            print("      [OK] SSH service started (net start)")
-            return True
-    
-    # Method 3: Stop and restart cycle
-    print("      Trying stop/restart cycle...")
-    run_cmd("net stop sshd 2>nul", silent=True)
-    time.sleep(2)
-    
-    success, stdout, stderr = run_cmd("net start sshd", silent=True)
-    if "error" in stderr.lower() or "denied" in stderr.lower():
-        print(f"      Error: {stderr[:80]}")
-        # Try PowerShell
-        print("      Trying PowerShell...")
-        run_ps("Start-Service sshd -ErrorAction SilentlyContinue", silent=True)
-        time.sleep(2)
-    
-    time.sleep(2)
-    if win_port_listening(22):
-        print("      [OK] SSH service started")
-        return True
-    
-    # Check for common OpenSSH errors
-    print("      [!] SSH service won't start - checking issues...\n")
-    
-    sshd_exe = None
-    for sshd_path in ["C:\\Windows\\System32\\OpenSSH\\sshd.exe", "C:\\Program Files\\OpenSSH\\sshd.exe"]:
-        if os.path.exists(sshd_path):
-            sshd_exe = sshd_path
-            break
-    
-    if sshd_exe:
-        print(f"      Found sshd.exe: {sshd_exe}")
-        
-        # Run in test mode - this will show crypto errors
-        print("      Running config test...")
-        success, stdout, stderr = run_cmd(f'"{sshd_exe}" -T', silent=True, timeout=5)
-        
-        if "entry point" in stderr.lower() or "libcrypto" in stderr.lower() or "bn_init" in stderr.lower():
-            print("      [!] CRYPTO LIBRARY ERROR detected!")
-            print("      This means OpenSSH is corrupted/incomplete.")
-            print()
-            print("      Fix options:")
-            print("      1. Uninstall OpenSSH (corrupted)")
-            print("      2. Use Git for Windows SSH instead (more stable)")
-            print()
-            return False
-        elif not success:
-            print(f"      Config error: {stderr[:150]}")
-    
-    return False
-
-
-# ==================================================================
-# Windows: Web Server (PERSISTENT START)
-# ==================================================================
-
-def start_web_server_detached(python_exe, nids_dir):
-    """Start web server that persists when terminal closes."""
-    print("      Starting web server (detached)...")
+    """Start OpenSSH service on Windows."""
+    print("  Starting OpenSSH service...")
     
     try:
-        # Use DETACHED_PROCESS so it doesn't die with terminal
-        for wait_cycle in range(15):
-            try:
-                proc = subprocess.Popen(
-                    [python_exe, "-m", "http.server", "80"],
-                    cwd=nids_dir,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                )
-                print(f"      Process started (PID: {proc.pid})")
-                break
-            except Exception as e:
-                if wait_cycle < 14:
-                    time.sleep(1)
-                else:
-                    raise
-        
-        # Wait for port to listen
-        for attempt in range(15):
-            time.sleep(1)
-            if win_port_listening(80):
-                print(f"      [OK] Web server listening on port 80")
-                return True
-        
-        print("      [!] Process started but port 80 not listening")
-        return False
-        
-    except Exception as e:
-        print(f"      [!] Failed: {e}")
-        return False
-
-
-# ==================================================================
-# Windows: Task Scheduler for Web Server
-# ==================================================================
-
-def create_task_scheduler_task(python_exe, nids_dir):
-    """Create Task Scheduler task for auto-start."""
-    print("      Creating Task Scheduler entry...")
-    
-    task_name = "NIDS_WebServer"
-    
-    # Remove old task
-    run_cmd(f'schtasks /delete /tn "{task_name}" /f 2>&1', silent=True)
-    
-    try:
-        temp_dir = tempfile.gettempdir()
-        batch_file = os.path.join(temp_dir, "start_nids_web.bat")
-        
-        # Create batch that runs Python
-        with open(batch_file, 'w') as f:
-            f.write('@echo off\n')
-            f.write(f'cd /d "{nids_dir}"\n')
-            f.write(f'"{python_exe}" -m http.server 80\n')
-        
-        # Create and register task
-        success, _, _ = run_cmd(
-            f'schtasks /create /tn "{task_name}" /tr "{batch_file}" /sc onlogon /rl highest /f 2>&1',
-            silent=True,
+        # Try net start
+        result = subprocess.run(
+            ['net', 'start', 'sshd'],
+            capture_output=True,
+            text=True,
             timeout=10
         )
         
-        if success:
-            print(f"      [OK] Task created")
+        time.sleep(1)
+        
+        if win_is_port_open(22):
+            print(f"  {Color.GREEN}[OK] OpenSSH service started on port 22.{Color.END}")
             return True
         else:
-            print(f"      [!] Task creation failed")
-            return False
+            print(f"  {Color.YELLOW}[!] Service start attempt completed, checking port...{Color.END}")
+            time.sleep(2)
             
+            if win_is_port_open(22):
+                print(f"  {Color.GREEN}[OK] Port 22 is now open.{Color.END}")
+                return True
+            else:
+                # Try PowerShell fallback
+                print("  Attempting PowerShell service start...")
+                subprocess.run(
+                    ['powershell', '-NoProfile', '-Command', 'Start-Service sshd -ErrorAction SilentlyContinue'],
+                    capture_output=True,
+                    timeout=10
+                )
+                time.sleep(2)
+                
+                if win_is_port_open(22):
+                    print(f"  {Color.GREEN}[OK] OpenSSH service started.{Color.END}")
+                    return True
+                else:
+                    print(f"  {Color.YELLOW}[!] Could not start OpenSSH service. Check Windows Event Log.{Color.END}")
+                    return False
+                    
     except Exception as e:
-        print(f"      [!] Error: {e}")
+        print(f"  {Color.RED}[ERROR] Error starting service: {e}{Color.END}")
         return False
 
-
-# ==================================================================
-# Windows: Firewall
-# ==================================================================
-
-def add_firewall_rule(port):
-    """Add Windows firewall rule."""
-    rule_name = f"NIDS_Allow_{port}"
+def win_setup_ssh():
+    """Main SSH setup orchestration for Windows."""
+    print(f"\n{Color.BLUE}=== SSH Server Setup ==={Color.END}")
     
-    # Check if already exists
-    success, stdout, _ = run_ps(
-        f'Get-NetFirewallRule -DisplayName "{rule_name}" 2>&1',
-        silent=True
-    )
-    if success:
+    # Check if already running
+    if win_is_port_open(22):
+        print(f"  {Color.GREEN}[OK] SSH is already running on port 22.{Color.END}")
         return True
     
-    # Create rule
-    cmd = (
-        f'New-NetFirewallRule -DisplayName "{rule_name}" '
-        f'-Direction Inbound -Action Allow -Protocol TCP -LocalPort {port} 2>&1'
-    )
-    success, _, _ = run_ps(cmd, silent=True)
-    return success
-
-
-# ==================================================================
-# Project Check
-# ==================================================================
-
-def check_nids_project():
-    """Check if NIDS project exists."""
-    current_dir = Path(__file__).parent.parent.parent
+    print("  SSH not detected. Installing...")
     
-    for candidate in [current_dir, current_dir.parent, Path("Z:/Nids")]:
-        if (candidate / "main.py").exists():
-            print(f"      [OK] Project: {candidate}")
-            return candidate
+    # Step 1: Check for existing OpenSSH service
+    if win_check_openssh_service():
+        print("  [OK] OpenSSH service found, starting it...")
+        return win_start_sshd()
     
-    print(f"      [!] Project not found")
-    return None
-
-
-def ask_yes_no(q):
-    """Ask user."""
-    while True:
-        response = input(f"      {q} (y/n): ").strip().lower()
-        if response in ["y", "yes"]:
+    # Step 2: Try to enable Windows built-in OpenSSH
+    if win_enable_builtin_openssh():
+        return win_start_sshd()
+    
+    # Step 3: Download and install standalone OpenSSH
+    installer = win_download_standalone_openssh()
+    if installer:
+        if win_install_standalone_openssh(installer):
+            # Try to start service
+            win_start_sshd()
+            
+            # Clean up installer
+            try:
+                os.remove(installer)
+            except:
+                pass
+            
             return True
-        elif response in ["n", "no"]:
-            return False
+    
+    # Step 4: Failure - offer to skip SSH
+    print(f"\n{Color.YELLOW}[!] Could not set up OpenSSH.{Color.END}")
+    print("    This may be because:")
+    print("    - Your Windows version is too old (before Win10 1809)")
+    print("    - System needs a reboot after OpenSSH installation")
+    print("    - Missing required Windows components")
+    
+    while True:
+        response = input("\n  Skip SSH and continue with web server only? (y/n): ").strip().lower()
+        if response == 'y':
+            print("  SSH skipped. Continuing with web server setup...")
+            return False  # Return False but continue execution
+        elif response == 'n':
+            print("  Aborting setup.")
+            sys.exit(1)
 
+def win_is_port_open(port):
+    """Check if port is listening on Windows."""
+    try:
+        result = subprocess.run(
+            ['netstat', '-ano'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        for line in result.stdout.split('\n'):
+            if f':{port}' in line and 'LISTEN' in line:
+                return True
+        return False
+    except Exception:
+        return False
 
-# ==================================================================
-# MAIN SETUP
-# ==================================================================
+# ============================================================================
+# WINDOWS - WEB SERVER (Persistent, detached from terminal)
+# ============================================================================
 
-def setup_windows():
-    """Windows setup."""
-    issues = 0
+def start_web_server_detached():
+    """Start Python HTTP server detached from terminal (survives window close)."""
+    print("\n  Starting web server (persistent)...")
+    
+    try:
+        script = """
+import http.server
+import socketserver
+import os
 
-    major, build = win_get_version()
-    print(f"  Windows {'11' if build >= 22000 else '10'} (build {build})\n")
+os.chdir(r'{project_root}')
 
-    # SSH
-    print("  [1] SSH Server (port 22)")
-    print()
-    if not win_port_listening(22):
-        print("      [!] Port 22 NOT open")
-        if ask_yes_no("Start SSH service?"):
-            if not win_start_sshd():
-                print()
-                print("      SSH is not working (corrupt crypto libraries).")
-                print()
-                
-                # Offer to fix Git SSH
-                if ask_yes_no("Attempt to fix Git SSH installation?"):
-                    if win_fix_git_ssh():
-                        time.sleep(2)
-                        if win_port_listening(22):
-                            print("      [OK] Port 22 is now listening!")
-                        else:
-                            print("      [!] Port 22 still not listening")
-                            if not win_skip_ssh():
-                                issues += 1
-                    else:
-                        if not win_skip_ssh():
-                            issues += 1
-                else:
-                    if not win_skip_ssh():
-                        issues += 1
-    else:
-        print("      [OK] Port 22 listening")
-    print()
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
 
-    # Web Server
-    print("  [2] Web Server (port 80)")
-    print()
-    if not win_port_listening(80):
-        print("      [!] Port 80 NOT open")
-        if ask_yes_no("Start web server?"):
-            nids_dir = check_nids_project()
-            if nids_dir:
-                python_exe = nids_dir / "venv" / "Scripts" / "python.exe"
-                if python_exe.exists():
-                    if start_web_server_detached(str(python_exe), str(nids_dir)):
-                        if ask_yes_no("Add Task Scheduler auto-start?"):
-                            create_task_scheduler_task(str(python_exe), str(nids_dir))
-                    else:
-                        issues += 1
-                else:
-                    print("      [!] Python venv not found")
-                    issues += 1
-            else:
-                issues += 1
-    else:
-        print("      [OK] Port 80 listening")
-    print()
+with socketserver.TCPServer(("", 80), QuietHandler) as httpd:
+    print("[OK] Web server running on port 80", flush=True)
+    httpd.serve_forever()
+""".format(project_root=get_project_root())
+        
+        # Windows: Use DETACHED_PROCESS so it survives terminal close
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = subprocess.SW_HIDE
+        
+        proc = subprocess.Popen(
+            [sys.executable, '-c', script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            startupinfo=si
+        )
+        
+        # Wait for server to start
+        for i in range(15):
+            if win_is_port_open(80):
+                print(f"  {Color.GREEN}[OK] Web server started on port 80 (persistent).{Color.END}")
+                return True
+            time.sleep(1)
+        
+        print(f"  {Color.YELLOW}[!] Web server process started but port not responding yet.{Color.END}")
+        return True  # Process is running, port may take a moment
+        
+    except Exception as e:
+        print(f"  {Color.RED}[ERROR] Could not start web server: {e}{Color.END}")
+        return False
 
-    # Firewall
-    print("  [3] Firewall Rules")
-    print()
-    for port in [22, 80, 443]:
-        if add_firewall_rule(port):
-            print(f"      [OK] Port {port} rule set")
-        else:
-            print(f"      [!] Port {port} rule failed")
-            issues += 1
-    print()
+def add_firewall_rule():
+    """Add Windows Firewall rules for SSH, HTTP, HTTPS."""
+    print("\n  Configuring Windows Firewall...")
+    
+    rules = [
+        ('SSH', 22, 'tcp'),
+        ('HTTP', 80, 'tcp'),
+        ('HTTPS', 443, 'tcp')
+    ]
+    
+    for name, port, protocol in rules:
+        try:
+            # Remove existing rule if present
+            subprocess.run(
+                [
+                    'powershell', '-NoProfile', '-Command',
+                    f'Remove-NetFirewallRule -DisplayName "NIDS-{name}" -ErrorAction SilentlyContinue'
+                ],
+                capture_output=True,
+                timeout=10
+            )
+            
+            # Add new rule
+            subprocess.run(
+                [
+                    'powershell', '-NoProfile', '-Command',
+                    f'New-NetFirewallRule -DisplayName "NIDS-{name}" -Direction Inbound -Action Allow -Protocol {protocol} -LocalPort {port} -ErrorAction SilentlyContinue'
+                ],
+                capture_output=True,
+                timeout=10
+            )
+        except Exception as e:
+            print(f"    {Color.YELLOW}[!] Could not add {name} rule: {e}{Color.END}")
 
-    return issues
+# ============================================================================
+# LINUX - SSH & WEB SERVER SETUP
+# ============================================================================
 
+def linux_install_openssh():
+    """Install and start OpenSSH on Linux."""
+    print(f"\n{Color.BLUE}=== SSH Server Setup ==={Color.END}")
+    
+    # Detect package manager
+    package_managers = [
+        (['apt', 'update'], ['apt', 'install', '-y', 'openssh-server']),  # Debian/Ubuntu
+        (['dnf', 'check-update'], ['dnf', 'install', '-y', 'openssh-server']),  # Fedora
+        (['yum', 'check-update'], ['yum', 'install', '-y', 'openssh-server']),  # RHEL/CentOS
+        (['zypper', 'refresh'], ['zypper', 'install', '-y', 'openssh']),  # openSUSE
+        (['pacman', '-Sy'], ['pacman', '-S', '--noconfirm', 'openssh']),  # Arch
+        (['apk', 'update'], ['apk', 'add', 'openssh']),  # Alpine
+    ]
+    
+    for update_cmd, install_cmd in package_managers:
+        try:
+            # Check if package manager exists
+            subprocess.run(['which', update_cmd[0]], capture_output=True, check=True, timeout=5)
+            
+            print(f"  Using {update_cmd[0]}...")
+            subprocess.run(update_cmd, capture_output=True, timeout=60)
+            subprocess.run(install_cmd, capture_output=True, timeout=120)
+            break
+        except Exception:
+            continue
+    
+    # Start SSH service
+    print("  Starting SSH service...")
+    try:
+        subprocess.run(['sudo', 'systemctl', 'enable', 'ssh'], capture_output=True, timeout=10)
+        subprocess.run(['sudo', 'systemctl', 'start', 'ssh'], capture_output=True, timeout=10)
+        print(f"  {Color.GREEN}[OK] SSH enabled and started.{Color.END}")
+        return True
+    except Exception as e:
+        print(f"  {Color.YELLOW}[!] SSH startup issues: {e}{Color.END}")
+        return False
+
+def linux_start_web_server():
+    """Start persistent web server on Linux."""
+    print("\n  Starting web server...")
+    
+    try:
+        subprocess.Popen(
+            [sys.executable, '-m', 'http.server', '80'],
+            cwd=get_project_root(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        print(f"  {Color.GREEN}[OK] Web server started on port 80.{Color.END}")
+        return True
+    except Exception as e:
+        print(f"  {Color.YELLOW}[!] Could not start web server: {e}{Color.END}")
+        return False
+
+# ============================================================================
+# UTILITIES
+# ============================================================================
+
+def get_project_root():
+    """Find project root by looking for main.py."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    current = script_dir
+    
+    while current != os.path.dirname(current):
+        if os.path.exists(os.path.join(current, 'main.py')):
+            return current
+        current = os.path.dirname(current)
+    
+    return script_dir
+
+def is_admin():
+    """Check if running as admin on Windows."""
+    try:
+        import ctypes as ct
+        return ct.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
+
+# ============================================================================
+# MAIN
+# ============================================================================
 
 def main():
-    os_name = platform.system()
-
-    print(f"\n{'='*60}")
-    print(f"  NIDS Victim Setup — {os_name}")
-    print(f"{'='*60}\n")
-
-    if not is_admin():
-        print("  [ERROR] Run as Administrator")
+    system = platform.system()
+    
+    print(f"\n{Color.BLUE}{'='*60}")
+    print(f"  Victim Device Setup Checker")
+    print(f"  System: {system}")
+    print(f"{'='*60}{Color.END}\n")
+    
+    if system == 'Windows':
+        # Windows setup
+        if not is_admin():
+            print(f"{Color.RED}[ERROR] This script must be run as Administrator.{Color.END}")
+            print("Right-click setup_victim.bat and select 'Run as administrator'")
+            sys.exit(1)
+        
+        ssh_ok = win_setup_ssh()
+        web_ok = start_web_server_detached()
+        add_firewall_rule()
+        
+        print(f"\n{Color.BLUE}=== Setup Summary ==={Color.END}")
+        print(f"  SSH:  {Color.GREEN if ssh_ok else Color.YELLOW}{'OK' if ssh_ok else 'SKIPPED'}{Color.END}")
+        print(f"  Web:  {Color.GREEN if web_ok else Color.RED}{'OK' if web_ok else 'FAILED'}{Color.END}")
+        
+    elif system == 'Linux':
+        # Linux setup
+        linux_install_openssh()
+        linux_start_web_server()
+        
+        print(f"\n{Color.BLUE}=== Setup Summary ==={Color.END}")
+        print(f"  {Color.GREEN}[OK] Linux victim setup complete.{Color.END}")
+    
+    else:
+        print(f"{Color.RED}[ERROR] Unsupported system: {system}{Color.END}")
         sys.exit(1)
+    
+    print(f"\n{Color.GREEN}[OK] Victim device ready.{Color.END}\n")
 
-    print("  [OK] Admin privileges confirmed\n")
-
-    print("  Network interfaces:")
-    for ip in get_all_ips():
-        print(f"      -> {ip}")
-    print()
-
-    if os_name == "Windows":
-        issues = setup_windows()
-    else:
-        print("  [!] Unsupported OS")
-        return 1
-
-    print(f"{'='*60}")
-    if issues == 0:
-        print("  [OK] Setup complete")
-    else:
-        print(f"  [!] {issues} issue(s) - see above")
-    print(f"{'='*60}\n")
-
-    return issues
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == '__main__':
+    main()
