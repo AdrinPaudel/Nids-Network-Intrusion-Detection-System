@@ -320,7 +320,7 @@ def check_connectivity(target_ip, target_port, timeout=5):
 
 
 # ─── Import DoS module ───────────────────────────────────
-from _1_dos_attack import run_dos
+from _1_dos_attack import run_dos, cleanup_hulk_leaked
 
 
 # ─── Prompts ─────────────────────────────────────────────
@@ -490,14 +490,42 @@ def main():
         print(f"[-] Error: {e}")
         import traceback
         traceback.print_exc()
+    except KeyboardInterrupt:
+        print("\n[*] Attack interrupted by user")
+    except Exception as e:
+        print(f"[-] Error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         # Always restore route
         restore_tcp_window(target_ip)
 
+    # ── Wait for CICFlowMeter to export remaining flows ──
+    # Socket-leak HULK flows need CICFlowMeter's idle timeout (15s)
+    # + GC interval (10s) = 25s to be exported. Wait 35s for safety.
     print(f"\n{'='*55}")
     print(f"  DoS ATTACK COMPLETE")
     print(f"  Total: {total_conns} connections, {total_errs} errors")
     print(f"{'='*55}")
+    print()
+    print(f"[*] Waiting 35s for CICFlowMeter to export remaining flows...")
+    print(f"[*] DO NOT stop classification yet!")
+    try:
+        time.sleep(35)
+    except KeyboardInterrupt:
+        pass
+    print()
+    print(f"[*] " + "=" * 50)
+    print(f"[*]  STOP CLASSIFICATION NOW on the victim/NIDS machine")
+    print(f"[*] " + "=" * 50)
+    print(f"[*] Press Enter AFTER you have stopped classification...")
+    try:
+        input()
+    except (KeyboardInterrupt, EOFError):
+        pass
+
+    # Now safe: classification stopped, RSTs won't be captured
+    cleanup_hulk_leaked()
 
 
 if __name__ == "__main__":

