@@ -30,7 +30,9 @@ import socket
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import DEFAULTS, PORTS
+# Default settings (no config file needed)
+DEFAULTS = {"duration": 300}
+
 from _1_dos_attack import run_dos
 from _2_ddos_simulation import run_ddos
 from _3_brute_force_ssh import run_brute_force
