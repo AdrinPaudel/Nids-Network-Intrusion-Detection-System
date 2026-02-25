@@ -41,7 +41,7 @@ def win_check_openssh_service():
         )
         return result.returncode == 0
     except Exception as e:
-        print(f"  {Color.RED}[!] Error checking OpenSSH: {e}{Color.END}")
+        print(f"  [!] Error checking OpenSSH: {e}")
         return False
 
 def win_enable_builtin_openssh():
@@ -61,13 +61,13 @@ def win_enable_builtin_openssh():
         time.sleep(2)  # Let system settle
         
         if win_check_openssh_service():
-            print(f"  {Color.GREEN}[OK] Windows built-in OpenSSH enabled.{Color.END}")
+            print("  [OK] Windows built-in OpenSSH enabled.")
             return True
         else:
-            print(f"  {Color.YELLOW}[!] Built-in OpenSSH not available for this Windows version.{Color.END}")
+            print("  [!] Built-in OpenSSH not available for this Windows version.")
             return False
     except Exception as e:
-        print(f"  {Color.YELLOW}[!] Could not enable built-in OpenSSH: {e}{Color.END}")
+        print(f"  [!] Could not enable built-in OpenSSH: {e}")
         return False
 
 def win_download_standalone_openssh():
@@ -86,14 +86,14 @@ def win_download_standalone_openssh():
         urllib.request.urlretrieve(url, installer_path)
         
         if os.path.exists(installer_path):
-            print(f"  {Color.GREEN}[OK] Downloaded to {installer_path}{Color.END}")
+            print(f"  [OK] Downloaded to {installer_path}")
             return installer_path
         else:
-            print(f"  {Color.RED}[ERROR] Download failed.{Color.END}")
+            print("  [ERROR] Download failed.")
             return None
             
     except Exception as e:
-        print(f"  {Color.RED}[ERROR] Download failed: {e}{Color.END}")
+        print(f"  [ERROR] Download failed: {e}")
         return None
 
 def win_install_standalone_openssh(installer_path):
@@ -112,14 +112,14 @@ def win_install_standalone_openssh(installer_path):
         time.sleep(3)  # Let system settle after install
         
         if win_check_openssh_service():
-            print(f"  {Color.GREEN}[OK] OpenSSH installed and service found.{Color.END}")
+            print("  [OK] OpenSSH installed and service found.")
             return True
         else:
-            print(f"  {Color.YELLOW}[!] OpenSSH installed but service not detected yet.{Color.END}")
+            print("  [!] OpenSSH installed but service not detected yet.")
             return True  # Installation succeeded, service may start on reboot
             
     except Exception as e:
-        print(f"  {Color.RED}[ERROR] Installation failed: {e}{Color.END}")
+        print(f"  [ERROR] Installation failed: {e}")
         return False
 
 def win_start_sshd():
@@ -138,14 +138,14 @@ def win_start_sshd():
         time.sleep(1)
         
         if win_is_port_open(22):
-            print(f"  {Color.GREEN}[OK] OpenSSH service started on port 22.{Color.END}")
+            print("  [OK] OpenSSH service started on port 22.")
             return True
         else:
-            print(f"  {Color.YELLOW}[!] Service start attempt completed, checking port...{Color.END}")
+            print("  [!] Service start attempt completed, checking port...")
             time.sleep(2)
             
             if win_is_port_open(22):
-                print(f"  {Color.GREEN}[OK] Port 22 is now open.{Color.END}")
+                print("  [OK] Port 22 is now open.")
                 return True
             else:
                 # Try PowerShell fallback
@@ -158,23 +158,23 @@ def win_start_sshd():
                 time.sleep(2)
                 
                 if win_is_port_open(22):
-                    print(f"  {Color.GREEN}[OK] OpenSSH service started.{Color.END}")
+                    print("  [OK] OpenSSH service started.")
                     return True
                 else:
-                    print(f"  {Color.YELLOW}[!] Could not start OpenSSH service. Check Windows Event Log.{Color.END}")
+                    print("  [!] Could not start OpenSSH service. Check Windows Event Log.")
                     return False
                     
     except Exception as e:
-        print(f"  {Color.RED}[ERROR] Error starting service: {e}{Color.END}")
+        print(f"  [ERROR] Error starting service: {e}")
         return False
 
 def win_setup_ssh():
     """Main SSH setup orchestration for Windows."""
-    print(f"\n{Color.BLUE}=== SSH Server Setup ==={Color.END}")
+    print("\n=== SSH Server Setup ===")
     
     # Check if already running
     if win_is_port_open(22):
-        print(f"  {Color.GREEN}[OK] SSH is already running on port 22.{Color.END}")
+        print("  [OK] SSH is already running on port 22.")
         return True
     
     print("  SSH not detected. Installing...")
@@ -203,8 +203,7 @@ def win_setup_ssh():
             
             return True
     
-    # Step 4: Failure - offer to skip SSH
-    print(f"\n{Color.YELLOW}[!] Could not set up OpenSSH.{Color.END}")
+    print("\n[!] Could not set up OpenSSH.")
     print("    This may be because:")
     print("    - Your Windows version is too old (before Win10 1809)")
     print("    - System needs a reboot after OpenSSH installation")
@@ -244,7 +243,10 @@ def start_web_server_detached():
     print("\n  Starting web server (persistent)...")
     
     try:
-        script = """
+        import tempfile
+        
+        # Write web server script to temp file
+        server_script = """
 import http.server
 import socketserver
 import os
@@ -255,41 +257,61 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-with socketserver.TCPServer(("", 80), QuietHandler) as httpd:
-    httpd.serve_forever()
+try:
+    with socketserver.TCPServer(("", 80), QuietHandler) as httpd:
+        httpd.serve_forever()
+except:
+    pass
 """.format(project_root=get_project_root())
         
-        # Windows: completely hide the window
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = subprocess.SW_HIDE
-        
-        creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-        # Suppress window creation completely (Python 3.7+)
-        if hasattr(subprocess, 'CREATE_NO_WINDOW'):
-            creationflags |= subprocess.CREATE_NO_WINDOW
-        
-        proc = subprocess.Popen(
-            [sys.executable, '-c', script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            creationflags=creationflags,
-            startupinfo=si
-        )
-        
-        # Wait for server to start
-        for i in range(15):
-            if win_is_port_open(80):
-                print(f"  {Color.GREEN}[OK] Web server started on port 80 (persistent).{Color.END}")
-                return True
-            time.sleep(1)
-        
-        print(f"  {Color.YELLOW}[!] Web server process started but port not responding yet.{Color.END}")
-        return True  # Process is running, port may take a moment
+        # Create temp script file
+        fd, temp_script = tempfile.mkstemp(suffix='.py', text=True)
+        try:
+            os.write(fd, server_script.encode())
+            os.close(fd)
+            
+            # Run with complete window suppression
+            creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+                creationflags |= subprocess.CREATE_NO_WINDOW
+            
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            
+            # Use the venv python if available
+            python_exe = sys.executable
+            
+            proc = subprocess.Popen(
+                [python_exe, temp_script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                creationflags=creationflags,
+                startupinfo=si,
+                close_fds=True
+            )
+            
+            # Wait for server to start
+            for i in range(15):
+                if win_is_port_open(80):
+                    print("  [OK] Web server started on port 80 (persistent).")
+                    return True
+                time.sleep(1)
+            
+            print("  [!] Web server process started but port not responding yet.")
+            return True
+            
+        finally:
+            # Clean up temp file (it's now running)
+            try:
+                time.sleep(0.5)
+                os.remove(temp_script)
+            except:
+                pass
         
     except Exception as e:
-        print(f"  {Color.RED}[ERROR] Could not start web server: {e}{Color.END}")
+        print(f"  [ERROR] Could not start web server: {e}")
         return False
 
 def add_firewall_rule():
@@ -324,7 +346,7 @@ def add_firewall_rule():
                 timeout=10
             )
         except Exception as e:
-            print(f"    {Color.YELLOW}[!] Could not add {name} rule: {e}{Color.END}")
+            print(f"    [!] Could not add {name} rule: {e}")
 
 # ============================================================================
 # LINUX - SSH & WEB SERVER SETUP
@@ -332,7 +354,7 @@ def add_firewall_rule():
 
 def linux_install_openssh():
     """Install and start OpenSSH on Linux."""
-    print(f"\n{Color.BLUE}=== SSH Server Setup ==={Color.END}")
+    print("\n=== SSH Server Setup ===")
     
     # Detect package manager
     package_managers = [
@@ -361,10 +383,10 @@ def linux_install_openssh():
     try:
         subprocess.run(['sudo', 'systemctl', 'enable', 'ssh'], capture_output=True, timeout=10)
         subprocess.run(['sudo', 'systemctl', 'start', 'ssh'], capture_output=True, timeout=10)
-        print(f"  {Color.GREEN}[OK] SSH enabled and started.{Color.END}")
+        print("  [OK] SSH enabled and started.")
         return True
     except Exception as e:
-        print(f"  {Color.YELLOW}[!] SSH startup issues: {e}{Color.END}")
+        print(f"  [!] SSH startup issues: {e}")
         return False
 
 def linux_start_web_server():
@@ -379,10 +401,10 @@ def linux_start_web_server():
             stderr=subprocess.DEVNULL,
             start_new_session=True
         )
-        print(f"  {Color.GREEN}[OK] Web server started on port 80.{Color.END}")
+        print("  [OK] Web server started on port 80.")
         return True
     except Exception as e:
-        print(f"  {Color.YELLOW}[!] Could not start web server: {e}{Color.END}")
+        print(f"  [!] Could not start web server: {e}")
         return False
 
 # ============================================================================
@@ -416,15 +438,15 @@ def is_admin():
 def main():
     system = platform.system()
     
-    print(f"\n{Color.BLUE}{'='*60}")
-    print(f"  Victim Device Setup Checker")
+    print("\n" + "="*60)
+    print("  Victim Device Setup Checker")
     print(f"  System: {system}")
-    print(f"{'='*60}{Color.END}\n")
+    print("="*60 + "\n")
     
     if system == 'Windows':
         # Windows setup
         if not is_admin():
-            print(f"{Color.RED}[ERROR] This script must be run as Administrator.{Color.END}")
+            print("[ERROR] This script must be run as Administrator.")
             print("Right-click setup_victim.bat and select 'Run as administrator'")
             sys.exit(1)
         
@@ -432,23 +454,25 @@ def main():
         web_ok = start_web_server_detached()
         add_firewall_rule()
         
-        print(f"\n{Color.BLUE}=== Setup Summary ==={Color.END}")
-        print(f"  SSH:  {Color.GREEN if ssh_ok else Color.YELLOW}{'OK' if ssh_ok else 'SKIPPED'}{Color.END}")
-        print(f"  Web:  {Color.GREEN if web_ok else Color.RED}{'OK' if web_ok else 'FAILED'}{Color.END}")
+        print("\n=== Setup Summary ===")
+        ssh_status = "OK" if ssh_ok else "SKIPPED"
+        web_status = "OK" if web_ok else "FAILED"
+        print(f"  SSH:  {ssh_status}")
+        print(f"  Web:  {web_status}")
         
     elif system == 'Linux':
         # Linux setup
         linux_install_openssh()
         linux_start_web_server()
         
-        print(f"\n{Color.BLUE}=== Setup Summary ==={Color.END}")
-        print(f"  {Color.GREEN}[OK] Linux victim setup complete.{Color.END}")
+        print("\n=== Setup Summary ===")
+        print("  [OK] Linux victim setup complete.")
     
     else:
-        print(f"{Color.RED}[ERROR] Unsupported system: {system}{Color.END}")
+        print(f"[ERROR] Unsupported system: {system}")
         sys.exit(1)
     
-    print(f"\n{Color.GREEN}[OK] Victim device ready.{Color.END}\n")
+    print("\n[OK] Victim device ready.\n")
 
 if __name__ == '__main__':
     main()
