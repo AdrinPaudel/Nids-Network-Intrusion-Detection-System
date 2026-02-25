@@ -40,9 +40,18 @@ if [ -f /proc/sys/net/ipv4/tcp_timestamps ]; then
         echo "  [OK] TCP timestamps already enabled"
     else
         echo "  [ACTION] TCP timestamps disabled! Enabling and persisting..."
+        echo ""
+        echo "    $ sudo sysctl -w net.ipv4.tcp_timestamps=1"
         sudo sysctl -w net.ipv4.tcp_timestamps=1
+        echo ""
+        echo "    $ sudo sysctl -p"
         sudo sysctl -p
-        echo "  [OK] TCP timestamps enabled"
+        echo ""
+        echo "  [OK] TCP timestamps enabled and persisted"
+        ts_verify=$(cat /proc/sys/net/ipv4/tcp_timestamps)
+        if [ "$ts_verify" = "1" ]; then
+            echo "  [VERIFY] Confirmed: net.ipv4.tcp_timestamps = $ts_verify"
+        fi
     fi
 else
     echo "  [INFO] Cannot check TCP timestamps (not on Linux)"
