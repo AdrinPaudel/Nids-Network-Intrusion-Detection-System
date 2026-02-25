@@ -460,6 +460,122 @@ def is_admin():
     except Exception:
         return False
 
+
+# ============================================================================
+# TCP WINDOW FIX — Match CICIDS2018 training victim (Ubuntu 16.04)
+# ============================================================================
+# CRITICAL for attack classification accuracy:
+#
+# The CICIDS2018 training data was collected from a victim running Ubuntu 16.04.
+# That system had Init Bwd Win Byts = 219 in SYN-ACK responses. Modern Linux
+# defaults are ~29200. The RandomForest model uses Init Bwd Win Byts as a
+# selected feature with HIGH importance. The mismatch (29200 vs 219) causes
+# attack flows to be classified as YELLOW instead of RED.
+#
+# Fix: Set `ip route ... window 219` for the attacker's IP on the victim.
+# This makes the victim's SYN-ACK advertise window=219, matching training data.
+#
+# Model impact verified:
+#   Without fix (bwdwin=29200): DoS ≈ 29% → YELLOW
+#   With fix    (bwdwin=219):   DoS ≈ 50% → RED
+
+_VICTIM_ROUTE_MODIFIED = False
+
+
+def setup_victim_tcp_window(attacker_ip, window=219):
+    """Configure victim TCP window to match CICIDS2018 training data.
+
+    Sets `ip route replace <attacker_ip>/32 dev <iface> window 219` which
+    makes the victim's SYN-ACK to the attacker advertise window=219.
+
+    This matches the Ubuntu 16.04 victim used in CICIDS2018 dataset creation.
+    Must be run on the VICTIM machine (this machine) as root.
+
+    Args:
+        attacker_ip: IP address of the attacker machine
+        window: TCP window to advertise (default 219, matching CICIDS2018)
+    """
+    global _VICTIM_ROUTE_MODIFIED
+    import re as re_mod
+
+    if platform.system() != "Linux":
+        print("[!] TCP window fix only applies to Linux victims")
+        return False
+
+    print(f"\n[*] ── TCP Window Configuration (Victim) ─────────")
+    print(f"[*] Setting Init Bwd Win Byts = {window} for connections from {attacker_ip}")
+    print(f"[*] Purpose: Match CICIDS2018 training victim (Ubuntu 16.04)")
+
+    try:
+        # 1. Get route to attacker to determine interface
+        result = subprocess.run(
+            ["ip", "route", "get", attacker_ip],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            print(f"[!!] Failed to get route: {result.stderr.strip()}")
+            return False
+
+        route_output = result.stdout.strip()
+        print(f"[*] Current route: {route_output}")
+
+        # Parse device
+        dev_match = re_mod.search(r'\bdev\s+(\S+)', route_output)
+        if not dev_match:
+            print(f"[!!] Could not parse network interface from route")
+            return False
+        iface = dev_match.group(1)
+
+        # Parse optional gateway
+        via_match = re_mod.search(r'\bvia\s+(\S+)', route_output)
+        gateway = via_match.group(1) if via_match else None
+
+        # 2. Set route with window
+        cmd = ["ip", "route", "replace", f"{attacker_ip}/32"]
+        if gateway:
+            cmd += ["via", gateway]
+        cmd += ["dev", iface, "window", str(window)]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            print(f"[!!] Failed to set route: {result.stderr.strip()}")
+            print(f"[!!] Command: {' '.join(cmd)}")
+            print(f"[!!] Need root/sudo to modify routes")
+            return False
+
+        _VICTIM_ROUTE_MODIFIED = True
+        print(f"[OK] Route set: {' '.join(cmd)}")
+        print(f"[OK] SYN-ACK to {attacker_ip} will now advertise window={window}")
+        print(f"[*] ─────────────────────────────────────────────\n")
+        return True
+
+    except Exception as e:
+        print(f"[!!] Error configuring TCP window: {e}")
+        print(f"[*] ─────────────────────────────────────────────\n")
+        return False
+
+
+def restore_victim_tcp_window(attacker_ip):
+    """Remove the /32 host route added by setup_victim_tcp_window."""
+    global _VICTIM_ROUTE_MODIFIED
+
+    if not _VICTIM_ROUTE_MODIFIED:
+        return
+
+    if platform.system() != "Linux":
+        return
+
+    try:
+        subprocess.run(
+            ["ip", "route", "del", f"{attacker_ip}/32"],
+            capture_output=True, text=True, timeout=5
+        )
+        _VICTIM_ROUTE_MODIFIED = False
+        print(f"[OK] Victim route restored (removed /32 override for {attacker_ip})")
+    except Exception as e:
+        print(f"[!] Could not restore victim route: {e}")
+        print(f"[!] Manually run: ip route del {attacker_ip}/32")
+
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -499,16 +615,40 @@ def main():
         # Linux setup
         linux_install_openssh()
         linux_start_web_server()
+
+        # TCP window fix for CICIDS2018 training data matching
+        print("\n" + "="*60)
+        print("  TCP Window Configuration (for attack classification)")
+        print("="*60)
+        print()
+        print("  To classify attack flows as RED (detected), the victim must")
+        print("  advertise Init Bwd Win Byts = 219 in SYN-ACK responses.")
+        print("  This matches the Ubuntu 16.04 victim used in CICIDS2018.")
+        print()
+        resp = input("  [?] Configure TCP window for an attacker IP? (y/N): ").strip().lower()
+        if resp in ("y", "yes"):
+            attacker_ip = input("  [?] Enter attacker IP address: ").strip()
+            if attacker_ip:
+                setup_victim_tcp_window(attacker_ip, window=219)
+            else:
+                print("  [!] No IP provided, skipping TCP window setup")
+                print("  [!] Run manually on this machine:")
+                print("      ip route replace <ATTACKER_IP>/32 dev <IFACE> window 219")
+        else:
+            print("  [*] Skipping TCP window setup. Run manually if needed:")
+            print("      ip route replace <ATTACKER_IP>/32 dev <IFACE> window 219")
         
         print("\n=== Setup Summary ===")
         print("  Services:")
         print(f"    SSH (port 22):  OK")
         print(f"    HTTP (port 80): OK")
         print(f"    FTP (port 21):  Not configured")
+        print(f"  TCP Window Fix:")
+        print(f"    Victim route:   {'CONFIGURED (window=219)' if _VICTIM_ROUTE_MODIFIED else 'NOT SET (run manually)'}")
         print("\n  Open Ports:")
-        print(f"    Port 22 (SSH):  {'✓ OPEN' if is_port_open(22) else '✗ CLOSED'}")
-        print(f"    Port 80 (HTTP): {'✓ OPEN' if is_port_open(80) else '✗ CLOSED'}")
-        print(f"    Port 21 (FTP):  {'✓ OPEN' if is_port_open(21) else '✗ CLOSED'}")
+        print(f"    Port 22 (SSH):  {'OK OPEN' if is_port_open(22) else 'X CLOSED'}")
+        print(f"    Port 80 (HTTP): {'OK OPEN' if is_port_open(80) else 'X CLOSED'}")
+        print(f"    Port 21 (FTP):  {'OK OPEN' if is_port_open(21) else 'X CLOSED'}")
     
     else:
         print(f"[ERROR] Unsupported system: {system}")

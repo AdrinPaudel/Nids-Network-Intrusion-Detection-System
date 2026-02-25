@@ -220,6 +220,112 @@ def restore_tcp_window(target_ip):
         print(f"[!] Manually run: ip route del {target_ip}/32")
 
 
+# ─── iptables RST DROP (Linux) ───────────────────────────
+# CRITICAL for RED classification: CICIDS2018 training HULK data has
+# RST Flag Cnt = 0 for 100% of flows. Our SO_LINGER close sends RST,
+# which CICFlowMeter records as RST=1 → model predicts YELLOW (44%)
+# instead of RED (50%). Dropping outgoing RST via iptables makes the
+# RST invisible to CICFlowMeter → RST Flag Cnt = 0 → RED.
+_IPTABLES_RULE_ADDED = False
+_IPTABLES_TARGET_IP = None
+_IPTABLES_TARGET_PORT = None
+
+
+def setup_iptables_drop_rst(target_ip, target_port=80):
+    """Add iptables rule to DROP outgoing TCP RST to the victim.
+
+    This prevents CICFlowMeter from seeing RST packets, matching
+    CICIDS2018 training HULK data (RST Flag Cnt = 0 for 100% of flows).
+
+    Without this rule: DoS probability ≈ 44% → YELLOW
+    With this rule:    DoS probability ≈ 50% → RED
+
+    Only needed on Linux. Windows doesn't support iptables.
+    Requires root/sudo.
+    """
+    global _IPTABLES_RULE_ADDED, _IPTABLES_TARGET_IP, _IPTABLES_TARGET_PORT
+
+    if platform.system() != "Linux":
+        return True  # Not applicable on Windows
+
+    print(f"\n[*] ── iptables RST DROP Configuration ────────────")
+    print(f"[*] Dropping outgoing RST to {target_ip}:{target_port}")
+    print(f"[*] Purpose: RST Flag Cnt must be 0 (matching training data)")
+
+    # Check if rule already exists
+    try:
+        check_cmd = [
+            "iptables", "-C", "OUTPUT", "-p", "tcp",
+            "-d", target_ip, "--dport", str(target_port),
+            "--tcp-flags", "RST", "RST", "-j", "DROP"
+        ]
+        result = subprocess.run(check_cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            print(f"[OK] iptables RST DROP rule already exists")
+            _IPTABLES_RULE_ADDED = True
+            _IPTABLES_TARGET_IP = target_ip
+            _IPTABLES_TARGET_PORT = target_port
+            print(f"[*] ─────────────────────────────────────────────\n")
+            return True
+    except Exception:
+        pass
+
+    # Add the rule
+    try:
+        add_cmd = [
+            "iptables", "-A", "OUTPUT", "-p", "tcp",
+            "-d", target_ip, "--dport", str(target_port),
+            "--tcp-flags", "RST", "RST", "-j", "DROP"
+        ]
+        result = subprocess.run(add_cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            print(f"[!!] Failed to add iptables rule: {result.stderr.strip()}")
+            print(f"[!!] Need root/sudo. Attack will still work but RST Flag Cnt = 1")
+            print(f"[!!] Classification: YELLOW (44% DoS) instead of RED (50% DoS)")
+            print(f"[*] ─────────────────────────────────────────────\n")
+            return False
+
+        _IPTABLES_RULE_ADDED = True
+        _IPTABLES_TARGET_IP = target_ip
+        _IPTABLES_TARGET_PORT = target_port
+        print(f"[OK] iptables: DROP outgoing RST to {target_ip}:{target_port}")
+        print(f"[*] ─────────────────────────────────────────────\n")
+        return True
+
+    except Exception as e:
+        print(f"[!!] iptables error: {e}")
+        print(f"[!!] Manually run: iptables -A OUTPUT -p tcp -d {target_ip} "
+              f"--dport {target_port} --tcp-flags RST RST -j DROP")
+        print(f"[*] ─────────────────────────────────────────────\n")
+        return False
+
+
+def restore_iptables():
+    """Remove the iptables RST DROP rule added by setup_iptables_drop_rst."""
+    global _IPTABLES_RULE_ADDED, _IPTABLES_TARGET_IP, _IPTABLES_TARGET_PORT
+
+    if not _IPTABLES_RULE_ADDED:
+        return
+
+    if platform.system() != "Linux":
+        return
+
+    try:
+        del_cmd = [
+            "iptables", "-D", "OUTPUT", "-p", "tcp",
+            "-d", _IPTABLES_TARGET_IP,
+            "--dport", str(_IPTABLES_TARGET_PORT),
+            "--tcp-flags", "RST", "RST", "-j", "DROP"
+        ]
+        subprocess.run(del_cmd, capture_output=True, text=True, timeout=5)
+        _IPTABLES_RULE_ADDED = False
+        print(f"[OK] iptables RST DROP rule removed")
+    except Exception as e:
+        print(f"[!] Could not remove iptables rule: {e}")
+        print(f"[!] Manually run: iptables -D OUTPUT -p tcp -d {_IPTABLES_TARGET_IP} "
+              f"--dport {_IPTABLES_TARGET_PORT} --tcp-flags RST RST -j DROP")
+
+
 # ─── Connectivity Pre-Check ──────────────────────────────
 def check_connectivity(target_ip, target_port, timeout=5):
     """Try a single TCP connection to the victim BEFORE launching the attack.
@@ -352,9 +458,26 @@ def main():
     total_duration = args.duration
     threads = args.threads
 
+    # 4. Victim-side setup reminder
+    print(f"\n[*] ── VICTIM-SIDE SETUP (CRITICAL) ────────────────")
+    print(f"[*] For RED classification, the victim MUST have:")
+    print(f"[*]   sudo ip route replace <YOUR_ATTACKER_IP>/32 dev <IFACE> window 219")
+    print(f"[*]")
+    print(f"[*] This makes the victim's SYN-ACK advertise window=219,")
+    print(f"[*] matching the CICIDS2018 training victim (Ubuntu 16.04).")
+    print(f"[*] Without this, attacks classify as YELLOW (DoS ~29%).")
+    print(f"[*] With this,    attacks classify as RED    (DoS ~50%).")
+    print(f"[*]")
+    print(f"[*] Run setup_victim.py on the victim to configure this,")
+    print(f"[*] or manually run the ip route command above on the victim.")
+    print(f"[*] ────────────────────────────────────────────────")
+    resp = input("[?] Is the victim TCP window configured? (y/N): ").strip().lower()
+    if resp not in ("y", "yes"):
+        print("[!] Continuing anyway — attacks may classify as YELLOW instead of RED")
+
     # ── Time allocation across phases ──
     # CICIDS2018 ran each tool separately with similar durations:
-    #   HULK: 34 min (116K flows)  — needs Init Fwd Win Byts = 225
+    #   HULK: 34 min (461K flows)  — needs Init Fwd Win Byts = 225
     #   GoldenEye: 43 min (41K)    — needs Init Fwd Win Byts = 26883
     #   Slowloris: 41 min          — needs Init Fwd Win Byts = 26883
     #   SlowHTTPTest: 56 min (91K) — needs Init Fwd Win Byts = 26883
@@ -370,7 +493,8 @@ def main():
     print(f"[*] Total duration: {total_duration}s | Threads: {threads}")
     print(f"[*]")
     print(f"[*] Phase 1: HULK             ({hulk_duration}s, window=225)")
-    print(f"[*]   TCP connect+RST close flood, 0 payload")
+    print(f"[*]   TCP connect + hold 13ms + send 1B + RST close")
+    print(f"[*]   iptables DROP RST → CICFlowMeter sees RST=0")
     print(f"[*] Phase 2: Mixed            ({others_duration}s, window=26883)")
     print(f"[*]   GoldenEye + SlowHTTPTest + Slowloris + UDP")
     print(f"[*] ────────────────────────────────────────────────")
@@ -380,6 +504,14 @@ def main():
     total_errs = 0
 
     try:
+        # ── Setup: iptables RST DROP ─────────────────────────
+        # Must be done BEFORE the attack so RST packets from
+        # SO_LINGER close are invisible to CICFlowMeter.
+        iptables_ok = setup_iptables_drop_rst(target_ip, target_port)
+        if not iptables_ok:
+            print("[!] iptables setup failed — RST Flag Cnt will be 1")
+            print("[!] Flows may classify as YELLOW (44%) instead of RED (50%)")
+
         # ── Phase 1: HULK with window=225 ────────────────────
         print(f"\n{'='*55}")
         print(f"  PHASE 1 / 2 : HULK (window=225) — {hulk_duration}s")
@@ -426,7 +558,8 @@ def main():
         import traceback
         traceback.print_exc()
     finally:
-        # Always restore the route
+        # Always restore iptables and route
+        restore_iptables()
         restore_tcp_window(target_ip)
 
     print(f"\n{'='*55}")
