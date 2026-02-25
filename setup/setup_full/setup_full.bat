@@ -220,10 +220,10 @@ echo ===========================================================================
 echo.
 echo   Next steps:
 echo.
-echo   1. Activate venv:
+echo   1. Activate venv (every new terminal):
 echo        venv\Scripts\activate.bat
 echo.
-echo   2. For ML training and all features:
+echo   2. For details on running features:
 echo        See: PROJECT_RUN.md (in project root)
 echo.
 echo   3. To set up other components:
@@ -232,10 +232,4 @@ echo.
 echo   4. For project overview:
 echo        See: README.md (in project root)
 echo.
-echo   5. Low RAM? Adjust config.py settings.
-echo      See: setup/setup_full/TRAINING_CONFIG.md
-echo.
-echo   Debug log: %LOG_FILE%
-echo.
-pause
 pause

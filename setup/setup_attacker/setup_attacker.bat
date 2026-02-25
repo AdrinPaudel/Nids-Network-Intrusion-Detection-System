@@ -221,19 +221,16 @@ echo ===========================================================================
 echo.
 echo   Next steps:
 echo.
-echo   1. Activate venv:
+echo   1. Activate venv (every new terminal):
 echo        venv\Scripts\activate.bat
 echo.
-echo   2. For attack simulation steps:
-echo        See: PROJECT_RUN.md (in project root) - Section 4: Attack Simulation
+echo   2. For details on running features:
+echo        See: PROJECT_RUN.md (in project root)
 echo.
 echo   3. To set up other components:
 echo        See: setup/SETUPS.md
 echo.
 echo   4. For project overview:
 echo        See: README.md (in project root)
-echo.
-echo   IMPORTANT: Set up the victim device first!
-echo   Run setup\setup_victim\setup_victim.bat on the target device.
 echo.
 pause

@@ -426,6 +426,25 @@ def main():
         sys.exit(1)
     
     print("\n[OK] Victim device ready.\n")
+    
+    print("="*60)
+    print("  Victim Setup Complete!")
+    print("="*60)
+    print()
+    print("  Next steps:")
+    print()
+    print("  1. Activate venv (every new terminal):")
+    print("       venv\\Scripts\\activate.bat")
+    print()
+    print("  2. For details on running features:")
+    print("       See: PROJECT_RUN.md (in project root)")
+    print()
+    print("  3. To set up other components:")
+    print("       See: setup/SETUPS.md")
+    print()
+    print("  4. For project overview:")
+    print("       See: README.md (in project root)")
+    print()
 
 if __name__ == '__main__':
     main()
