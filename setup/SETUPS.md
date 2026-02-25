@@ -61,9 +61,11 @@ sudo python setup/setup_victim/setup_victim.py
 
 ---
 
-## `setup_attacker/` — Prep Your Machine to Launch Attacks
+## `setup_attacker/` — Prep Your Linux Machine to Launch Attacks
 
-Run this **ON YOUR MACHINE** (the attacker). Installs attack dependencies (paramiko, etc.) and verifies attack scripts.
+**⚠️ ATTACKS MUST BE LAUNCHED FROM LINUX** — The NIDS model was trained on Linux-generated attack traffic (with TCP timestamps). Windows-generated attacks won't be classified correctly.
+
+Run this **ON A LINUX MACHINE** (the attacker). Installs attack dependencies and verifies attack scripts.
 
 Includes:
 - `device_attack.py` — main attack launcher (DoS, DDoS, Brute Force, Botnet, Infiltration)
@@ -72,10 +74,8 @@ Includes:
 - Individual attack modules (_1_dos_attack.py through _5_botnet_behavior.py)
 
 ```bash
-# Windows
-setup\setup_attacker\setup_attacker.bat
-
-# Linux
+# Linux only
+chmod +x ./setup/setup_attacker/setup_attacker.sh
 ./setup/setup_attacker/setup_attacker.sh
 ```
 

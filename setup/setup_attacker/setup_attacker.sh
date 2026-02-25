@@ -39,11 +39,10 @@ if [ -f /proc/sys/net/ipv4/tcp_timestamps ]; then
     if [ "$ts_val" = "1" ]; then
         echo "  [OK] TCP timestamps already enabled"
     else
-        echo "  [WARNING] TCP timestamps disabled! Enabling..."
-        sudo sysctl -w net.ipv4.tcp_timestamps=1 2>/dev/null || {
-            echo "  [ERROR] Could not enable TCP timestamps (need sudo)"
-            echo "  Run: sudo sysctl -w net.ipv4.tcp_timestamps=1"
-        }
+        echo "  [ACTION] TCP timestamps disabled! Enabling and persisting..."
+        sudo sysctl -w net.ipv4.tcp_timestamps=1
+        sudo sysctl -p
+        echo "  [OK] TCP timestamps enabled"
     fi
 else
     echo "  [INFO] Cannot check TCP timestamps (not on Linux)"
@@ -148,7 +147,7 @@ done
 
 echo ""
 echo "  Checking attack scripts:"
-for script in setup/setup_attacker/device_attack.py setup/setup_attacker/discover_and_save.py setup/setup_attacker/config.py; do
+for script in setup/setup_attacker/device_attack.py setup/setup_attacker/config.py; do
     if [ -f "$script" ]; then
         echo "    [OK] $(basename $script)"
     else
@@ -176,20 +175,17 @@ echo "==========================================================================
 echo ""
 echo "  Next steps:"
 echo ""
-echo "  1. Activate venv:"
+echo "  1. Activate venv (every new terminal):"
 echo "       source venv/bin/activate"
 echo ""
-echo "  2. For attack simulation steps:"
-echo "       See: PROJECT_RUN.md (in project root) - Section 4: Attack Simulation"
+echo "  2. For details on running features:"
+echo "       See: PROJECT_RUN.md (in project root)"
 echo ""
 echo "  3. To set up other components:"
 echo "       See: setup/SETUPS.md"
 echo ""
 echo "  4. For project overview:"
 echo "       See: README.md (in project root)"
-echo ""
-echo "  IMPORTANT: Set up the victim device first!"
-echo "  Run: sudo ./setup/setup_victim/setup_victim.sh on the target device."
 echo ""
 echo "================================================================================"
 echo ""

@@ -4,7 +4,7 @@ Stores IP ranges, ports, and attack defaults
 """
 
 # Currently Detected VM (populated by discover_and_save.py)
-TARGET_VM_IP = "192.168.56.104"
+TARGET_VM_IP = "192.168.1.122"
 DETECTED_PORTS = [22, 80, 21]
 
 # IP ranges to scan for VMs (CIDR or single range)
