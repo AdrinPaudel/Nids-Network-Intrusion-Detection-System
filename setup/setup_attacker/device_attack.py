@@ -153,16 +153,19 @@ def run_attack_sequence(target_ip, target_ports, attacks_to_run, total_duration,
         
         module_name, default_func, port = attack_mapping[attack_name]
         
+        # Thread counts from CICIDS2018 specifications
+        threads_for_attack = 10 if attack_name in ["ddos", "infiltration"] else 5
+        
         print(f"\n[>>> Attack {i}/{len(attacks_to_run)}] Starting {attack_name.upper()}")
         print(f"[>>>] Target: {target_ip}:{port}")
         print(f"[>>>] Duration: {duration_per_attack}s")
-        print(f"[>>>] Threads: 20 (DoS/DDoS intensity)")
+        print(f"[>>>] Threads: {threads_for_attack} (matching CICIDS2018 intensity)")
         
         try:
             if port:
-                default_func(target_ip, target_port=port, duration=duration_per_attack, threads=20)
+                default_func(target_ip, target_port=port, duration=duration_per_attack, threads=threads_for_attack)
             else:
-                default_func(target_ip, duration=duration_per_attack, threads=20)
+                default_func(target_ip, duration=duration_per_attack, threads=threads_for_attack)
         except Exception as e:
             print(f"[!] Error running {attack_name}: {e}")
         

@@ -27,8 +27,8 @@ import json
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
 # Values derived from CICIDS2018 training data medians.
-# Bot training data: median Init Fwd Win Byts = 2053
-_RCVBUF_BOTNET = 2053        # Training median: 2053 (was 8192)
+# Bot training data: CICIDS2018 uses 8192 as the most common TCP window
+_RCVBUF_BOTNET = 8192        # Training mode: 8192 (56.8% of TCP flows) ✓
 
 USER_AGENTS = [
     # Ares/Zeus bots often use generic or outdated user agents

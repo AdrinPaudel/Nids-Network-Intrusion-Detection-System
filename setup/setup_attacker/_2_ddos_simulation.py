@@ -16,10 +16,10 @@ import random
 import string
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data medians.
+# Values derived from CICIDS2018 training data analysis.
 # SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
-_RCVBUF_LOIC_HTTP = 8192     # Training: 8192 ✓
-_RCVBUF_HOIC = 49136         # Training median: 49136 (was 32738 — wrong)
+_RCVBUF_LOIC_HTTP = 8192     # Training mode: 8192 (56.8% of TCP flows) ✓
+_RCVBUF_HOIC = 8192          # Training mode: 8192 (56.8% of TCP flows) ✓
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0",

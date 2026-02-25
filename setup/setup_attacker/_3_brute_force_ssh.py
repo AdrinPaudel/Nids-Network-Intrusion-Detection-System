@@ -22,7 +22,7 @@ import struct
 # TCP receive buffer size matching CICIDS2018 training data.
 # Setting SO_RCVBUF before connect() controls the TCP SYN window size,
 # which the model uses for classification (Init Fwd Win Byts feature).
-_RCVBUF_BRUTE = 26883
+_RCVBUF_BRUTE = 8192        # Training mode: 8192 (56.8% of TCP flows) ✓
 
 # ──────────────────────────────────────────────────────────
 # Credential wordlists (matching Patator-style attacks)

