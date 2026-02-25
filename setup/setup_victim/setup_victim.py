@@ -128,65 +128,62 @@ def win_port_listening(port):
     return success and stdout.strip() != ""
 
 
-def win_uninstall_openssh():
-    """Uninstall corrupted OpenSSH."""
-    print("      Uninstalling OpenSSH...")
+def win_fix_git_ssh():
+    """Fix or reinstall Git with proper crypto libraries."""
+    print("      Git SSH is broken (missing crypto libraries)...")
+    print()
     
-    # Method 1: PowerShell capability
-    success, _, _ = run_ps(
-        'Remove-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 2>&1',
-        timeout=60,
-        silent=True
+    # Option 1: Remove and reinstall Git
+    print("      Attempting to fix Git installation...")
+    
+    # Uninstall Git
+    print("      Uninstalling Git...")
+    run_cmd('wmic product where name="Git" call uninstall /nointeractive 2>nul', silent=True, timeout=60)
+    time.sleep(3)
+    
+    # Clear git from PATH
+    run_cmd('setx PATH "%PATH:C:\\Program Files\\Git\\cmd;=%"', silent=True, timeout=5)
+    
+    # Reinstall with full options
+    print("      Reinstalling Git with all components...")
+    success, stdout, stderr = run_cmd(
+        'winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements 2>&1',
+        silent=True,
+        timeout=180
     )
-    if success:
-        print("      [OK] OpenSSH uninstalled via PowerShell")
-        return True
     
-    # Method 2: Manual file deletion
-    print("      Trying manual removal...")
-    run_cmd('net stop sshd 2>nul', silent=True)
-    time.sleep(1)
-    run_cmd('sc delete sshd 2>nul', silent=True)
-    
-    # Delete files
-    for path in ["C:\\ProgramData\\ssh", "C:\\Program Files\\OpenSSH", "C:\\Windows\\System32\\OpenSSH"]:
-        if os.path.exists(path):
-            try:
-                shutil.rmtree(path)
-                print(f"      Deleted: {path}")
-            except:
-                pass
-    
-    return True
-
-
-def win_install_git_ssh():
-    """Install Git for Windows (includes SSH)."""
-    print("      Installing Git for Windows...")
-    
-    # Check if already installed
-    success, stdout, _ = run_cmd("git --version 2>nul", silent=True)
-    if success:
-        print("      [OK] Git already installed")
-        return True
-    
-    # Try winget
-    print("      Trying winget...")
-    success, stdout, _ = run_cmd("winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements 2>&1", silent=True, timeout=120)
-    
-    if success or "already" in stdout.lower():
+    if success or "successfully" in stdout.lower():
+        print("      [OK] Git reinstalled")
         time.sleep(3)
+        
         # Verify
         success, stdout, _ = run_cmd("git --version 2>nul", silent=True)
         if success:
-            print("      [OK] Git installed successfully")
-            print()
-            print("      Git includes SSH (OpenSSH-compatible)")
-            print("      SSH executable: C:\\Program Files\\Git\\usr\\bin\\ssh.exe")
-            return True
+            print(f"      [OK] Git working: {stdout.strip()}")
+            
+            # Test SSH
+            time.sleep(2)
+            success, stdout, stderr = run_cmd('ssh -V 2>&1', silent=True, timeout=5)
+            if success:
+                print(f"      [OK] Git SSH working: {stdout.strip()}")
+                return True
+            else:
+                print(f"      [!] Git SSH still broken: {stderr[:80]}")
+                return False
     
-    print("      [!] Git installation failed")
-    print("      Download from: https://git-scm.com/download/win")
+    print("      [!] Git reinstallation failed")
+    return False
+
+
+def win_skip_ssh():
+    """Option to skip SSH and just use web server."""
+    print()
+    print("      SSH is problematic on this system.")
+    print("      For testing purposes, web server on port 80 is often sufficient.")
+    print()
+    if ask_yes_no("Skip SSH and focus on web server setup?"):
+        print("      [OK] Skipping SSH - proceeding with web server only")
+        return True
     return False
 
 
@@ -428,26 +425,25 @@ def setup_windows():
         if ask_yes_no("Start SSH service?"):
             if not win_start_sshd():
                 print()
-                print("      OpenSSH is corrupted or misconfigured.")
+                print("      SSH is not working (corrupt crypto libraries).")
                 print()
-                if ask_yes_no("Uninstall OpenSSH and use Git for Windows SSH instead?"):
-                    if win_uninstall_openssh():
-                        print()
-                        if win_install_git_ssh():
-                            print("      [OK] Git SSH installed - port 22 should work now")
-                            time.sleep(2)
-                            if win_port_listening(22):
-                                print("      [OK] Port 22 is now listening!")
-                            else:
-                                print("      [!] Port 22 still not listening")
-                                print("      Note: Git SSH may need terminal restart to function")
-                                issues += 1
+                
+                # Offer to fix Git SSH
+                if ask_yes_no("Attempt to fix Git SSH installation?"):
+                    if win_fix_git_ssh():
+                        time.sleep(2)
+                        if win_port_listening(22):
+                            print("      [OK] Port 22 is now listening!")
                         else:
-                            issues += 1
+                            print("      [!] Port 22 still not listening")
+                            if not win_skip_ssh():
+                                issues += 1
                     else:
-                        issues += 1
+                        if not win_skip_ssh():
+                            issues += 1
                 else:
-                    issues += 1
+                    if not win_skip_ssh():
+                        issues += 1
     else:
         print("      [OK] Port 22 listening")
     print()
