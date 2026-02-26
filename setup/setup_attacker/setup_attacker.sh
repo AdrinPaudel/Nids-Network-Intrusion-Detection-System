@@ -156,7 +156,7 @@ done
 
 echo ""
 echo "  Checking attack scripts:"
-for script in setup/setup_attacker/device_attack.py setup/setup_attacker/config.py; do
+for script in setup/setup_attacker/device_attack.py setup/setup_attacker/_1_dos_attack.py; do
     if [ -f "$script" ]; then
         echo "    [OK] $(basename $script)"
     else

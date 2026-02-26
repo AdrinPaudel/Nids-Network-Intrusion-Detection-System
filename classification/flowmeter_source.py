@@ -201,6 +201,16 @@ SECONDS_TO_MICROSECONDS = 1_000_000
 #      Affects: ALL packet length features (totlen, max, min,
 #      mean, std, var, avg — 17+ features)
 #
+#   3. flow_session first-packet duplication: Flow.__init__() adds
+#      the first packet, then on_packet_received() calls
+#      flow.add_packet() again → duplicates the first packet.
+#      Affects: ALL features (packet counts, flag counts, rates,
+#      IAT, header lengths — every feature derived from packets list)
+#
+#   4. FlowBytes.get_bytes(): Python returns sum(len(packet))
+#      which includes Ethernet+IP+TCP headers. Java returns total
+#      payload bytes only. Affects: Flow Byts/s (selected feature)
+#
 # These patches are applied once at import time.
 # ============================================================
 
@@ -218,6 +228,7 @@ def _patch_cicflowmeter():
         from scapy.layers.inet import IP, TCP, UDP
         from cicflowmeter.features.flow_bytes import FlowBytes
         from cicflowmeter.features.packet_length import PacketLength
+        import cicflowmeter.flow_session as flow_session_mod
 
         # ── Fix 1: _header_size → return transport header only ──
         # Java CICFlowMeter's Fwd Seg Size Min = min transport header size:
@@ -278,9 +289,115 @@ def _patch_cicflowmeter():
 
         PacketLength.get_packet_length = get_packet_length_fixed
 
+        # ── Fix 3: First-packet duplication bug ──
+        # Python CICFlowMeter's FlowSession.process() has a bug:
+        #   Flow.__init__(pkt) adds pkt to self.packets
+        #   Then falls through to flow.add_packet(pkt) → DUPLICATE
+        # This inflates: Tot Fwd Pkts (3 vs 2), SYN Flag Cnt (3 vs 2),
+        # Fwd Header Len, all rates, IAT stats, and more.
+        # Fix: wrap the entire process() method with correct control flow.
+        from cicflowmeter.flow import Flow
+        from cicflowmeter.features.context import get_packet_flow_key
+        from cicflowmeter.constants import EXPIRED_UPDATE, PACKETS_PER_GC
+        import threading
+
+        def process_fixed(self, pkt):
+            """Fixed process method that does NOT duplicate the first packet."""
+            count = 0
+            direction = flow_session_mod.PacketDirection.FORWARD
+
+            if "TCP" not in pkt and "UDP" not in pkt:
+                return None
+
+            try:
+                packet_flow_key = get_packet_flow_key(pkt, direction)
+                with self._lock:
+                    flow = self.flows.get((packet_flow_key, count))
+            except Exception:
+                return None
+
+            self.packets_count += 1
+
+            # Check reverse direction if no forward flow
+            if flow is None:
+                direction = flow_session_mod.PacketDirection.REVERSE
+                packet_flow_key = get_packet_flow_key(pkt, direction)
+                flow = self.flows.get((packet_flow_key, count))
+
+            if flow is None:
+                # Brand new flow — Flow.__init__ already adds the packet
+                direction = flow_session_mod.PacketDirection.FORWARD
+                flow = Flow(pkt, direction)
+                packet_flow_key = get_packet_flow_key(pkt, direction)
+                with self._lock:
+                    self.flows[(packet_flow_key, count)] = flow
+                # FIX: return here, do NOT fall through to add_packet
+                return None
+
+            elif (pkt.time - flow.latest_timestamp) > EXPIRED_UPDATE:
+                expired = EXPIRED_UPDATE
+                while (pkt.time - flow.latest_timestamp) > expired:
+                    count += 1
+                    expired += EXPIRED_UPDATE
+                    with self._lock:
+                        flow = self.flows.get((packet_flow_key, count))
+
+                    if flow is None:
+                        flow = Flow(pkt, direction)
+                        with self._lock:
+                            self.flows[(packet_flow_key, count)] = flow
+                        # FIX: return here too — new flow already has the packet
+                        return None
+
+            elif "F" in pkt.flags:
+                flow.add_packet(pkt, direction)
+                self.garbage_collect(pkt.time)
+                return None
+
+            flow.add_packet(pkt, direction)
+
+            if self.packets_count % PACKETS_PER_GC == 0 or flow.duration > 120:
+                self.garbage_collect(pkt.time)
+
+            return None
+
+        flow_session_mod.FlowSession.process = process_fixed
+
+        # ── Fix 4: FlowBytes.get_bytes() → payload-only bytes ──
+        # Python uses sum(len(packet)) which includes Ethernet+IP+TCP headers.
+        # Java CICFlowMeter uses total payload bytes.
+        # This affects Flow Byts/s (selected feature #31).
+        # For HULK training: TotLen=0 → Flow Byts/s=0.
+        # Python was producing ~240000 for 4 SYN/ACK packets with 0 payload.
+        def get_bytes_fixed(self) -> int:
+            """Total payload bytes in the flow (matching Java CICFlowMeter)."""
+            return sum(_payload_size(packet) for packet, _ in self.flow.packets)
+
+        def get_bytes_sent_fixed(self) -> int:
+            """Total forward payload bytes."""
+            return sum(
+                _payload_size(packet)
+                for packet, direction in self.flow.packets
+                if direction == flow_session_mod.PacketDirection.FORWARD
+            )
+
+        def get_bytes_received_fixed(self) -> int:
+            """Total backward payload bytes."""
+            return sum(
+                _payload_size(packet)
+                for packet, direction in self.flow.packets
+                if direction == flow_session_mod.PacketDirection.REVERSE
+            )
+
+        FlowBytes.get_bytes = get_bytes_fixed
+        FlowBytes.get_bytes_sent = get_bytes_sent_fixed
+        FlowBytes.get_bytes_received = get_bytes_received_fixed
+
         print(f"{COLOR_GREEN}[FLOWMETER] Patched cicflowmeter to match Java CICFlowMeter features{COLOR_RESET}")
         print(f"{COLOR_GREEN}[FLOWMETER]   - _header_size: transport header TCP/UDP (was IP-only){COLOR_RESET}")
         print(f"{COLOR_GREEN}[FLOWMETER]   - packet_length: payload-only (was full frame){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   - process(): fixed first-packet duplication bug{COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   - get_bytes(): payload-only for Flow Byts/s (was raw){COLOR_RESET}")
 
     except Exception as e:
         print(f"{COLOR_RED}[FLOWMETER] WARNING: Failed to patch cicflowmeter: {e}{COLOR_RESET}")

@@ -605,7 +605,7 @@ def main():
         web_status = "OK" if web_ok else "FAILED"
         print(f"    SSH (port 22):  {ssh_status}")
         print(f"    HTTP (port 80): {web_status}")
-        print(f"    FTP (port 21):  Not configured")
+        print(f"    FTP (port 21):  {'OK (port open)' if win_is_port_open(21) else 'Not installed'}")
         print("\n  Open Ports:")
         print(f"    Port 22 (SSH):  {'✓ OPEN' if win_is_port_open(22) else '✗ CLOSED'}")
         print(f"    Port 80 (HTTP): {'✓ OPEN' if win_is_port_open(80) else '✗ CLOSED'}")
@@ -642,7 +642,7 @@ def main():
         print("  Services:")
         print(f"    SSH (port 22):  OK")
         print(f"    HTTP (port 80): OK")
-        print(f"    FTP (port 21):  Not configured")
+        print(f"    FTP (port 21):  {'OK (port open)' if is_port_open(21) else 'Not installed'}")
         print(f"  TCP Window Fix:")
         print(f"    Victim route:   {'CONFIGURED (window=219)' if _VICTIM_ROUTE_MODIFIED else 'NOT SET (run manually)'}")
         print("\n  Open Ports:")
