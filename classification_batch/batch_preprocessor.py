@@ -137,7 +137,7 @@ class BatchPreprocessor:
         X_ready = scaled_df[self.selected_features]
 
         elapsed = time.time() - start_time
-        print(f"{COLOR_GREEN}[BATCH-PREPROC] Done. {n_rows:,} rows → "
+        print(f"{COLOR_GREEN}[BATCH-PREPROC] Done. {n_rows:,} rows -> "
               f"{X_ready.shape[1]} features in {elapsed:.2f}s "
               f"({n_rows / elapsed:,.0f} rows/s){COLOR_RESET}")
 

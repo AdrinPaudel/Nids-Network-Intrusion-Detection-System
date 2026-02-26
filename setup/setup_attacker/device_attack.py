@@ -94,9 +94,9 @@ def check_and_enable_tcp_timestamps():
 
 # ─── File Descriptor Limit (Linux) ───────────────────────
 def check_and_raise_fd_limit():
-    """Raise the file descriptor limit for socket-leak HULK attack.
+    """Raise the file descriptor limit for HULK HTTP GET flood attack.
 
-    Socket-leak approach holds sockets open (max 500/thread × 10 threads = 5000).
+    HULK holds sockets open after sending GET (max 500/thread × 10 threads = 5000).
     Default Linux ulimit is 1024, which is too low.
     Attempts to raise to 16384 (soft) / 65536 (hard).
     """
@@ -341,13 +341,17 @@ def prompt_for_ip():
 def prompt_for_port():
     """Prompt user for the HTTP target port (DoS only needs one port)."""
     while True:
-        port_str = input("[?] Enter target HTTP port (default 80): ").strip()
+        port_str = input("[?] Enter target HTTP port (default 80, MUST be 80 for RED): ").strip()
         if not port_str:
             print("    -> Using default HTTP port: 80")
             return 80
         try:
             port = int(port_str)
             if 1 <= port <= 65535:
+                if port != 80:
+                    print(f"[!] WARNING: Port {port} will likely classify as GREEN/YELLOW.")
+                    print(f"[!] The model was trained on port 80 DoS attacks.")
+                    print(f"[!] Use port 80 for RED classification.")
                 print(f"    -> HTTP port set to: {port}")
                 return port
             print("[-] Port must be between 1 and 65535")
@@ -402,15 +406,12 @@ def main():
     # 4. Victim-side setup reminder
     print(f"\n[*] ── VICTIM-SIDE SETUP (CRITICAL) ────────────────")
     print(f"[*] For RED classification, the victim MUST have:")
-    print(f"[*]   sudo ip route replace <YOUR_ATTACKER_IP>/32 dev <IFACE> window 219")
+    print(f"[*]   1. Web server running on PORT 80 (not 8080/8000)")
+    print(f"[*]      -> Model trained on port 80 DoS; other ports = GREEN")
+    print(f"[*]   2. TCP window = 219 via ip route:")
+    print(f"[*]      sudo ip route replace <ATTACKER_IP>/32 dev <IFACE> window 219")
     print(f"[*]")
-    print(f"[*] This makes the victim's SYN-ACK advertise window=219,")
-    print(f"[*] matching the CICIDS2018 training victim (Ubuntu 16.04).")
-    print(f"[*] Without this, attacks classify as YELLOW (DoS ~29%).")
-    print(f"[*] With this,    attacks classify as RED    (DoS ~50%).")
-    print(f"[*]")
-    print(f"[*] Run setup_victim.py on the victim to configure this,")
-    print(f"[*] or manually run the ip route command above on the victim.")
+    print(f"[*] Run setup_victim.py on the victim to configure both.")
     print(f"[*] ────────────────────────────────────────────────")
     resp = input("[?] Is the victim TCP window configured? (y/N): ").strip().lower()
     if resp not in ("y", "yes"):
@@ -434,8 +435,8 @@ def main():
     print(f"[*] Total duration: {total_duration}s | Threads: {threads}")
     print(f"[*]")
     print(f"[*] Phase 1: HULK             ({hulk_duration}s, window=225)")
-    print(f"[*]   Socket-leak TCP flood (connect + abandon)")
-    print(f"[*]   RST=0 naturally → CICFlowMeter → RED")
+    print(f"[*]   TCP connect flood (connect + abandon, no data)")
+    print(f"[*]   Matches CICIDS2018 training data → RED")
     print(f"[*] Phase 2: Mixed            ({others_duration}s, window=26883)")
     print(f"[*]   GoldenEye + SlowHTTPTest + Slowloris + UDP")
     print(f"[*] ────────────────────────────────────────────────")
@@ -484,12 +485,6 @@ def main():
         total_conns += conns
         total_errs += errs
 
-    except KeyboardInterrupt:
-        print("\n[*] Attack interrupted by user")
-    except Exception as e:
-        print(f"[-] Error: {e}")
-        import traceback
-        traceback.print_exc()
     except KeyboardInterrupt:
         print("\n[*] Attack interrupted by user")
     except Exception as e:

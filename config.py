@@ -456,6 +456,9 @@ CLASSIFICATION_STATUS_UPDATE_INTERVAL = 30   # Print status every N seconds
 CLASSIFICATION_DEBUG_FLOWS = 5               # Number of flows to print detailed debug info for
 CLASSIFICATION_DEBUG_TOP_FEATURES = 15       # Number of top features to show in debug output
 
+# Flow saving settings (for diagnosis / comparison with training data)
+CLASSIFICATION_SAVE_FLOWS_DIR = os.path.join(PROJECT_ROOT, "data", "captured_flows")
+
 # Report generation settings
 CLASSIFICATION_REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
 

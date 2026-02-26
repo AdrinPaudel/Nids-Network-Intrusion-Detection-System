@@ -201,17 +201,26 @@ SECONDS_TO_MICROSECONDS = 1_000_000
 #      Affects: ALL packet length features (totlen, max, min,
 #      mean, std, var, avg — 17+ features)
 #
-#   3. flow_session first-packet duplication: Flow.__init__() adds
-#      the first packet, then on_packet_received() calls
-#      flow.add_packet() again → duplicates the first packet.
-#      Affects: ALL features (packet counts, flag counts, rates,
-#      IAT, header lengths — every feature derived from packets list)
+#   3. flow_session first-packet duplication: Flow.__init__()
+#      adds the first packet, then process() falls through to
+#      flow.add_packet() again. This is the SAME behavior as
+#      the Java CICFlowMeter. The CICIDS2018 training data was
+#      generated WITH this duplication. DO NOT FIX — the model
+#      expects Tot Fwd Pkts=2 for SYN-only flows (not 1).
 #
 #   4. FlowBytes.get_bytes(): Python returns sum(len(packet))
 #      which includes Ethernet+IP+TCP headers. Java returns total
 #      payload bytes only. Affects: Flow Byts/s (selected feature)
 #
-# These patches are applied once at import time.
+#   5. init_window_size defaults: Python defaults to 0 for both
+#      directions. Java defaults to -1. Since add_packet only
+#      updates when value == 0, changing default to -1 means
+#      init_bwd_win_byts stays -1 unless it was the first packet
+#      direction. This matches training: 94.5% of DoS-Hulk flows
+#      have Init Bwd Win Byts = -1.
+#
+# Patches 1, 2, 4, 5 are applied once at import time.
+# Patch 3 (duplication) is intentionally NOT fixed.
 # ============================================================
 
 _CFM_PATCHED = False
@@ -238,9 +247,6 @@ def _patch_cicflowmeter():
         #   Other             → 0
         # Training data values: Benign/Hulk/GoldenEye=32, SlowHTTPTest/Slowloris=40,
         # HOIC=20. Python version was returning IP header only (always 20) — wrong.
-        # Note: Windows data packets have no TCP timestamps (header=20) while
-        # Linux training data mostly has timestamps (header=32). The SO_RCVBUF
-        # setting in attack scripts compensates for this OS difference.
         def _header_size_fixed(self, packet):
             if IP in packet:
                 if TCP in packet:
@@ -261,10 +267,8 @@ def _patch_cicflowmeter():
             """Extract TCP/UDP payload size from a Scapy packet,
             matching the Java CICFlowMeter's packet length measurement."""
             if IP in packet:
-                # IP total length (includes IP header + transport header + payload)
                 ip_total = packet[IP].len
                 if ip_total is None:
-                    # Fallback: subtract Ethernet header from raw length
                     ip_total = len(packet) - 14
                 ip_hdr = (packet[IP].ihl if packet[IP].ihl else 5) * 4
 
@@ -275,7 +279,6 @@ def _patch_cicflowmeter():
                     return max(0, ip_total - ip_hdr - 8)
                 else:
                     return max(0, ip_total - ip_hdr)
-            # Non-IP packets: use raw length as fallback
             return len(packet)
 
         def get_packet_length_fixed(self, packet_direction=None):
@@ -289,86 +292,19 @@ def _patch_cicflowmeter():
 
         PacketLength.get_packet_length = get_packet_length_fixed
 
-        # ── Fix 3: First-packet duplication bug ──
-        # Python CICFlowMeter's FlowSession.process() has a bug:
-        #   Flow.__init__(pkt) adds pkt to self.packets
-        #   Then falls through to flow.add_packet(pkt) → DUPLICATE
-        # This inflates: Tot Fwd Pkts (3 vs 2), SYN Flag Cnt (3 vs 2),
-        # Fwd Header Len, all rates, IAT stats, and more.
-        # Fix: wrap the entire process() method with correct control flow.
-        from cicflowmeter.flow import Flow
-        from cicflowmeter.features.context import get_packet_flow_key
-        from cicflowmeter.constants import EXPIRED_UPDATE, PACKETS_PER_GC
-        import threading
-
-        def process_fixed(self, pkt):
-            """Fixed process method that does NOT duplicate the first packet."""
-            count = 0
-            direction = flow_session_mod.PacketDirection.FORWARD
-
-            if "TCP" not in pkt and "UDP" not in pkt:
-                return None
-
-            try:
-                packet_flow_key = get_packet_flow_key(pkt, direction)
-                with self._lock:
-                    flow = self.flows.get((packet_flow_key, count))
-            except Exception:
-                return None
-
-            self.packets_count += 1
-
-            # Check reverse direction if no forward flow
-            if flow is None:
-                direction = flow_session_mod.PacketDirection.REVERSE
-                packet_flow_key = get_packet_flow_key(pkt, direction)
-                flow = self.flows.get((packet_flow_key, count))
-
-            if flow is None:
-                # Brand new flow — Flow.__init__ already adds the packet
-                direction = flow_session_mod.PacketDirection.FORWARD
-                flow = Flow(pkt, direction)
-                packet_flow_key = get_packet_flow_key(pkt, direction)
-                with self._lock:
-                    self.flows[(packet_flow_key, count)] = flow
-                # FIX: return here, do NOT fall through to add_packet
-                return None
-
-            elif (pkt.time - flow.latest_timestamp) > EXPIRED_UPDATE:
-                expired = EXPIRED_UPDATE
-                while (pkt.time - flow.latest_timestamp) > expired:
-                    count += 1
-                    expired += EXPIRED_UPDATE
-                    with self._lock:
-                        flow = self.flows.get((packet_flow_key, count))
-
-                    if flow is None:
-                        flow = Flow(pkt, direction)
-                        with self._lock:
-                            self.flows[(packet_flow_key, count)] = flow
-                        # FIX: return here too — new flow already has the packet
-                        return None
-
-            elif "F" in pkt.flags:
-                flow.add_packet(pkt, direction)
-                self.garbage_collect(pkt.time)
-                return None
-
-            flow.add_packet(pkt, direction)
-
-            if self.packets_count % PACKETS_PER_GC == 0 or flow.duration > 120:
-                self.garbage_collect(pkt.time)
-
-            return None
-
-        flow_session_mod.FlowSession.process = process_fixed
+        # ── Fix 3: INTENTIONALLY NOT FIXED ──
+        # The first-packet duplication in FlowSession.process() is the SAME
+        # behavior as the Java CICFlowMeter. The CICIDS2018 training data
+        # was generated WITH this duplication:
+        #   - DoS-Hulk SYN-only: Tot Fwd Pkts=2 (SYN counted twice) = 81.1%
+        #   - DoS-Hulk SYN+ACK: Tot Fwd Pkts=3 (SYN×2 + ACK) = 16.3%
+        # Fixing it would make our features DIVERGE from training.
+        # The model has learned these duplicated counts as normal DoS patterns.
 
         # ── Fix 4: FlowBytes.get_bytes() → payload-only bytes ──
         # Python uses sum(len(packet)) which includes Ethernet+IP+TCP headers.
         # Java CICFlowMeter uses total payload bytes.
         # This affects Flow Byts/s (selected feature #31).
-        # For HULK training: TotLen=0 → Flow Byts/s=0.
-        # Python was producing ~240000 for 4 SYN/ACK packets with 0 payload.
         def get_bytes_fixed(self) -> int:
             """Total payload bytes in the flow (matching Java CICFlowMeter)."""
             return sum(_payload_size(packet) for packet, _ in self.flow.packets)
@@ -393,11 +329,35 @@ def _patch_cicflowmeter():
         FlowBytes.get_bytes_sent = get_bytes_sent_fixed
         FlowBytes.get_bytes_received = get_bytes_received_fixed
 
+        # ── Fix 5: init_window_size default → -1 (matching Java) ──
+        # Java CICFlowMeter defaults init_window_size to -1 for both
+        # directions. Python defaults to 0. Since add_packet() only
+        # updates when value == 0, changing default to -1 means:
+        #   - init_fwd_win_byts = set from first packet (SYN) in __init__
+        #   - init_bwd_win_byts = -1 forever (add_packet checks == 0,
+        #     but -1 ≠ 0, so it never updates)
+        # Training: 94.5% of DoS-Hulk have Init Bwd Win Byts = -1.
+        from cicflowmeter.flow import Flow
+
+        _original_flow_init = Flow.__init__
+
+        def _flow_init_fixed(self, packet, direction):
+            """Flow.__init__ with init_window_size defaulting to -1."""
+            _original_flow_init(self, packet, direction)
+            # Override: set the OTHER direction to -1 (the current direction
+            # was already set from the packet in original __init__)
+            from cicflowmeter.features.context import PacketDirection
+            other = PacketDirection.REVERSE if direction == PacketDirection.FORWARD else PacketDirection.FORWARD
+            self.init_window_size[other] = -1
+
+        Flow.__init__ = _flow_init_fixed
+
         print(f"{COLOR_GREEN}[FLOWMETER] Patched cicflowmeter to match Java CICFlowMeter features{COLOR_RESET}")
-        print(f"{COLOR_GREEN}[FLOWMETER]   - _header_size: transport header TCP/UDP (was IP-only){COLOR_RESET}")
-        print(f"{COLOR_GREEN}[FLOWMETER]   - packet_length: payload-only (was full frame){COLOR_RESET}")
-        print(f"{COLOR_GREEN}[FLOWMETER]   - process(): fixed first-packet duplication bug{COLOR_RESET}")
-        print(f"{COLOR_GREEN}[FLOWMETER]   - get_bytes(): payload-only for Flow Byts/s (was raw){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   Fix 1: _header_size -> transport header TCP/UDP (was IP-only){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   Fix 2: packet_length -> payload-only (was full frame){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   Fix 4: get_bytes() -> payload-only for Flow Byts/s (was raw){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   Fix 5: init_window_size default -> -1 (was 0){COLOR_RESET}")
+        print(f"{COLOR_GREEN}[FLOWMETER]   Note:  First-packet duplication preserved (matches training){COLOR_RESET}")
 
     except Exception as e:
         print(f"{COLOR_RED}[FLOWMETER] WARNING: Failed to patch cicflowmeter: {e}{COLOR_RESET}")
@@ -414,12 +374,27 @@ _patch_cicflowmeter()
 class QueueWriter:
     """Receives flow dicts from FlowSession, maps column names to
     CICIDS2018 training format, converts time units, and pushes
-    them to the preprocessing queue."""
+    them to the preprocessing queue.
 
-    def __init__(self, flow_queue, identifier_columns):
+    Optionally saves all flows to a CSV file for diagnosis/comparison
+    with training data (enabled via save_flows_path).
+    """
+
+    def __init__(self, flow_queue, identifier_columns, save_flows_path=None):
         self.flow_queue = flow_queue
         self.identifier_columns = identifier_columns
         self.flow_count = 0
+        self.save_flows_path = save_flows_path
+        self._csv_file = None
+        self._csv_writer = None
+        self._csv_header_written = False
+
+        if save_flows_path:
+            import csv
+            os.makedirs(os.path.dirname(save_flows_path), exist_ok=True)
+            self._csv_file = open(save_flows_path, 'w', newline='', encoding='utf-8')
+            self._csv_writer = csv.writer(self._csv_file)
+            print(f"{COLOR_GREEN}[FLOWMETER] Saving flows to: {save_flows_path}{COLOR_RESET}")
 
     def write(self, data: dict) -> None:
         """Called by FlowSession.garbage_collect() when a flow is completed/expired."""
@@ -447,6 +422,23 @@ class QueueWriter:
 
                 mapped[training_key] = value
 
+            # Save to CSV file if enabled (raw features for diagnosis)
+            if self._csv_writer is not None:
+                try:
+                    if not self._csv_header_written:
+                        # Write header on first flow — use all mapped keys except __identifiers__
+                        csv_keys = [k for k in mapped.keys() if k != "__identifiers__"]
+                        self._csv_writer.writerow(csv_keys)
+                        self._csv_header_written = True
+                        self._csv_columns = csv_keys
+                    row = [mapped.get(k, '') for k in self._csv_columns]
+                    self._csv_writer.writerow(row)
+                    # Flush periodically
+                    if self.flow_count % 50 == 0:
+                        self._csv_file.flush()
+                except Exception as csv_err:
+                    print(f"{COLOR_YELLOW}[FLOWMETER] CSV write error: {csv_err}{COLOR_RESET}")
+
             # Extract identifiers for threat display / reporting
             identifiers = {}
             for id_col in self.identifier_columns:
@@ -462,25 +454,36 @@ class QueueWriter:
             # Print first few flows to verify capture
             if self.flow_count == 1:
                 print(f"{COLOR_CYAN}[FLOWMETER] First flow received! "
-                      f"Src={identifiers.get('Src IP', '?')} → "
+                      f"Src={identifiers.get('Src IP', '?')} -> "
                       f"Dst={identifiers.get('Dst IP', '?')}:{identifiers.get('Dst Port', '?')}{COLOR_RESET}")
             elif self.flow_count <= 5:
                 print(f"{COLOR_CYAN}[FLOWMETER] Flow #{self.flow_count}: "
-                      f"Src={identifiers.get('Src IP', '?')} → "
+                      f"Src={identifiers.get('Src IP', '?')} -> "
                       f"Dst={identifiers.get('Dst IP', '?')}:{identifiers.get('Dst Port', '?')}{COLOR_RESET}")
 
         except Exception as e:
             print(f"{COLOR_YELLOW}[FLOWMETER] Flow write error: {e}{COLOR_RESET}")
 
+    def close(self):
+        """Flush and close the CSV file if open."""
+        if self._csv_file:
+            try:
+                self._csv_file.flush()
+                self._csv_file.close()
+                print(f"{COLOR_GREEN}[FLOWMETER] Saved {self.flow_count} flows to: {self.save_flows_path}{COLOR_RESET}")
+            except Exception:
+                pass
+            self._csv_file = None
+
     def __del__(self):
-        pass
+        self.close()
 
 
 # ============================================================
 # NIDS-configured FlowSession with faster timeouts
 # ============================================================
 
-def _create_nids_session(flow_queue, identifier_columns, verbose=False):
+def _create_nids_session(flow_queue, identifier_columns, verbose=False, save_flows_path=None):
     """Create a FlowSession configured for real-time NIDS with faster
     garbage collection thresholds (idle 15 sec, age 30 sec)."""
     from cicflowmeter.flow_session import FlowSession
@@ -500,8 +503,8 @@ def _create_nids_session(flow_queue, identifier_columns, verbose=False):
     except Exception:
         pass
 
-    # Replace with our queue-based writer
-    session.output_writer = QueueWriter(flow_queue, identifier_columns)
+    # Replace with our queue-based writer (optionally saving to CSV)
+    session.output_writer = QueueWriter(flow_queue, identifier_columns, save_flows_path=save_flows_path)
 
     # Override garbage_collect with faster thresholds for real-time NIDS
     idle_threshold = FLOWMETER_IDLE_THRESHOLD
@@ -781,15 +784,17 @@ class FlowMeterSource:
     """Manages Scapy-based live packet capture and flow feature extraction
     using the cicflowmeter Python package."""
 
-    def __init__(self, flow_queue, interface_name=None, stop_event=None):
+    def __init__(self, flow_queue, interface_name=None, stop_event=None, save_flows_path=None):
         """
         Args:
             flow_queue: queue.Queue to push parsed flow dicts into
             interface_name: network interface device name (auto-detect WiFi if None)
             stop_event: threading.Event (not used internally; source has its own)
+            save_flows_path: optional path to save all flows to CSV for diagnosis
         """
         self.flow_queue = flow_queue
         self.interface_name = interface_name
+        self.save_flows_path = save_flows_path
         self._stop_event = threading.Event()
         self._packet_count = 0
         self._packet_count_lock = threading.Lock()
@@ -838,6 +843,7 @@ class FlowMeterSource:
                 flow_queue=self.flow_queue,
                 identifier_columns=IDENTIFIER_COLUMNS,
                 verbose=False,
+                save_flows_path=self.save_flows_path,
             )
 
             # Wrap session.process to count packets for status display
@@ -926,6 +932,13 @@ class FlowMeterSource:
         if self._session:
             try:
                 self._session.garbage_collect(None)
+            except Exception:
+                pass
+
+        # Close the CSV flow-saving file if open
+        if self._session and hasattr(self._session, 'output_writer'):
+            try:
+                self._session.output_writer.close()
             except Exception:
                 pass
 

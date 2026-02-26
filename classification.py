@@ -18,6 +18,7 @@ Usage:
     python classification.py --interface "WiFi"  # Use specific interface by name
     python classification.py --batch             # Batch CSV classification (interactive file selection)
     python classification.py --batch file.csv    # Batch CSV classification (specific file)
+    python classification.py --save-flows        # Save captured flows to CSV for diagnosis
     python classification.py --help              # Show all options
     
 On Linux/macOS, live capture requires elevated privileges:
@@ -146,7 +147,7 @@ class ClassificationSession:
 
     def __init__(self, mode="live", interface_name=None, duration=DEFAULT_DURATION,
                  use_all_classes=False, session_id=1, batch_file_path=None, has_batch_label=False,
-                 vm_mode=False, debug=False):
+                 vm_mode=False, debug=False, save_flows=False):
         """
         Args:
             mode: 'live' or 'batch'
@@ -158,6 +159,7 @@ class ClassificationSession:
             has_batch_label: if True, batch file has actual labels
             vm_mode: if True, auto-select VirtualBox/VM adapter instead of WiFi
             debug: if True, print detailed feature values for first N flows
+            save_flows: if True, save all CICFlowMeter flows to CSV
         """
         self.mode = mode
         self.interface_name = interface_name
@@ -168,6 +170,7 @@ class ClassificationSession:
         self.has_batch_label = has_batch_label
         self.vm_mode = vm_mode
         self.debug = debug
+        self.save_flows = save_flows
 
         # Shared stop event for all threads in this session
         self.stop_event = threading.Event()
@@ -290,11 +293,20 @@ class ClassificationSession:
                 pass  # If we can't check, proceed anyway
 
         # 1. Create flow capture source (Python CICFlowMeter / Scapy)
+        # Build save_flows_path if --save-flows is enabled
+        save_flows_path = None
+        if self.save_flows:
+            from config import CLASSIFICATION_SAVE_FLOWS_DIR
+            import datetime
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_flows_path = os.path.join(CLASSIFICATION_SAVE_FLOWS_DIR, f"flows_{ts}.csv")
+
         try:
             self.source = FlowMeterSource(
                 flow_queue=self.flow_queue,
                 interface_name=self.interface_name,
                 stop_event=self.stop_event,
+                save_flows_path=save_flows_path,
             )
         except PermissionError as e:
             print(f"{COLOR_RED}[ERROR] Permission denied. Cannot capture packets on {self.interface_name}.{COLOR_RESET}")
@@ -670,6 +682,10 @@ Examples:
         "--debug", action="store_true",
         help="Debug mode: print detailed feature values and prediction probabilities"
     )
+    parser.add_argument(
+        "--save-flows", action="store_true",
+        help="Save all CICFlowMeter flows to CSV for diagnosis (data/captured_flows/)"
+    )
 
     args = parser.parse_args()
 
@@ -764,6 +780,7 @@ Examples:
         has_batch_label=has_batch_label,
         vm_mode=args.vm,
         debug=args.debug,
+        save_flows=args.save_flows,
     )
 
     # Register SIGINT handler for clean shutdown
