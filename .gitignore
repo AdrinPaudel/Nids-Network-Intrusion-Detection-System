@@ -4,68 +4,44 @@
 
 # --- Python ---
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-*.egg-info/
+*.pyd
+*.so
 *.egg
+*.egg-info/
+dist/
+build/
 
 # --- Virtual Environment ---
 venv/
 .venv/
 env/
 
-# --- Temp folder (shuffled simulation data, etc.) ---
-temp/
+# --- Data folder: keep structure, ignore all files ---
+# Recursively ignore all files inside data/ but keep folder structure
+data/**/*
+!data/**/.gitkeep
 
-# --- Data: data_model_training ---
-# Keep folder structure, ignore all data files inside
-data/data_model_training/raw/*
-data/data_model_training/combined/*
-data/data_model_training/preprocessed/*
-data/data_model_training/preprocessed_all/*
-!data/data_model_training/raw/.gitkeep
-!data/data_model_training/combined/.gitkeep
-!data/data_model_training/preprocessed/.gitkeep
-!data/data_model_training/preprocessed_all/.gitkeep
+# --- Reports: keep structure, ignore all files ---
+reports/*
+!reports/.gitkeep
 
-# --- Data: data_model_use ---
-# Keep folder structure, ignore all data files inside
-data/data_model_use/default/batch/*
-data/data_model_use/default/batch_labeled/*
-data/data_model_use/all/batch/*
-data/data_model_use/all/batch_labeled/*
-!data/data_model_use/default/batch/.gitkeep
-!data/data_model_use/default/batch_labeled/.gitkeep
-!data/data_model_use/all/batch/.gitkeep
-!data/data_model_use/all/batch_labeled/.gitkeep
+# --- Results: keep structure, ignore all files ---
+results/*
+!results/.gitkeep
 
-# --- Data: simul (large CSVs, upload manually to VM) ---
-data/simul/*
-!data/simul/.gitkeep
+# --- Temp/simul: keep structure, ignore all files ---
+temp/simul/*
+!temp/simul/.gitkeep
 
-# --- Trained Models (keep folder structure, only default model is included) ---
+# --- Trained model all: keep structure, ignore all files ---
 trained_models/trained_model_all/*
 !trained_models/trained_model_all/.gitkeep
 
-# --- Generated Outputs (keep folder structure) ---
-results/exploration/*
-results/preprocessing/*
-results/preprocessing_all/*
-results/training/*
-results/training_all/*
-results/testing/*
-results/testing_all/*
-reports/*
-!results/**/.gitkeep
-!reports/.gitkeep
-
-# --- CICFlowMeter Build Artifacts ---
-CICFlowMeter/build/
-CICFlowMeter/.gradle/
-CICFlowMeter/logs/
-
-# --- Backup CICFlowMeter (not needed in repo) ---
-CICFlowMeter-Original/
+# --- Other temp files ---
+temp/
+.temp/
 
 # --- IDE / Editor ---
 .idea/
@@ -74,11 +50,17 @@ CICFlowMeter-Original/
 *.swp
 *.swo
 *~
-
-# --- OS Files ---
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- CICFlowMeter Build Artifacts ---
+CICFlowMeter/build/
+CICFlowMeter/.gradle/
+CICFlowMeter/logs/
+
+# --- Backup CICFlowMeter ---
+CICFlowMeter-Original/
 
 # --- Personal / AI Agent Rules ---
 RULES.txt
