@@ -390,8 +390,11 @@ TARGET_INFILTRATION_F1 = 0.89  # >89% for hardest class
 
 # Python CICFlowMeter (Scapy-based flow capture) settings
 # These control how quickly flows are emitted for classification.
-FLOWMETER_IDLE_THRESHOLD = 15       # Emit flow after N seconds of no new packets
-FLOWMETER_AGE_THRESHOLD = 30        # Emit flow after N seconds total duration
+# NOTE: Java CICFlowMeter-V3 (used for dataset generation) defaults: idle=120s TCP, 600s UDP
+# For VM attack testing, use higher values to match training data flow boundaries.
+# For quick live demo, lower values (15/30) give faster feedback but different flow stats.
+FLOWMETER_IDLE_THRESHOLD = 60       # Emit flow after N seconds of no new packets (was 15)
+FLOWMETER_AGE_THRESHOLD = 120       # Emit flow after N seconds total duration (was 30)
 FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (seconds)
 
 # Default classification parameters
