@@ -18,6 +18,12 @@ venv/
 .venv/
 env/
 
+# --- Root files (explicitly tracked) ---
+!main.py
+!requirements.txt
+!ATTACK_DETAIL_MINUTE.md
+!RULES.txt
+
 # --- Data folder: keep structure, ignore all files ---
 # Recursively ignore all files inside data/ but keep folder structure
 data/**/*
