@@ -53,14 +53,3 @@ temp/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# --- CICFlowMeter Build Artifacts ---
-CICFlowMeter/build/
-CICFlowMeter/.gradle/
-CICFlowMeter/logs/
-
-# --- Backup CICFlowMeter ---
-CICFlowMeter-Original/
-
-# --- Personal / AI Agent Rules ---
-RULES.txt

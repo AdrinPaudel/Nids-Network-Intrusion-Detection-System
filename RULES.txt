@@ -1,0 +1,54 @@
+===============================================
+AI AGENT COMMAND EXECUTION RULES
+===============================================
+
+CRITICAL RULES FOR AI AGENT - ALWAYS FOLLOW:
+
+1. NO BACKGROUND PROCESSES
+   - Do NOT use isBackground=true
+   - Do NOT use & or background execution
+   - Do NOT use -ErrorAction SilentlyContinue with background tasks
+   
+2. NO SLEEP/DELAYS
+   - Do NOT add Start-Sleep or delays
+   - Run commands immediately and consecutively
+   - Do NOT use timeout parameters unnecessarily
+   
+3. NO HEAD COMMAND
+   - Do NOT use | head
+   - Do NOT limit output with head or Select-Object -First
+   - Return full output always
+   
+4. NO TAIL COMMAND
+   - Do NOT use | tail
+   - Do NOT use Select-Object -Last
+   - Return full output always
+   
+5. NO OUTPUT REDIRECTION MANIPULATION
+   - Do NOT use 2>&1 redirection
+   - Do NOT redirect stderr to stdout
+   - Do NOT use >, >>, or output redirects unless explicitly needed
+   
+6. NO EXTRA EXTENSION BULLSHIT
+   - Run commands NORMALLY and DIRECTLY
+   - Do NOT add unnecessary flags or parameters
+   - Do NOT wrap commands in extra logic
+   - Keep it simple and straightforward
+   
+7. APPLIES TO ALL MODULES
+   - ml_model commands
+   - classification commands
+   - Any other module or script
+   
+PROPER COMMAND FORMAT:
+   python ml_model/trainer.py
+   python classification/classifier.py
+   python main.py
+
+DO NOT:
+   python ml_model/trainer.py 2>&1 &
+   python ml_model/trainer.py & Start-Sleep -Seconds 5
+   python ml_model/trainer.py | head -20
+   python ml_model/trainer.py 2>&1 | tail
+
+===============================================
