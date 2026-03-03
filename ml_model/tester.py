@@ -37,7 +37,7 @@ def log_substep(msg):
     log_message(msg, level="SUBSTEP")
 
 
-def load_model_and_test_data(model_dir='trained_model', data_dir='data/preprocessed'):
+def load_model_and_test_data(model_dir='trained_models/trained_model_default', data_dir='data/data_model_training/preprocessed'):
     """
     Load trained model, preprocessing objects, and test data for evaluation.
     
@@ -1086,7 +1086,7 @@ def generate_testing_steps_log(multiclass_results, binary_results, error_analysi
     log_success(f"✓ Saved testing step-by-step log: testing_steps.txt")
 
 
-def test_model(model_dir='trained_model', data_dir='data/preprocessed', reports_dir='reports/testing'):
+def test_model(model_dir='trained_models/trained_model_default', data_dir='data/data_model_training/preprocessed', reports_dir='reports/testing'):
     """
     Main function to execute complete model testing pipeline.
     

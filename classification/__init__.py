@@ -1,4 +1,4 @@
 """
 Classification Package for NIDS
-Real-time network traffic classification pipeline.
+Contains classification_live (real-time) and classification_batch (CSV batch) sub-packages.
 """

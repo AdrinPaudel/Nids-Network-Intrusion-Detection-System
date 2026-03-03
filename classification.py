@@ -1,21 +1,21 @@
 #!/usr/bin/env python
 """
-NIDS Classification - Live Traffic Analysis
-============================================
+NIDS Classification - Main Orchestrator
+=======================================
 
-Main orchestrator for real-time network traffic classification.
+Central orchestrator for both live and batch network traffic classification.
 
-Starts a multi-threaded pipeline:
+Live mode:  Multi-threaded pipeline
     FlowMeter Source → Preprocessor → Classifier → Threat Handler + Report Generator
 
-Each component runs in its own thread with queues connecting them.
+Batch mode: Fast vectorized pipeline
+    BatchSource → BatchPreprocessor → BatchClassifier → BatchReportGenerator
 
 Usage:
-    python classification.py                     # Live capture, auto-detect, 120s, 5-class model
+    python classification.py                     # Live capture, choose interface, 120s, 5-class model
     python classification.py --duration 300      # Live capture for 5 minutes
     python classification.py --model all         # Use 'all' model (6-class with Infilteration)
-    python classification.py --interface         # Interactive interface selection menu
-    python classification.py --interface "WiFi"  # Use specific interface by name
+    python classification.py --list-interfaces   # List available network interfaces and exit
     python classification.py --batch             # Batch CSV classification (interactive file selection)
     python classification.py --batch file.csv    # Batch CSV classification (specific file)
     python classification.py --save-flows        # Save captured flows to CSV for diagnosis
@@ -109,35 +109,156 @@ check_venv()
 from config import (
     CLASSIFICATION_DEFAULT_DURATION, CLASSIFICATION_DEFAULT_MODEL,
     CLASSIFICATION_QUEUE_MAXSIZE, CLASSIFICATION_STATUS_UPDATE_INTERVAL,
+    CLASSIFICATION_BATCH_FOLDERS,
     COLOR_CYAN, COLOR_CYAN_BOLD, COLOR_RED, COLOR_YELLOW, COLOR_GREEN, COLOR_RESET,
     COLOR_DARK_GRAY, COLOR_RED_BOLD
 )
-from classification.flowmeter_source import (
+from classification.classification_live.flowmeter_source import (
     FlowMeterSource, list_interfaces, 
     get_wifi_interfaces, get_ethernet_interfaces, get_vm_interfaces
 )
-from classification.batch_source import BatchSource
-from classification.preprocessor import Preprocessor
-from classification.classifier import Classifier
-from classification.threat_handler import ThreatHandler
-from classification.report_generator import ReportGenerator
+from classification.classification_batch.batch_source import BatchSource
+from classification.classification_live.preprocessor import Preprocessor
+from classification.classification_live.classifier import Classifier
+from classification.classification_live.threat_handler import ThreatHandler
+from classification.classification_live.report_generator import ReportGenerator
 
 # Aliases for backward compatibility
 DEFAULT_DURATION = CLASSIFICATION_DEFAULT_DURATION
 DEFAULT_MODEL = CLASSIFICATION_DEFAULT_MODEL
 
 
-def select_batch_type_and_file():
+# ============================================================
+# BATCH FILE DISCOVERY & SELECTION
+# ============================================================
+
+def _discover_batch_files():
     """
-    Scan all four batch folders (default/batch, default/batch_labeled,
-    all/batch, all/batch_labeled), display files grouped by model variant,
-    let the user pick one, and auto-select the correct model.
+    Scan all four batch folders and collect CSV files.
+
+    Returns:
+        list of dicts with keys:
+            name, path, size, folder_label, model, has_label, use_all_classes
+    """
+    all_files = []
+
+    for folder in CLASSIFICATION_BATCH_FOLDERS:
+        folder_path = folder["path"]
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path, exist_ok=True)
+            continue
+
+        for fname in sorted(os.listdir(folder_path)):
+            if fname.lower().endswith(".csv"):
+                fpath = os.path.join(folder_path, fname)
+                if os.path.isfile(fpath):
+                    all_files.append({
+                        "name": fname,
+                        "path": fpath,
+                        "size": os.path.getsize(fpath),
+                        "folder_label": folder["label"],
+                        "model": folder["model"],
+                        "has_label": folder["has_label"],
+                        "use_all_classes": folder["use_all_classes"],
+                    })
+
+    return all_files
+
+
+def _row_count(path):
+    """Count data rows in a CSV (subtract header)."""
+    try:
+        with open(path, "r") as f:
+            return sum(1 for _ in f) - 1
+    except Exception:
+        return -1
+
+
+def select_batch_file():
+    """
+    Interactive file selection from all four batch folders.
+    Auto-determines model variant (default / all) based on folder.
 
     Returns:
         tuple: (file_path, has_label, use_all_classes) or (None, None, None)
     """
-    from classification_batch.batch_utils import select_batch_file
-    return select_batch_file()
+    print(f"\n{COLOR_CYAN_BOLD}Batch File Selection{COLOR_RESET}")
+    print(f"{COLOR_CYAN}{'='*80}{COLOR_RESET}")
+
+    all_files = _discover_batch_files()
+
+    if not all_files:
+        print(f"\n{COLOR_RED}No CSV files found in any batch folder.{COLOR_RESET}")
+        print(f"{COLOR_YELLOW}Expected folders:{COLOR_RESET}")
+        for folder in CLASSIFICATION_BATCH_FOLDERS:
+            print(f"  {folder['path']}")
+        return None, None, None
+
+    # Group into 4 clear sections
+    default_unlabeled = [f for f in all_files if not f["use_all_classes"] and not f["has_label"]]
+    default_labeled   = [f for f in all_files if not f["use_all_classes"] and f["has_label"]]
+    all_unlabeled     = [f for f in all_files if f["use_all_classes"] and not f["has_label"]]
+    all_labeled       = [f for f in all_files if f["use_all_classes"] and f["has_label"]]
+
+    print(f"\n{COLOR_CYAN}Available Batch Files:{COLOR_RESET}\n")
+
+    idx = 1
+    sections = [
+        ("Default — Unlabeled",  "data/data_model_use/default/batch/",         default_unlabeled),
+        ("Default — Labeled",    "data/data_model_use/default/batch_labeled/", default_labeled),
+        ("All — Unlabeled",      "data/data_model_use/all/batch/",             all_unlabeled),
+        ("All — Labeled",        "data/data_model_use/all/batch_labeled/",     all_labeled),
+    ]
+
+    for section_label, folder_hint, file_list in sections:
+        if not file_list:
+            continue
+        if idx > 1:
+            print()
+        print(f"  {COLOR_CYAN_BOLD}{section_label}{COLOR_RESET}  {COLOR_DARK_GRAY}({folder_hint}){COLOR_RESET}")
+        for bf in file_list:
+            size_mb = bf["size"] / (1024 * 1024)
+            rows = _row_count(bf["path"])
+            bf["_idx"] = idx
+            print(f"    [{idx}] {bf['name']}  ({size_mb:.2f} MB, {rows:,} rows)")
+            idx += 1
+
+    print(f"\n{COLOR_CYAN}{'='*80}{COLOR_RESET}")
+
+    while True:
+        try:
+            choice = input(
+                f"\n{COLOR_CYAN_BOLD}Enter file number (1-{len(all_files)}){COLOR_RESET}: "
+            ).strip()
+            choice_idx = int(choice) - 1
+
+            if 0 <= choice_idx < len(all_files):
+                selected = all_files[choice_idx]
+                model_tag = "all" if selected["use_all_classes"] else "default"
+                label_tag = "labeled" if selected["has_label"] else "unlabeled"
+                print(f"\n{COLOR_GREEN}Selected: {selected['name']} "
+                      f"({model_tag}, {label_tag}){COLOR_RESET}\n")
+                return selected["path"], selected["has_label"], selected["use_all_classes"]
+            else:
+                print(f"{COLOR_RED}Invalid choice. Enter 1-{len(all_files)}.{COLOR_RESET}")
+        except ValueError:
+            print(f"{COLOR_RED}Invalid input. Enter a number.{COLOR_RESET}")
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{COLOR_RED}No file selected. Exiting.{COLOR_RESET}")
+            sys.exit(1)
+
+
+def detect_model_from_path(file_path):
+    """
+    Auto-detect model variant from a file path.
+
+    Returns:
+        tuple: (has_label, use_all_classes)
+    """
+    norm = os.path.normpath(file_path).lower()
+    use_all_classes = os.sep + "all" + os.sep in norm
+    has_label = "batch_labeled" in norm
+    return has_label, use_all_classes
 
 class ClassificationSession:
     """
@@ -147,19 +268,19 @@ class ClassificationSession:
 
     def __init__(self, mode="live", interface_name=None, duration=DEFAULT_DURATION,
                  use_all_classes=False, session_id=1, batch_file_path=None, has_batch_label=False,
-                 vm_mode=False, debug=False, save_flows=False):
+                 save_flows=False, simul_file_path=None, has_simul_label=False):
         """
         Args:
-            mode: 'live' or 'batch'
+            mode: 'live', 'batch', or 'simul'
             interface_name: network interface device name (None = auto-detect WiFi) [for live mode]
-            duration: capture duration in seconds [for live mode]
+            duration: capture duration in seconds [for live / simul mode]
             use_all_classes: use 'all' model if True
             session_id: unique session identifier
             batch_file_path: path to batch CSV file (for batch mode)
             has_batch_label: if True, batch file has actual labels
-            vm_mode: if True, auto-select VirtualBox/VM adapter instead of WiFi
-            debug: if True, print detailed feature values for first N flows
             save_flows: if True, save all CICFlowMeter flows to CSV
+            simul_file_path: path to simulation CSV file (for simul mode)
+            has_simul_label: if True, simulation file has a Label column
         """
         self.mode = mode
         self.interface_name = interface_name
@@ -168,9 +289,9 @@ class ClassificationSession:
         self.session_id = session_id
         self.batch_file_path = batch_file_path
         self.has_batch_label = has_batch_label
-        self.vm_mode = vm_mode
-        self.debug = debug
         self.save_flows = save_flows
+        self.simul_file_path = simul_file_path
+        self.has_simul_label = has_simul_label
 
         # Shared stop event for all threads in this session
         self.stop_event = threading.Event()
@@ -205,6 +326,10 @@ class ClassificationSession:
         print(f"{COLOR_CYAN}  Model:    {model_name}{COLOR_RESET}")
         if self.mode == "batch":
             print(f"{COLOR_CYAN}  File:     {os.path.basename(self.batch_file_path)}{COLOR_RESET}")
+        elif self.mode == "simul":
+            print(f"{COLOR_CYAN}  File:     {os.path.basename(self.simul_file_path)}{COLOR_RESET}")
+            print(f"{COLOR_CYAN}  Labeled:  {self.has_simul_label}{COLOR_RESET}")
+            print(f"{COLOR_CYAN}  Duration: {self.duration} seconds{COLOR_RESET}")
         else:
             print(f"{COLOR_CYAN}  Duration: {self.duration} seconds{COLOR_RESET}")
             if self.interface_name:
@@ -218,51 +343,35 @@ class ClassificationSession:
         self._print_banner()
 
         if self.mode == "live":
-            # Auto-select interface if not specified
+            # Interface should already be selected by main() via interactive menu.
+            # This fallback handles edge cases where interface_name is still None.
             if self.interface_name is None:
                 interfaces = list_interfaces()
+                wifi_ifaces = get_wifi_interfaces(interfaces)
+                eth_ifaces = get_ethernet_interfaces(interfaces)
                 
-                if self.vm_mode:
-                    # VM mode: prefer VirtualBox/VM adapters
-                    vm_ifaces = get_vm_interfaces(interfaces)
-                    if vm_ifaces:
-                        self.interface_name = vm_ifaces[0]['name']
-                        desc = vm_ifaces[0].get('description', self.interface_name)
-                        print(f"{COLOR_CYAN}[SESSION] VM mode: Selected VirtualBox adapter: {desc}{COLOR_RESET}")
-                    else:
-                        print(f"{COLOR_RED}[SESSION] --vm specified but no VirtualBox/VM adapters found!{COLOR_RESET}")
-                        print(f"{COLOR_YELLOW}  Available interfaces:{COLOR_RESET}")
-                        for iface in interfaces:
-                            print(f"    {iface['description']} ({iface['name']})")
-                        print(f"{COLOR_YELLOW}\n  Use --interface to specify manually, or --list-interfaces to see all.{COLOR_RESET}")
-                        return False
+                if wifi_ifaces:
+                    self.interface_name = wifi_ifaces[0]['name']
+                    print(f"{COLOR_CYAN}[SESSION] Auto-selected WiFi interface: {self.interface_name}{COLOR_RESET}")
+                elif eth_ifaces:
+                    self.interface_name = eth_ifaces[0]['name']
+                    print(f"{COLOR_CYAN}[SESSION] Auto-selected Ethernet interface: {self.interface_name}{COLOR_RESET}")
                 else:
-                    # Normal mode: prefer WiFi, then Ethernet
-                    wifi_ifaces = get_wifi_interfaces(interfaces)
-                    eth_ifaces = get_ethernet_interfaces(interfaces)
-                    
-                    if wifi_ifaces:
-                        self.interface_name = wifi_ifaces[0]['name']
-                        print(f"{COLOR_CYAN}[SESSION] Auto-selected WiFi interface: {self.interface_name}{COLOR_RESET}")
-                    elif eth_ifaces:
-                        self.interface_name = eth_ifaces[0]['name']
-                        print(f"{COLOR_CYAN}[SESSION] Auto-selected Ethernet interface: {self.interface_name}{COLOR_RESET}")
-                    else:
-                        # No interfaces detected — check if we're on Linux without sudo
-                        if not sys.platform.startswith('win'):
-                            try:
-                                if os.geteuid() != 0:
-                                    print(f"{COLOR_RED}[SESSION] No network interfaces detected.{COLOR_RESET}")
-                                    print(f"{COLOR_YELLOW}\nThis is expected on Linux without elevated privileges.{COLOR_RESET}")
-                                    print(f"{COLOR_YELLOW}\nRun with sudo:{COLOR_RESET}")
-                                    print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
-                                    print(f"{COLOR_YELLOW}\nOr grant Python capabilities (one-time):{COLOR_RESET}")
-                                    import subprocess
-                                    python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
-                                    print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
-                                    return False
-                            except Exception:
-                                pass
+                    # No interfaces detected — check if we're on Linux without sudo
+                    if not sys.platform.startswith('win'):
+                        try:
+                            if os.geteuid() != 0:
+                                print(f"{COLOR_RED}[SESSION] No network interfaces detected.{COLOR_RESET}")
+                                print(f"{COLOR_YELLOW}\nThis is expected on Linux without elevated privileges.{COLOR_RESET}")
+                                print(f"{COLOR_YELLOW}\nRun with sudo:{COLOR_RESET}")
+                                print(f"{COLOR_CYAN}      sudo ./venv/bin/python classification.py{COLOR_RESET}")
+                                print(f"{COLOR_YELLOW}\nOr grant Python capabilities (one-time):{COLOR_RESET}")
+                                import subprocess
+                                python_path = subprocess.check_output(["readlink", "-f", sys.executable]).decode().strip()
+                                print(f"{COLOR_CYAN}      sudo setcap cap_net_raw,cap_net_admin=eip {python_path}{COLOR_RESET}\n")
+                                return False
+                        except Exception:
+                            pass
                     
                     print(f"{COLOR_RED}[SESSION] No network interfaces available!{COLOR_RESET}")
                     return False
@@ -270,6 +379,8 @@ class ClassificationSession:
             return self._start_live()
         elif self.mode == "batch":
             return self._start_batch()
+        elif self.mode == "simul":
+            return self._start_simul()
         else:
             print(f"{COLOR_RED}[SESSION] Unknown mode: {self.mode}{COLOR_RESET}")
             return False
@@ -325,7 +436,6 @@ class ClassificationSession:
             stop_event=self.stop_event,
             use_all_classes=self.use_all_classes,
             mode=self.mode,
-            debug=self.debug,
         )
 
         # 3. Create classifier
@@ -336,7 +446,6 @@ class ClassificationSession:
             stop_event=self.stop_event,
             use_all_classes=self.use_all_classes,
             mode=self.mode,
-            debug=self.debug,
         )
 
         # 4. Create threat handler
@@ -385,21 +494,154 @@ class ClassificationSession:
 
         return True
 
+    def _start_simul(self):
+        """
+        Start simulation mode pipeline.
+        Uses classification_simulated/ pipeline: SimulationSource → Preprocessor
+        → Classifier → ThreatHandler + ReportGenerator.
+        All components from classification_simulated/ (self-contained, no cross-folder imports).
+        """
+        from classification.classification_simulated.simulation_source import SimulationSource as SimulSource
+        from classification.classification_simulated.preprocessor import Preprocessor as SimulPreprocessor
+        from classification.classification_simulated.classifier import Classifier as SimulClassifier
+        from classification.classification_simulated.threat_handler import ThreatHandler as SimulThreatHandler
+        from classification.classification_simulated.report_generator import ReportGenerator as SimulReportGenerator
+
+        # 1. Create simulation source
+        try:
+            self.source = SimulSource(
+                flow_queue=self.flow_queue,
+                source_csv=self.simul_file_path,
+                has_label=self.has_simul_label,
+                stop_event=self.stop_event,
+            )
+        except Exception as e:
+            print(f"{COLOR_RED}[ERROR] Failed to create simulation source: {e}{COLOR_RESET}")
+            return False
+
+        # 2. Create preprocessor
+        self.preprocessor = SimulPreprocessor(
+            flow_queue=self.flow_queue,
+            classifier_queue=self.classifier_queue,
+            stop_event=self.stop_event,
+            use_all_classes=self.use_all_classes,
+            mode="simul",
+        )
+
+        # 3. Create classifier
+        self.classifier = SimulClassifier(
+            classifier_queue=self.classifier_queue,
+            threat_queue=self.threat_queue,
+            report_queue=self.report_queue,
+            stop_event=self.stop_event,
+            use_all_classes=self.use_all_classes,
+            mode="simul",
+        )
+
+        # 4. Create threat handler
+        self.threat_handler = SimulThreatHandler(
+            threat_queue=self.threat_queue,
+            stop_event=self.stop_event,
+        )
+
+        # 5. Create report generator
+        model_label = "all" if self.use_all_classes else "default"
+        self.report_generator = SimulReportGenerator(
+            report_queue=self.report_queue,
+            stop_event=self.stop_event,
+            mode="simul",
+            model_name=model_label,
+            duration=self.duration,
+            interface_name="simulation",
+            has_label=self.has_simul_label,
+            batch_completion_event=self.batch_completion_event,
+        )
+
+        # Start simulation source (streams CSV with random offset)
+        if not self.source.start():
+            print(f"{COLOR_RED}[SESSION] Failed to start simulation source.{COLOR_RESET}")
+            return False
+
+        # Start pipeline threads
+        thread_targets = [
+            ("preprocessor", self.preprocessor.run),
+            ("classifier", self.classifier.run),
+            ("threat-handler", self.threat_handler.run),
+            ("report-gen", self.report_generator.run),
+        ]
+
+        for name, target in thread_targets:
+            t = threading.Thread(
+                target=target,
+                name=f"session-{self.session_id}-{name}",
+                daemon=True,
+            )
+            t.start()
+            self.threads.append(t)
+
+        print(f"{COLOR_GREEN}[SESSION] Simulation pipeline started with {len(self.threads)} threads + source{COLOR_RESET}")
+        print(f"{COLOR_GREEN}[SESSION] Running for {self.duration} seconds. Press Ctrl+C to stop early.{COLOR_RESET}\n")
+
+        return True
+
     def _start_batch(self):
         """
         Start fast vectorized batch processing.
         Uses classification_batch/ pipeline: Source → Preprocessor → Classifier → Report.
         """
-        from classification_batch.batch_classify import run_batch_classification
+        from classification.classification_batch.preprocessor import BatchPreprocessor
+        from classification.classification_batch.classifier import BatchClassifier
+        from classification.classification_batch.report import BatchReportGenerator
 
-        result = run_batch_classification(
-            csv_path=self.batch_file_path,
-            use_all_classes=self.use_all_classes,
+        model_label = "all" if self.use_all_classes else "default"
+        model_display = "All (with Infilteration)" if self.use_all_classes else "Default"
+        batch_filename = os.path.basename(self.batch_file_path)
+
+        print(f"\n{COLOR_CYAN_BOLD}{'='*80}{COLOR_RESET}")
+        print(f"{COLOR_CYAN_BOLD}  BATCH CLASSIFICATION PIPELINE{COLOR_RESET}")
+        print(f"{COLOR_CYAN_BOLD}{'='*80}{COLOR_RESET}")
+        print(f"{COLOR_CYAN}  File:     {batch_filename}{COLOR_RESET}")
+        print(f"{COLOR_CYAN}  Model:    {model_display}{COLOR_RESET}")
+        print(f"{COLOR_CYAN}  Labeled:  {self.has_batch_label}{COLOR_RESET}")
+        print(f"{COLOR_CYAN_BOLD}{'='*80}{COLOR_RESET}\n")
+
+        pipeline_start = time.time()
+
+        # 1. Load CSV
+        source = BatchSource(self.batch_file_path, has_label=self.has_batch_label)
+        features_df, identifiers_df, labels = source.load()
+
+        # 2. Preprocess (vectorized)
+        preprocessor = BatchPreprocessor(use_all_classes=self.use_all_classes)
+        X_ready = preprocessor.preprocess(features_df)
+
+        # 3. Classify (vectorized)
+        classifier = BatchClassifier(use_all_classes=self.use_all_classes)
+        results, classify_stats = classifier.classify(X_ready, identifiers_df, labels)
+
+        # 4. Generate reports
+        reporter = BatchReportGenerator(
+            model_name=model_label,
+            batch_filename=batch_filename,
             has_label=self.has_batch_label,
         )
+        reporter.generate(results, classify_stats)
+
+        pipeline_elapsed = time.time() - pipeline_start
+
+        print(f"\n{COLOR_GREEN}{'='*80}{COLOR_RESET}")
+        print(f"{COLOR_GREEN}  BATCH COMPLETE{COLOR_RESET}")
+        print(f"{COLOR_GREEN}{'='*80}{COLOR_RESET}")
+        print(f"{COLOR_GREEN}  Flows:    {source.total_rows:,}{COLOR_RESET}")
+        print(f"{COLOR_GREEN}  Time:     {pipeline_elapsed:.2f}s "
+              f"({source.total_rows / pipeline_elapsed:,.0f} flows/s total){COLOR_RESET}")
+        print(f"{COLOR_GREEN}  Reports:  {reporter.report_path}{COLOR_RESET}")
+        if self.has_batch_label and "accuracy" in reporter.stats:
+            print(f"{COLOR_GREEN}  Accuracy: {reporter.stats['accuracy']:.2f}%{COLOR_RESET}")
+        print(f"{COLOR_GREEN}{'='*80}{COLOR_RESET}\n")
 
         # Store report generator for summary printing
-        self.report_generator = result["report_generator"]
+        self.report_generator = reporter
         self.batch_completion_event.set()
         return True
 
@@ -417,7 +659,7 @@ class ClassificationSession:
                     print(f"{COLOR_CYAN}[SESSION] Waiting for batch completion...{COLOR_RESET}")
                     self.batch_completion_event.wait(timeout=600)
             else:
-                # Live mode: wait for duration
+                # Live / simul mode: wait for duration
                 start_time = time.time()
                 while not self.stop_event.is_set():
                     elapsed = time.time() - start_time
@@ -431,12 +673,21 @@ class ClassificationSession:
                     if int(elapsed) % CLASSIFICATION_STATUS_UPDATE_INTERVAL == 0 and int(elapsed) > 0:
                         flows = self.source.flow_count if self.source else 0
                         classified = self.classifier.classified_count if self.classifier else 0
-                        packets = self.source._packet_count if self.source else 0
-                        sniffer_alive = "yes" if (self.source and self.source.is_alive()) else "no"
-                        print(f"{COLOR_DARK_GRAY}[SESSION] {int(elapsed)}s elapsed | "
-                              f"Sniffer: {sniffer_alive} | "
-                              f"Packets: {packets} | Flows: {flows} | Classified: {classified} | "
-                              f"Remaining: {int(remaining)}s{COLOR_RESET}")
+
+                        if self.mode == "simul":
+                            source_alive = "yes" if (self.source and self.source.is_alive()) else "no"
+                            total = self.source.total_rows if self.source else 0
+                            print(f"{COLOR_DARK_GRAY}[SESSION] {int(elapsed)}s elapsed | "
+                                  f"Source: {source_alive} | "
+                                  f"Flows fed: {flows:,}/{total:,} | Classified: {classified:,} | "
+                                  f"Remaining: {int(remaining)}s{COLOR_RESET}")
+                        else:
+                            packets = self.source._packet_count if self.source else 0
+                            sniffer_alive = "yes" if (self.source and self.source.is_alive()) else "no"
+                            print(f"{COLOR_DARK_GRAY}[SESSION] {int(elapsed)}s elapsed | "
+                                  f"Sniffer: {sniffer_alive} | "
+                                  f"Packets: {packets} | Flows: {flows} | Classified: {classified} | "
+                                  f"Remaining: {int(remaining)}s{COLOR_RESET}")
 
                     time.sleep(1)
 
@@ -465,6 +716,9 @@ class ClassificationSession:
 
         print(f"\n{COLOR_CYAN}[SESSION] Shutting down session {self.session_id}...{COLOR_RESET}")
 
+        # ── Step 0: Set stop_event so loops know to exit ───────────────────
+        self.stop_event.set()
+
         # ── Step 1: Stop the flow capture source ──────────────────────────
         if self.source:
             self.source.stop()
@@ -490,8 +744,9 @@ class ClassificationSession:
         for t in self.threads[len(pipeline_labels):]:
             t.join(timeout=THREAD_JOIN_TIMEOUT)
 
-        # ── Step 7: Final fallback ─────────────────────────────────────────
-        self.stop_event.set()
+        # ── Step 7: Confirm stop_event is set (already done in step 0) ────
+        if not self.stop_event.is_set():
+            self.stop_event.set()
 
         # ── Step 8: Summary ────────────────────────────────────────────────
         self._print_summary()
@@ -514,9 +769,12 @@ class ClassificationSession:
                     print(f"  Accuracy:          {stats['accuracy']:.2f}%")
                 print(f"  Report folder:     {self.report_generator.report_path}")
         else:
-            # Live mode summary
+            # Live / simul mode summary
             if self.source:
-                print(f"  Flows captured:    {self.source.flow_count}")
+                label = "Flows fed" if self.mode == "simul" else "Flows captured"
+                print(f"  {label}:    {self.source.flow_count}")
+                if self.mode == "simul":
+                    print(f"  Total in CSV:      {self.source.total_rows:,}")
             if self.preprocessor:
                 print(f"  Flows preprocessed: {self.preprocessor.processed_count}")
             if self.classifier:
@@ -640,51 +898,62 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python classification.py                          # Live WiFi, 180s, default model
-  python classification.py --duration 300           # Live WiFi, 5 minutes
-  python classification.py --model all              # Use 'all' model (with Infilteration)
-  python classification.py --list-interfaces        # List network interfaces
-  python classification.py --interface "\\Device\\NPF_{...}"  # Specific interface
-  python classification.py --batch                  # Batch CSV classification (select file)
-  python classification.py --batch path/to/file.csv # Batch CSV classification (specific file)
+  python classification.py --live                             # Live capture (default model, 120s)
+  python classification.py --live --duration 300              # Live, 5 minutes
+  python classification.py --live --model all                 # Live, 6-class model
+  python classification.py --simul                            # Simulation (default model, unlabeled, 120s)
+  python classification.py --simul --labeled                  # Simulation with labeled data
+  python classification.py --simul --model all --labeled      # Simulation, 6-class, labeled
+  python classification.py --simul --duration 60              # Simulation for 60 seconds
+  python classification.py --batch                            # Batch CSV (select file)
+  python classification.py --batch path/to/file.csv           # Batch CSV (specific file)
+  python classification.py --list-interfaces                  # List network interfaces and exit
         """
     )
 
-    parser.add_argument(
-        "--mode", choices=["live", "batch"], default="live",
-        help="Classification mode (default: live)"
+    # ── Mode flags (mutually exclusive) ──────────────────────────
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--live", action="store_true", default=False,
+        help="Live capture mode (default if no mode flag given)"
     )
-    parser.add_argument(
+    mode_group.add_argument(
+        "--simul", action="store_true", default=False,
+        help="Simulation mode: feed CSV from data/simul/ at 5 flows/sec"
+    )
+    mode_group.add_argument(
         "--batch", type=str, nargs='?', const='SELECT',
-        help="Batch CSV classification: optionally specify CSV file path (default: interactive selection)"
+        help="Batch CSV classification: optionally specify CSV file path"
     )
+
+    # ── Common options ───────────────────────────────────────────
     parser.add_argument(
         "--duration", type=int, default=DEFAULT_DURATION,
-        help=f"Capture duration in seconds (default: {DEFAULT_DURATION})"
+        help=f"Capture / simulation duration in seconds (default: {DEFAULT_DURATION})"
     )
     parser.add_argument(
         "--model", choices=["default", "all"], default=DEFAULT_MODEL,
-        help="Model variant: 'default' or 'all' (with Infilteration)"
+        help="Model variant: 'default' (5-class) or 'all' (6-class with Infilteration)"
+    )
+
+    # ── Simulation-specific options ──────────────────────────────
+    parser.add_argument(
+        "--labeled", action="store_true", default=False,
+        help="Use labeled simulation data (has ground-truth Label column)"
     )
     parser.add_argument(
-        "--interface", type=str, nargs='?', const='SELECT', default=None,
-        help="Network interface: optionally specify adapter name (default: interactive selection)"
+        "--unlabeled", action="store_true", default=False,
+        help="Use unlabeled simulation data (default — this flag is optional)"
     )
+
+    # ── Utility options ─────────────────────────────────────────
     parser.add_argument(
         "--list-interfaces", action="store_true",
         help="List available network interfaces and exit"
     )
     parser.add_argument(
-        "--vm", action="store_true",
-        help="VM mode: auto-select VirtualBox/VMware adapter for VM attack detection"
-    )
-    parser.add_argument(
-        "--debug", action="store_true",
-        help="Debug mode: print detailed feature values and prediction probabilities"
-    )
-    parser.add_argument(
         "--save-flows", action="store_true",
-        help="Save all CICFlowMeter flows to CSV for diagnosis (data/captured_flows/)"
+        help="Save all CICFlowMeter flows to CSV for diagnosis (temp/)"
     )
 
     args = parser.parse_args()
@@ -707,18 +976,49 @@ Examples:
     # Determine model variant
     use_all = (args.model == "all")
 
-    # Handle batch mode
-    mode = args.mode
+    # Handle mode selection
+    mode = "live"  # default mode when no flag given
     batch_file_path = None
     has_batch_label = False
     interface_name = None
+    simul_file_path = None
+    has_simul_label = False
 
-    if args.batch is not None:
+    if args.simul:
+        # ── Simulation mode ──────────────────────────────────────────
+        mode = "simul"
+        has_simul_label = args.labeled  # --labeled flag; default False (unlabeled)
+
+        # Resolve the simulation CSV from (model, labeled) combination
+        from config import CLASSIFICATION_SIMUL_TEMP_DIR, CLASSIFICATION_SIMUL_FILES
+        model_key = "all" if use_all else "default"
+        simul_filename = CLASSIFICATION_SIMUL_FILES.get((model_key, has_simul_label))
+        if simul_filename is None:
+            print(f"{COLOR_RED}[MAIN] No simulation file configured for "
+                  f"model={model_key}, labeled={has_simul_label}{COLOR_RESET}")
+            sys.exit(1)
+
+        simul_file_path = os.path.join(CLASSIFICATION_SIMUL_TEMP_DIR, simul_filename)
+        if not os.path.exists(simul_file_path):
+            print(f"\n{COLOR_RED}{'=' * 70}{COLOR_RESET}")
+            print(f"{COLOR_RED}  Shuffled simulation file not found:{COLOR_RESET}")
+            print(f"{COLOR_RED}    {simul_file_path}{COLOR_RESET}")
+            print(f"{COLOR_RED}")
+            print(f"  Run the shuffler first:{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}    python -m classification.classification_simulated.shuffler{COLOR_RESET}")
+            print(f"{COLOR_RED}{'=' * 70}{COLOR_RESET}\n")
+            sys.exit(1)
+
+        label_tag = "labeled" if has_simul_label else "unlabeled"
+        print(f"{COLOR_CYAN}[MAIN] Simulation file: {simul_filename} "
+              f"(model={model_key}, {label_tag}){COLOR_RESET}")
+
+    elif args.batch is not None:
         # Batch mode requested
         mode = "batch"
         if args.batch == "SELECT":
             # Interactive selection — scans all 4 folders, auto-selects model
-            batch_file_path, has_batch_label, batch_use_all = select_batch_type_and_file()
+            batch_file_path, has_batch_label, batch_use_all = select_batch_file()
             if batch_file_path is None:
                 print(f"{COLOR_RED}[MAIN] No batch file selected. Exiting.{COLOR_RESET}")
                 sys.exit(1)
@@ -730,43 +1030,22 @@ Examples:
             if not os.path.exists(batch_file_path):
                 print(f"{COLOR_RED}[MAIN] Batch file not found: {batch_file_path}{COLOR_RESET}")
                 sys.exit(1)
-            from classification_batch.batch_utils import detect_model_from_path
             has_batch_label, detected_all = detect_model_from_path(batch_file_path)
             # Only override model if user didn't explicitly pass --model
             if args.model == DEFAULT_MODEL:
                 use_all = detected_all
     else:
-        # Live mode - get interface
-        interface_name = None
-        
-        if args.vm:
-            # VM mode: auto-select, don't ask user
-            interface_name = None
-        elif args.interface == 'SELECT' or args.interface is None:
-            # Interactive mode: show menu and let user choose
-            interface_name = select_interface_interactive()
-            if interface_name is None:
-                print(f"{COLOR_RED}[MAIN] No interface selected. Exiting.{COLOR_RESET}")
-                sys.exit(1)
-        else:
-            # Explicit interface provided — verify it exists
-            interface_name = args.interface
-            all_interfaces = list_interfaces()
-            iface_names = {iface['name'] for iface in all_interfaces}
-            
-            if interface_name not in iface_names:
-                print(f"{COLOR_RED}[MAIN] Interface not found: {interface_name}{COLOR_RESET}")
-                print(f"{COLOR_YELLOW}Available interfaces:{COLOR_RESET}")
-                for iface in all_interfaces:
-                    print(f"  {iface['name']:<40} {iface['description']}")
-                print(f"\n{COLOR_YELLOW}Use --list-interfaces to see all, or omit --interface for interactive selection.{COLOR_RESET}")
-                sys.exit(1)
+        # Live mode - always show interactive interface selection menu
+        interface_name = select_interface_interactive()
+        if interface_name is None:
+            print(f"{COLOR_RED}[MAIN] No interface selected. Exiting.{COLOR_RESET}")
+            sys.exit(1)
 
     # Create session ID based on timestamp + model + duration
     import datetime
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     model_code = "all" if use_all else "default"
-    mode_code = mode[0].upper()  # L for live, B for batch
+    mode_code = mode[0].upper()  # L for live, B for batch, S for simul
     session_id = f"{timestamp}_{model_code}_{mode_code}"
     
     # Create and run session
@@ -778,9 +1057,9 @@ Examples:
         session_id=session_id,
         batch_file_path=batch_file_path,
         has_batch_label=has_batch_label,
-        vm_mode=args.vm,
-        debug=args.debug,
         save_flows=args.save_flows,
+        simul_file_path=simul_file_path,
+        has_simul_label=has_simul_label,
     )
 
     # Register SIGINT handler for clean shutdown

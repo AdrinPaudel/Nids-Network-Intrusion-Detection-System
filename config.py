@@ -10,22 +10,22 @@ import sys
 # PROJECT PATHS
 # ============================================================
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA_RAW_DIR = os.path.join(PROJECT_ROOT, 'data', 'raw')
+DATA_RAW_DIR = os.path.join(PROJECT_ROOT, 'data', 'data_model_training', 'raw')
 
 # COMBINED: Checkpoint data from Module 1 (shared by both variants)
-DATA_COMBINED_DIR = os.path.join(PROJECT_ROOT, 'data', 'combined')
+DATA_COMBINED_DIR = os.path.join(PROJECT_ROOT, 'data', 'data_model_training', 'combined')
 
 # EXPLORATION: Data and correlation matrices (shared by both variants)
 EXPLORATION_CORRELATION_FILE = os.path.join(DATA_COMBINED_DIR, 'exploration_correlation_data.joblib')
 
 # VARIANT 1: Preprocessed (default) - REMOVES Infilteration
-DATA_PREPROCESSED_DIR = os.path.join(PROJECT_ROOT, 'data', 'preprocessed')
-TRAINED_MODEL_DIR = os.path.join(PROJECT_ROOT, 'trained_model')
+DATA_PREPROCESSED_DIR = os.path.join(PROJECT_ROOT, 'data', 'data_model_training', 'preprocessed')
+TRAINED_MODEL_DIR = os.path.join(PROJECT_ROOT, 'trained_models', 'trained_model_default')
 RESULTS_DIR = os.path.join(PROJECT_ROOT, 'results')
 
 # VARIANT 2: Preprocessed ALL - KEEPS Infilteration (no removal)
-DATA_PREPROCESSED_ALL_DIR = os.path.join(PROJECT_ROOT, 'data', 'preprocessed_all')
-TRAINED_MODEL_ALL_DIR = os.path.join(PROJECT_ROOT, 'trained_model_all')
+DATA_PREPROCESSED_ALL_DIR = os.path.join(PROJECT_ROOT, 'data', 'data_model_training', 'preprocessed_all')
+TRAINED_MODEL_ALL_DIR = os.path.join(PROJECT_ROOT, 'trained_models', 'trained_model_all')
 
 REPORTS_DIR = os.path.join(PROJECT_ROOT, 'reports')
 
@@ -394,23 +394,6 @@ FLOWMETER_IDLE_THRESHOLD = 15       # Emit flow after N seconds of no new packet
 FLOWMETER_AGE_THRESHOLD = 30        # Emit flow after N seconds total duration
 FLOWMETER_GC_INTERVAL = 10.0        # Background garbage collection frequency (seconds)
 
-# Fwd Seg Size Min auto-correction for Windows attacker → Linux victim
-# The CICIDS2018 training data was generated from Linux (Kali) attackers where
-# TCP timestamps are always present → TCP header = 32 bytes → Fwd Seg Size Min = 32.
-# On Windows, TCP timestamps may be absent → header = 20 → Fwd Seg Size Min = 20.
-# The model's #1 most important feature depends on this OS-level difference.
-#
-# PREFERRED FIX: Enable TCP timestamps on the Windows attacker machine:
-#   netsh int tcp set global timestamps=enabled
-# This naturally produces the correct header size (32) in the captured packets.
-#
-# SAFETY NET: If timestamps can't be enabled, set this to True to auto-correct
-# flows where Fwd Seg Size Min = 20 (no timestamps) to 32 (with timestamps).
-# WARNING: This also affects benign TCP flows. Only enable if:
-#   1. TCP timestamps cannot be enabled on the attacker machine, AND
-#   2. All monitored attack traffic comes from Windows (no-timestamp) sources
-FLOWMETER_FIX_WINDOWS_FWD_SEG_MIN = False
-
 # Default classification parameters
 CLASSIFICATION_DEFAULT_DURATION = 120        # 2 minutes (seconds)
 CLASSIFICATION_DEFAULT_MODEL = "default"     # "default" (5-class) or "all" (6-class)
@@ -452,15 +435,26 @@ CLASSIFICATION_VM_KEYWORDS = ["virtualbox", "vbox", "host-only", "vmware", "vmne
 # Periodic status updates
 CLASSIFICATION_STATUS_UPDATE_INTERVAL = 30   # Print status every N seconds
 
-# Debug mode settings
-CLASSIFICATION_DEBUG_FLOWS = 5               # Number of flows to print detailed debug info for
-CLASSIFICATION_DEBUG_TOP_FEATURES = 15       # Number of top features to show in debug output
+# Debug mode settings (reserved)
 
 # Flow saving settings (for diagnosis / comparison with training data)
-CLASSIFICATION_SAVE_FLOWS_DIR = os.path.join(PROJECT_ROOT, "data", "captured_flows")
+CLASSIFICATION_SAVE_FLOWS_DIR = os.path.join(PROJECT_ROOT, "temp")
 
 # Report generation settings
 CLASSIFICATION_REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
+
+# ── Simulation mode settings ──────────────────────────────────
+CLASSIFICATION_SIMUL_SOURCE_DIR = os.path.join(PROJECT_ROOT, "data", "simul")
+CLASSIFICATION_SIMUL_TEMP_DIR = os.path.join(PROJECT_ROOT, "temp", "simul")
+CLASSIFICATION_SIMUL_FLOWS_PER_SECOND = 5    # Row feed rate (flows / second)
+
+# Simulation file map:  (model, labeled) → filename inside SIMUL_SOURCE_DIR
+CLASSIFICATION_SIMUL_FILES = {
+    ("default", False): "simul.csv",                      # 5-class, unlabeled
+    ("default", True):  "simul_lable.csv",                 # 5-class, labeled
+    ("all",     False): "simul_infiltration.csv",           # 6-class, unlabeled
+    ("all",     True):  "simul_infiltration_lable.csv",     # 6-class, labeled
+}
 
 # Color codes for terminal output (ANSI escape codes)
 COLOR_CYAN = "\033[96m"
@@ -507,10 +501,42 @@ CLASSIFICATION_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 CLASSIFICATION_MINUTE_KEY_FORMAT = "%H-%M"      # Format for minute file naming
 
 # Batch source settings - organized by model variant
-CLASSIFICATION_BATCH_DEFAULT_DIR = os.path.join(PROJECT_ROOT, "data", "default", "batch")
-CLASSIFICATION_BATCH_DEFAULT_LABELED_DIR = os.path.join(PROJECT_ROOT, "data", "default", "batch_labeled")
-CLASSIFICATION_BATCH_ALL_DIR = os.path.join(PROJECT_ROOT, "data", "all", "batch")
-CLASSIFICATION_BATCH_ALL_LABELED_DIR = os.path.join(PROJECT_ROOT, "data", "all", "batch_labeled")
+CLASSIFICATION_BATCH_DEFAULT_DIR = os.path.join(PROJECT_ROOT, "data", "data_model_use", "default", "batch")
+CLASSIFICATION_BATCH_DEFAULT_LABELED_DIR = os.path.join(PROJECT_ROOT, "data", "data_model_use", "default", "batch_labeled")
+CLASSIFICATION_BATCH_ALL_DIR = os.path.join(PROJECT_ROOT, "data", "data_model_use", "all", "batch")
+CLASSIFICATION_BATCH_ALL_LABELED_DIR = os.path.join(PROJECT_ROOT, "data", "data_model_use", "all", "batch_labeled")
+
+# Batch folder metadata (used by batch file discovery/selection)
+CLASSIFICATION_BATCH_FOLDERS = [
+    {
+        "path": CLASSIFICATION_BATCH_DEFAULT_DIR,
+        "label": "Default — Unlabeled",
+        "model": "default",
+        "has_label": False,
+        "use_all_classes": False,
+    },
+    {
+        "path": CLASSIFICATION_BATCH_DEFAULT_LABELED_DIR,
+        "label": "Default — Labeled",
+        "model": "default",
+        "has_label": True,
+        "use_all_classes": False,
+    },
+    {
+        "path": CLASSIFICATION_BATCH_ALL_DIR,
+        "label": "All — Unlabeled",
+        "model": "all",
+        "has_label": False,
+        "use_all_classes": True,
+    },
+    {
+        "path": CLASSIFICATION_BATCH_ALL_LABELED_DIR,
+        "label": "All — Labeled",
+        "model": "all",
+        "has_label": True,
+        "use_all_classes": True,
+    },
+]
 
 # Backward compatibility aliases
 CLASSIFICATION_BATCH_DIR = CLASSIFICATION_BATCH_DEFAULT_DIR

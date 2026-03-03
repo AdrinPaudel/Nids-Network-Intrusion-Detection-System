@@ -14,22 +14,38 @@ venv/
 .venv/
 env/
 
-# --- Data files (ignore everything EXCEPT .gitkeep) ---
-# Keeps folder structure so users know where to put files
-data/raw/*
-data/combined/*
-data/preprocessed/*
-data/preprocessed_all/*
-data/simul/*
-data/default/batch/*
-data/default/batch_labeled/*
-data/all/batch/*
-data/all/batch_labeled/*
-!data/**/.gitkeep
+# --- Temp folder (shuffled simulation data, etc.) ---
+temp/
 
-# --- Large Trained Model (6-class variant, 2.7 GB) ---
-# The 5-class trained_model/ IS included (18 MB, lets users skip training)
-trained_model_all/
+# --- Data: data_model_training ---
+# Keep folder structure, ignore all data files inside
+data/data_model_training/raw/*
+data/data_model_training/combined/*
+data/data_model_training/preprocessed/*
+data/data_model_training/preprocessed_all/*
+!data/data_model_training/raw/.gitkeep
+!data/data_model_training/combined/.gitkeep
+!data/data_model_training/preprocessed/.gitkeep
+!data/data_model_training/preprocessed_all/.gitkeep
+
+# --- Data: data_model_use ---
+# Keep folder structure, ignore all data files inside
+data/data_model_use/default/batch/*
+data/data_model_use/default/batch_labeled/*
+data/data_model_use/all/batch/*
+data/data_model_use/all/batch_labeled/*
+!data/data_model_use/default/batch/.gitkeep
+!data/data_model_use/default/batch_labeled/.gitkeep
+!data/data_model_use/all/batch/.gitkeep
+!data/data_model_use/all/batch_labeled/.gitkeep
+
+# --- Data: simul (large CSVs, upload manually to VM) ---
+data/simul/*
+!data/simul/.gitkeep
+
+# --- Trained Models (keep folder structure, only default model is included) ---
+trained_models/trained_model_all/*
+!trained_models/trained_model_all/.gitkeep
 
 # --- Generated Outputs (keep folder structure) ---
 results/exploration/*

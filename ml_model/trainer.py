@@ -92,7 +92,7 @@ def load_cached_hyperparameters():
         return None
 
 
-def load_preprocessed_data(data_dir='data/preprocessed'):
+def load_preprocessed_data(data_dir='data/data_model_training/preprocessed'):
     """
     Load preprocessed training and test data.
     
@@ -714,7 +714,7 @@ Max: {results_df['mean_test_score'].max():.4f}"""
 
 
 def save_training_artifacts(model, tuning_stats, training_stats, importance_df, 
-                           label_encoder, output_dir='trained_model', data_dir='data/preprocessed'):
+                           label_encoder, output_dir='trained_models/trained_model_default', data_dir='data/data_model_training/preprocessed'):
     """
     Save all training artifacts.
     
@@ -1174,8 +1174,8 @@ def generate_training_steps_log(tuning_stats, training_stats, importance_df, lab
     log_step(f"✓ Saved training step-by-step log: training_steps.txt", "SUCCESS")
 
 
-def train_model(data_dir='data/preprocessed', 
-                model_dir='trained_model',
+def train_model(data_dir='data/data_model_training/preprocessed', 
+                model_dir='trained_models/trained_model_default',
                 reports_dir='reports/training',
                 n_iter=20, 
                 cv=5,
