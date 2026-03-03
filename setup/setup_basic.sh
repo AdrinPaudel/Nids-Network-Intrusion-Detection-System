@@ -1,7 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # ============================================================
 #  NIDS Project - Basic Setup Script (Linux / macOS)
 #  Creates venv, installs dependencies, verifies environment
+#  POSIX sh compatible - works with sh, dash, bash, etc.
 # ============================================================
 set -e
 
@@ -19,333 +20,353 @@ WARN="${YELLOW}[WARN]${RESET}"
 INFO="${CYAN}[INFO]${RESET}"
 
 # -- Resolve project root (parent of setup/) --
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$PROJECT_ROOT/venv"
 REQUIREMENTS="$PROJECT_ROOT/requirements.txt"
 ERRORS=0
 
-echo ""
-echo -e "${BOLD}============================================================${RESET}"
-echo -e "${BOLD}  NIDS Project - Basic Setup${RESET}"
-echo -e "${BOLD}============================================================${RESET}"
-echo "  Project root: $PROJECT_ROOT"
-echo ""
+printf "\n"
+printf "${BOLD}============================================================${RESET}\n"
+printf "${BOLD}  NIDS Project - Basic Setup${RESET}\n"
+printf "${BOLD}============================================================${RESET}\n"
+printf "  Project root: %s\n" "$PROJECT_ROOT"
+printf "\n"
 
 # ============================================================
 #  STEP 1: Check Python
 # ============================================================
-echo -e "${BOLD}--- Step 1: Python Check ---${RESET}"
+printf "${BOLD}--- Step 1: Python Check ---${RESET}\n"
 
 PYTHON_CMD=""
 for cmd in python3 python; do
-    if command -v "$cmd" &>/dev/null; then
+    if command -v "$cmd" >/dev/null 2>&1; then
         PYTHON_CMD="$cmd"
         break
     fi
 done
 
 if [ -z "$PYTHON_CMD" ]; then
-    echo -e "  $FAIL Python is not installed or not on PATH."
-    echo "         Install Python 3.12+ from https://www.python.org/downloads/"
-    ((ERRORS++)) || true
+    printf "  $FAIL Python is not installed or not on PATH.\n"
+    printf "         Install Python 3.12+ from https://www.python.org/downloads/\n"
+    ERRORS=$((ERRORS + 1))
 else
     PY_VERSION=$($PYTHON_CMD --version 2>&1)
-    echo -e "  $PASS $PY_VERSION found"
+    printf "  $PASS %s found\n" "$PY_VERSION"
 
     PY_VER_NUM=$(echo "$PY_VERSION" | awk '{print $2}')
     PY_MAJOR=$(echo "$PY_VER_NUM" | cut -d. -f1)
     PY_MINOR=$(echo "$PY_VER_NUM" | cut -d. -f2)
 
     if [ "$PY_MAJOR" -lt 3 ]; then
-        echo -e "  $FAIL Python 3.12+ required, found $PY_VER_NUM"
-        ((ERRORS++)) || true
+        printf "  $FAIL Python 3.12+ required, found %s\n" "$PY_VER_NUM"
+        ERRORS=$((ERRORS + 1))
     elif [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 12 ]; then
-        echo -e "  $WARN Python 3.12+ recommended, found $PY_VER_NUM. May still work."
+        printf "  $WARN Python 3.12+ recommended, found %s. May still work.\n" "$PY_VER_NUM"
     fi
 
     # Check pip
-    if $PYTHON_CMD -m pip --version &>/dev/null; then
-        echo -e "  $PASS pip available"
+    if $PYTHON_CMD -m pip --version >/dev/null 2>&1; then
+        printf "  $PASS pip available\n"
     else
-        echo -e "  $FAIL pip is not available."
-        echo "         Install: $PYTHON_CMD -m ensurepip --upgrade"
-        ((ERRORS++)) || true
+        printf "  $FAIL pip is not available.\n"
+        printf "         Install: %s -m ensurepip --upgrade\n" "$PYTHON_CMD"
+        ERRORS=$((ERRORS + 1))
     fi
 
     # Check venv module
-    if $PYTHON_CMD -c "import venv" &>/dev/null; then
-        echo -e "  $PASS venv module available"
+    if $PYTHON_CMD -c "import venv" >/dev/null 2>&1; then
+        printf "  $PASS venv module available\n"
     else
-        echo -e "  $FAIL venv module not available."
-        echo "         Install: sudo apt install python3-venv (Debian/Ubuntu)"
-        ((ERRORS++)) || true
+        printf "  $FAIL venv module not available.\n"
+        printf "         Install: sudo apt install python3-venv (Debian/Ubuntu)\n"
+        ERRORS=$((ERRORS + 1))
     fi
 fi
 
-echo ""
+printf "\n"
 
 # ============================================================
 #  STEP 2: Virtual Environment
 # ============================================================
-echo -e "${BOLD}--- Step 2: Virtual Environment ---${RESET}"
+printf "${BOLD}--- Step 2: Virtual Environment ---${RESET}\n"
 
 if [ -f "$VENV_DIR/bin/python" ]; then
-    echo -e "  $PASS Virtual environment already exists at venv/"
-    echo -e "  $INFO Skipping venv creation."
+    printf "  $PASS Virtual environment already exists at venv/\n"
+    printf "  $INFO Skipping venv creation.\n"
 else
-    echo -e "  $INFO Creating virtual environment..."
-    $PYTHON_CMD -m venv "$VENV_DIR"
-    if [ $? -ne 0 ]; then
-        echo -e "  $FAIL Failed to create virtual environment."
-        ((ERRORS++)) || true
+    printf "  $INFO Creating virtual environment...\n"
+    # Try normal venv first; fall back to --without-pip if ensurepip is missing
+    if $PYTHON_CMD -m venv "$VENV_DIR" 2>/dev/null; then
+        printf "  $PASS Virtual environment created at venv/\n"
+    elif $PYTHON_CMD -m venv --without-pip "$VENV_DIR" 2>/dev/null; then
+        printf "  $PASS Virtual environment created at venv/ (without pip)\n"
+        printf "  $INFO pip will be bootstrapped after activation.\n"
     else
-        echo -e "  $PASS Virtual environment created at venv/"
+        printf "  $FAIL Failed to create virtual environment.\n"
+        printf "         Try: sudo apt install python3-venv python3-pip\n"
+        ERRORS=$((ERRORS + 1))
     fi
 fi
 
 # Activate venv
-source "$VENV_DIR/bin/activate"
-echo -e "  $PASS Virtual environment activated"
-echo ""
+. "$VENV_DIR/bin/activate"
+printf "  $PASS Virtual environment activated\n"
+
+# Bootstrap pip inside venv if it's missing
+if ! python -m pip --version >/dev/null 2>&1; then
+    printf "  $INFO pip not found in venv, bootstrapping...\n"
+    if python -m ensurepip --upgrade >/dev/null 2>&1; then
+        printf "  $PASS pip bootstrapped via ensurepip\n"
+    else
+        printf "  $INFO Downloading get-pip.py...\n"
+        curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+        python /tmp/get-pip.py >/dev/null 2>&1
+        rm -f /tmp/get-pip.py
+        if python -m pip --version >/dev/null 2>&1; then
+            printf "  $PASS pip installed via get-pip.py\n"
+        else
+            printf "  $FAIL Could not install pip. Install manually:\n"
+            printf "           sudo apt install python3-pip\n"
+            ERRORS=$((ERRORS + 1))
+        fi
+    fi
+fi
+printf "\n"
 
 # ============================================================
 #  STEP 3: Install Dependencies
 # ============================================================
-echo -e "${BOLD}--- Step 3: Install Dependencies ---${RESET}"
+printf "${BOLD}--- Step 3: Install Dependencies ---${RESET}\n"
 
 if [ ! -f "$REQUIREMENTS" ]; then
-    echo -e "  $FAIL requirements.txt not found at project root."
-    ((ERRORS++)) || true
+    printf "  $FAIL requirements.txt not found at project root.\n"
+    ERRORS=$((ERRORS + 1))
 else
-    echo -e "  $INFO Upgrading pip..."
+    printf "  $INFO Upgrading pip...\n"
     python -m pip install --upgrade pip >/dev/null 2>&1
-    echo -e "  $PASS pip upgraded"
+    printf "  $PASS pip upgraded\n"
 
-    echo -e "  $INFO Installing packages from requirements.txt..."
-    echo "         (this may take a few minutes on first run)"
-    echo ""
+    printf "  $INFO Installing packages from requirements.txt...\n"
+    printf "         (this may take a few minutes on first run)\n"
+    printf "\n"
     if python -m pip install -r "$REQUIREMENTS"; then
-        echo ""
-        echo -e "  $PASS All packages installed successfully."
+        printf "\n"
+        printf "  $PASS All packages installed successfully.\n"
     else
-        echo ""
-        echo -e "  $FAIL Some packages failed to install. Check output above."
-        ((ERRORS++)) || true
+        printf "\n"
+        printf "  $FAIL Some packages failed to install. Check output above.\n"
+        ERRORS=$((ERRORS + 1))
     fi
 fi
 
-echo ""
+printf "\n"
 
 # ============================================================
 #  STEP 4: Verify Key Packages
 # ============================================================
-echo -e "${BOLD}--- Step 4: Verify Key Packages ---${RESET}"
+printf "${BOLD}--- Step 4: Verify Key Packages ---${RESET}\n"
 
 PKG_ERRORS=0
 
 for pkg in sklearn pandas numpy joblib tqdm psutil pyarrow seaborn matplotlib; do
-    if python -c "import $pkg" &>/dev/null; then
-        echo -e "  $PASS $pkg"
+    if python -c "import $pkg" >/dev/null 2>&1; then
+        printf "  $PASS %s\n" "$pkg"
     else
-        echo -e "  $FAIL $pkg - NOT importable"
-        ((PKG_ERRORS++)) || true
+        printf "  $FAIL %s - NOT importable\n" "$pkg"
+        PKG_ERRORS=$((PKG_ERRORS + 1))
     fi
 done
 
 # imbalanced-learn imports as imblearn
-if python -c "import imblearn" &>/dev/null; then
-    echo -e "  $PASS imbalanced-learn (imblearn)"
+if python -c "import imblearn" >/dev/null 2>&1; then
+    printf "  $PASS imbalanced-learn (imblearn)\n"
 else
-    echo -e "  $FAIL imbalanced-learn (imblearn) - NOT importable"
-    ((PKG_ERRORS++)) || true
+    printf "  $FAIL imbalanced-learn (imblearn) - NOT importable\n"
+    PKG_ERRORS=$((PKG_ERRORS + 1))
 fi
 
 # cicflowmeter (optional)
-if python -c "import cicflowmeter" &>/dev/null; then
-    echo -e "  $PASS cicflowmeter"
+if python -c "import cicflowmeter" >/dev/null 2>&1; then
+    printf "  $PASS cicflowmeter\n"
 else
-    echo -e "  $WARN cicflowmeter - not installed (only needed for live capture mode)"
+    printf "  $WARN cicflowmeter - not installed (only needed for live capture mode)\n"
 fi
 
 ERRORS=$((ERRORS + PKG_ERRORS))
-echo ""
+printf "\n"
 
 # ============================================================
 #  STEP 5: Directory Structure
 # ============================================================
-echo -e "${BOLD}--- Step 5: Directory Structure ---${RESET}"
+printf "${BOLD}--- Step 5: Directory Structure ---${RESET}\n"
 
 DIRS_CREATED=0
 DIRS_EXISTED=0
 
-DIRS=(
-    "data/data_model_training/raw"
-    "data/data_model_training/combined"
-    "data/data_model_training/preprocessed"
-    "data/data_model_training/preprocessed_all"
-    "data/data_model_use/default/batch"
-    "data/data_model_use/default/batch_labeled"
-    "data/data_model_use/all/batch"
-    "data/data_model_use/all/batch_labeled"
-    "data/simul"
-    "trained_models/trained_model_default"
-    "trained_models/trained_model_all"
-    "results/exploration"
-    "results/preprocessing"
-    "results/preprocessing_all"
-    "results/training"
-    "results/training_all"
-    "results/testing"
-    "results/testing_all"
-    "reports"
+for dir in \
+    "data/data_model_training/raw" \
+    "data/data_model_training/combined" \
+    "data/data_model_training/preprocessed" \
+    "data/data_model_training/preprocessed_all" \
+    "data/data_model_use/default/batch" \
+    "data/data_model_use/default/batch_labeled" \
+    "data/data_model_use/all/batch" \
+    "data/data_model_use/all/batch_labeled" \
+    "data/simul" \
+    "trained_models/trained_model_default" \
+    "trained_models/trained_model_all" \
+    "results/exploration" \
+    "results/preprocessing" \
+    "results/preprocessing_all" \
+    "results/training" \
+    "results/training_all" \
+    "results/testing" \
+    "results/testing_all" \
+    "reports" \
     "temp/simul"
-)
-
-for dir in "${DIRS[@]}"; do
+do
     if [ ! -d "$PROJECT_ROOT/$dir" ]; then
         mkdir -p "$PROJECT_ROOT/$dir"
-        ((DIRS_CREATED++)) || true
+        DIRS_CREATED=$((DIRS_CREATED + 1))
     else
-        ((DIRS_EXISTED++)) || true
+        DIRS_EXISTED=$((DIRS_EXISTED + 1))
     fi
 done
 
-echo -e "  $PASS Directories verified  (created: $DIRS_CREATED, already existed: $DIRS_EXISTED)"
-echo ""
+printf "  $PASS Directories verified  (created: %s, already existed: %s)\n" "$DIRS_CREATED" "$DIRS_EXISTED"
+printf "\n"
 
 # ============================================================
 #  STEP 6: Trained Models Check
 # ============================================================
-echo -e "${BOLD}--- Step 6: Trained Models ---${RESET}"
-
-MODEL_FILES=("random_forest_model.joblib" "scaler.joblib" "label_encoder.joblib" "selected_features.joblib")
+printf "${BOLD}--- Step 6: Trained Models ---${RESET}\n"
 
 # Default model
 DEFAULT_OK=1
-for f in "${MODEL_FILES[@]}"; do
+for f in random_forest_model.joblib scaler.joblib label_encoder.joblib selected_features.joblib; do
     [ ! -f "$PROJECT_ROOT/trained_models/trained_model_default/$f" ] && DEFAULT_OK=0
 done
 if [ $DEFAULT_OK -eq 1 ]; then
-    echo -e "  $PASS Default model (5-class) - all files present"
+    printf "  $PASS Default model (5-class) - all files present\n"
 else
-    echo -e "  $WARN Default model (5-class) - some files missing"
-    echo "         Run the ML pipeline (python ml_model.py) to train the model."
+    printf "  $WARN Default model (5-class) - some files missing\n"
+    printf "         Run the ML pipeline (python ml_model.py) to train the model.\n"
 fi
 
 # All model
 ALL_OK=1
-for f in "${MODEL_FILES[@]}"; do
+for f in random_forest_model.joblib scaler.joblib label_encoder.joblib selected_features.joblib; do
     [ ! -f "$PROJECT_ROOT/trained_models/trained_model_all/$f" ] && ALL_OK=0
 done
 if [ $ALL_OK -eq 1 ]; then
-    echo -e "  $PASS All model (6-class) - all files present"
+    printf "  $PASS All model (6-class) - all files present\n"
 else
-    echo -e "  $WARN All model (6-class) - some files missing"
-    echo "         Run the ML pipeline with --all flag to train."
+    printf "  $WARN All model (6-class) - some files missing\n"
+    printf "         Run the ML pipeline with --all flag to train.\n"
 fi
 
-echo ""
+printf "\n"
 
 # ============================================================
 #  STEP 7: Simulation Data Check
 # ============================================================
-echo -e "${BOLD}--- Step 7: Simulation Data ---${RESET}"
+printf "${BOLD}--- Step 7: Simulation Data ---${RESET}\n"
 
 SIMUL_DIR="$PROJECT_ROOT/data/simul"
 SIMUL_OK=1
 for f in simul.csv simul_lable.csv simul_infiltration.csv simul_infiltration_lable.csv; do
     if [ ! -f "$SIMUL_DIR/$f" ]; then
-        echo -e "  $WARN Missing: data/simul/$f"
+        printf "  $WARN Missing: data/simul/%s\n" "$f"
         SIMUL_OK=0
     fi
 done
 if [ $SIMUL_OK -eq 1 ]; then
-    echo -e "  $PASS All simulation data files present"
+    printf "  $PASS All simulation data files present\n"
 fi
 
-echo ""
+printf "\n"
 
 # ============================================================
 #  STEP 8: Project Modules Check
 # ============================================================
-echo -e "${BOLD}--- Step 8: Project Modules ---${RESET}"
+printf "${BOLD}--- Step 8: Project Modules ---${RESET}\n"
 
 # ml_model module
 if [ -f "$PROJECT_ROOT/ml_model/__init__.py" ]; then
-    echo -e "  $PASS ml_model/ module found"
+    printf "  $PASS ml_model/ module found\n"
     for f in data_loader.py explorer.py preprocessor.py trainer.py tester.py utils.py; do
-        [ ! -f "$PROJECT_ROOT/ml_model/$f" ] && echo -e "  $WARN Missing: ml_model/$f"
+        [ ! -f "$PROJECT_ROOT/ml_model/$f" ] && printf "  $WARN Missing: ml_model/%s\n" "$f"
     done
 else
-    echo -e "  $FAIL ml_model/ module not found or missing __init__.py"
-    ((ERRORS++)) || true
+    printf "  $FAIL ml_model/ module not found or missing __init__.py\n"
+    ERRORS=$((ERRORS + 1))
 fi
 
 # classification module
 if [ -f "$PROJECT_ROOT/classification/__init__.py" ]; then
-    echo -e "  $PASS classification/ module found"
+    printf "  $PASS classification/ module found\n"
 else
-    echo -e "  $FAIL classification/ module not found or missing __init__.py"
-    ((ERRORS++)) || true
+    printf "  $FAIL classification/ module not found or missing __init__.py\n"
+    ERRORS=$((ERRORS + 1))
 fi
 
 # classification sub-modules
 for sub in classification_batch classification_live classification_simulated; do
     if [ -f "$PROJECT_ROOT/classification/$sub/__init__.py" ]; then
-        echo -e "  $PASS classification/$sub/ found"
+        printf "  $PASS classification/%s/ found\n" "$sub"
     else
-        echo -e "  $WARN classification/$sub/ missing or no __init__.py"
+        printf "  $WARN classification/%s/ missing or no __init__.py\n" "$sub"
     fi
 done
 
 # Key entry scripts
 for f in main.py ml_model.py classification.py config.py; do
     if [ -f "$PROJECT_ROOT/$f" ]; then
-        echo -e "  $PASS $f"
+        printf "  $PASS %s\n" "$f"
     else
-        echo -e "  $FAIL $f missing!"
-        ((ERRORS++)) || true
+        printf "  $FAIL %s missing!\n" "$f"
+        ERRORS=$((ERRORS + 1))
     fi
 done
 
-echo ""
+printf "\n"
 
 # ============================================================
 #  STEP 9: Packet Capture (libpcap) Check
 # ============================================================
-echo -e "${BOLD}--- Step 9: Packet Capture (libpcap) ---${RESET}"
+printf "${BOLD}--- Step 9: Packet Capture (libpcap) ---${RESET}\n"
 
 if ldconfig -p 2>/dev/null | grep -q libpcap; then
-    echo -e "  $PASS libpcap detected"
+    printf "  $PASS libpcap detected\n"
 elif [ -f /usr/lib/libpcap.so ] || [ -f /usr/lib64/libpcap.so ] || [ -f /usr/local/lib/libpcap.so ]; then
-    echo -e "  $PASS libpcap detected"
-elif command -v brew &>/dev/null && brew list libpcap &>/dev/null 2>&1; then
-    echo -e "  $PASS libpcap detected (Homebrew)"
+    printf "  $PASS libpcap detected\n"
+elif command -v brew >/dev/null 2>&1 && brew list libpcap >/dev/null 2>&1; then
+    printf "  $PASS libpcap detected (Homebrew)\n"
 else
-    echo -e "  $WARN libpcap not detected. Required ONLY for live capture mode."
-    echo "         Debian/Ubuntu: sudo apt install libpcap-dev"
-    echo "         Fedora/RHEL:   sudo dnf install libpcap-devel"
-    echo "         macOS:         brew install libpcap"
-    echo "         (Not needed for batch/simulation/ML training modes)"
+    printf "  $WARN libpcap not detected. Required ONLY for live capture mode.\n"
+    printf "         Debian/Ubuntu: sudo apt install libpcap-dev\n"
+    printf "         Fedora/RHEL:   sudo dnf install libpcap-devel\n"
+    printf "         macOS:         brew install libpcap\n"
+    printf "         (Not needed for batch/simulation/ML training modes)\n"
 fi
 
-echo ""
+printf "\n"
 
 # ============================================================
 #  SUMMARY
 # ============================================================
-echo -e "${BOLD}============================================================${RESET}"
+printf "${BOLD}============================================================${RESET}\n"
 if [ $ERRORS -eq 0 ]; then
-    echo -e "${GREEN}${BOLD}  SETUP COMPLETE - No errors!${RESET}"
+    printf "${GREEN}${BOLD}  SETUP COMPLETE - No errors!${RESET}\n"
 else
-    echo -e "${RED}${BOLD}  SETUP COMPLETE - $ERRORS error(s) detected.${RESET}"
-    echo -e "  Review the ${FAIL} items above and fix them."
+    printf "${RED}${BOLD}  SETUP COMPLETE - %s error(s) detected.${RESET}\n" "$ERRORS"
+    printf "  Review the $FAIL items above and fix them.\n"
 fi
-echo -e "${BOLD}============================================================${RESET}"
-echo ""
-echo "  Next steps:"
-echo "    1. Activate the venv:   source venv/bin/activate"
-echo "    2. Run ML pipeline:     python ml_model.py --help"
-echo "    3. Run classification:  python classification.py --help"
-echo ""
+printf "${BOLD}============================================================${RESET}\n"
+printf "\n"
+printf "  Next steps:\n"
+printf "    1. Activate the venv:   . venv/bin/activate\n"
+printf "    2. Run ML pipeline:     python ml_model.py --help\n"
+printf "    3. Run classification:  python classification.py --help\n"
+printf "\n"
