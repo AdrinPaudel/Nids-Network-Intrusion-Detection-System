@@ -33,11 +33,8 @@ from config import (
     CLASSIFICATION_VM_KEYWORDS,
     FLOWMETER_IDLE_THRESHOLD, FLOWMETER_AGE_THRESHOLD, FLOWMETER_GC_INTERVAL,
     COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_YELLOW,
-    COLOR_BLUE, COLOR_DARK_GRAY, COLOR_RESET
+    COLOR_DARK_GRAY, COLOR_RESET
 )
-
-# Keep backward compatibility
-IDENTIFIER_COLUMNS = CLASSIFICATION_IDENTIFIER_COLUMNS
 
 
 # ============================================================
@@ -657,7 +654,7 @@ class FlowMeterSource:
             # Create the NIDS-configured flow session with queue output
             self._session = _create_nids_session(
                 flow_queue=self.flow_queue,
-                identifier_columns=IDENTIFIER_COLUMNS,
+                identifier_columns=CLASSIFICATION_IDENTIFIER_COLUMNS,
                 verbose=False,
                 save_flows_path=self.save_flows_path,
             )

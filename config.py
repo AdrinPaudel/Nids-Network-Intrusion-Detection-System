@@ -4,7 +4,6 @@ All project settings and hyperparameters
 """
 
 import os
-import sys
 
 # ============================================================
 # PROJECT PATHS
@@ -205,8 +204,6 @@ LABEL_MAPPING = {
 # Train-test split
 TEST_SIZE = 0.20  # 80:20 split
 RANDOM_STATE = 42  # For reproducibility
-STRATIFY = True  # Maintain class proportions in split
-
 # Feature Scaling
 SCALER_TYPE = 'standard'  # 'standard' or 'minmax'
 
@@ -255,16 +252,9 @@ RF_IMPORTANCE_SUBSET_SIZE = 2_000_000  # Subset size for large datasets (balance
 # ============================================================
 
 # Hyperparameter Tuning (RandomizedSearchCV)
-HYPERPARAMETER_TUNING = True
 N_ITER_SEARCH = 15  # 15 iterations × 3 folds = 45 total fits
 CV_FOLDS = 3  # Cross-validation folds (3 for memory efficiency)
 TUNING_SAMPLE_FRACTION = 0.2  # Sample 20% of training data for tuning to reduce peak RAM
-TUNING_SCORING = 'f1_macro'  # Optimization metric
-
-# Memory Management during Training
-GARBAGE_COLLECTION_INTERVAL = 5  # Run gc.collect() every N iterations
-ENABLE_MEMORY_OPTIMIZATION = True  # Enable periodic memory cleanup
-
 # Random Forest Hyperparameter Search Space (FAST MODE)
 PARAM_DISTRIBUTIONS = {
     'n_estimators': [100, 150],  # FAST: Only 2 options
@@ -276,114 +266,27 @@ PARAM_DISTRIBUTIONS = {
     'class_weight': ['balanced_subsample', None]  # FAST: Removed 'balanced'
 }
 
-# Default hyperparameters (if tuning is skipped)
-DEFAULT_RF_PARAMS = {
-    'n_estimators': 100,
-    'max_depth': 25,
-    'min_samples_split': 5,
-    'min_samples_leaf': 2,
-    'max_features': 'sqrt',
-    'bootstrap': True,
-    'class_weight': 'balanced_subsample',
-    'random_state': RANDOM_STATE,
-    'n_jobs': -1,  # Use all CPU cores
-    'verbose': 1
-}
-
 # ============================================================
 # MODEL TESTING SETTINGS
 # ============================================================
-
-# Evaluation metrics
-CLASSIFICATION_REPORT_DIGITS = 4  # Decimal places in classification report
-CONFUSION_MATRIX_NORMALIZE = None  # None, 'true', 'pred', 'all'
-
-# ROC Curve settings
-ROC_MICRO_AVERAGE = True
-ROC_MACRO_AVERAGE = True
 
 # ============================================================
 # SYSTEM SETTINGS - CPU & RAM RESOURCE MANAGEMENT
 # ============================================================
 
-# Auto-detect system resources at runtime (works across VMs, containers, bare metal)
-SYSTEM_CPU_COUNT = os.cpu_count() or 4  # Fallback to 4 if detection fails
-
-def _detect_ram_gb():
-    """Detect total system RAM in GB. Works on Linux, Windows, and macOS."""
-    # Linux: read from /proc/meminfo (most reliable in VMs)
-    try:
-        with open('/proc/meminfo', 'r') as f:
-            for line in f:
-                if line.startswith('MemTotal:'):
-                    return int(line.split()[1]) / (1024 ** 2)  # kB → GB
-    except (FileNotFoundError, PermissionError, ValueError):
-        pass
-
-    # Windows: use ctypes to call GlobalMemoryStatusEx
-    if sys.platform.startswith('win'):
-        try:
-            import ctypes
-            class MEMORYSTATUSEX(ctypes.Structure):
-                _fields_ = [
-                    ('dwLength', ctypes.c_ulong),
-                    ('dwMemoryLoad', ctypes.c_ulong),
-                    ('ullTotalPhys', ctypes.c_ulonglong),
-                    ('ullAvailPhys', ctypes.c_ulonglong),
-                    ('ullTotalPageFile', ctypes.c_ulonglong),
-                    ('ullAvailPageFile', ctypes.c_ulonglong),
-                    ('ullTotalVirtual', ctypes.c_ulonglong),
-                    ('ullAvailVirtual', ctypes.c_ulonglong),
-                    ('ullAvailExtendedVirtual', ctypes.c_ulonglong),
-                ]
-            mem = MEMORYSTATUSEX()
-            mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem)):
-                return mem.ullTotalPhys / (1024 ** 3)  # bytes → GB
-        except (AttributeError, OSError, ValueError):
-            pass
-
-    # macOS: use sysctl
-    try:
-        import subprocess as _sp
-        result = _sp.run(['sysctl', '-n', 'hw.memsize'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            return int(result.stdout.strip()) / (1024 ** 3)  # bytes → GB
-    except (FileNotFoundError, ValueError, OSError):
-        pass
-
-    return 8.0  # Fallback if all detection methods fail
-
-SYSTEM_RAM_GB = _detect_ram_gb()
-
 # Parallel processing - use -1 to utilize all available cores
 N_JOBS = -1  # Use all CPUs for all parallel operations
 
-# Memory settings (auto-adjusted based on detected RAM)
-LOW_MEMORY = SYSTEM_RAM_GB < 32       # Enable memory optimization if < 32GB RAM
 RF_MAX_SAMPLES = 0.5                  # Bootstrap sample cap at 50% for stability
 
 # Logging
-VERBOSE = True  # Detailed console output
 LOG_TIMESTAMP_FORMAT = '%Y-%m-%d %H:%M:%S'
-
-# Backend API settings
-BACKEND_HOST = '0.0.0.0'
-BACKEND_PORT = 8000
-BACKEND_WORKERS = max(2, SYSTEM_CPU_COUNT // 2)  # Half of detected CPUs, minimum 2
 
 # ============================================================
 # FEATURE CORRELATION ELIMINATION
 # ============================================================
 CORR_ELIMINATION_THRESHOLD = 0.99  # Remove features with |r| >= 0.99 (perfect/near-perfect)
-APPLY_CORRELATION_ELIMINATION = True  # Enable/disable correlation-based feature removal
 
-# ============================================================
-# EXPECTED PERFORMANCE TARGETS
-# ============================================================
-TARGET_MACRO_F1_SCORE = 0.96  # >96%
-TARGET_ACCURACY = 0.99  # >99%
-TARGET_INFILTRATION_F1 = 0.89  # >89% for hardest class
 # ============================================================
 # CLASSIFICATION (LIVE DETECTION) SETTINGS
 # ============================================================
@@ -438,8 +341,6 @@ CLASSIFICATION_VM_KEYWORDS = ["virtualbox", "vbox", "host-only", "vmware", "vmne
 # Periodic status updates
 CLASSIFICATION_STATUS_UPDATE_INTERVAL = 30   # Print status every N seconds
 
-# Debug mode settings (reserved)
-
 # Flow saving settings (for diagnosis / comparison with training data)
 CLASSIFICATION_SAVE_FLOWS_DIR = os.path.join(PROJECT_ROOT, "temp")
 
@@ -467,7 +368,6 @@ COLOR_RED_BOLD = "\033[91;1m"
 COLOR_YELLOW = "\033[93m"
 COLOR_YELLOW_BOLD = "\033[93;1m"
 COLOR_GREEN = "\033[92m"
-COLOR_BLUE = "\033[94m"
 COLOR_DARK_GRAY = "\033[90m"
 COLOR_RESET = "\033[0m"
 
@@ -496,7 +396,6 @@ CLASSIFICATION_REPORT_TABLE_COLUMNS = [
 ]
 
 # Progress reporting intervals
-CLASSIFICATION_BATCH_PROGRESS_INTERVAL = 100     # Print progress every N flows processed
 CLASSIFICATION_REPORT_FLUSH_INTERVAL = 10        # Flush report file every N items
 
 # Timestamp format for classifications
@@ -541,10 +440,4 @@ CLASSIFICATION_BATCH_FOLDERS = [
     },
 ]
 
-# Backward compatibility aliases
-CLASSIFICATION_BATCH_DIR = CLASSIFICATION_BATCH_DEFAULT_DIR
-CLASSIFICATION_BATCH_LABELED_DIR = CLASSIFICATION_BATCH_DEFAULT_LABELED_DIR
 CLASSIFICATION_LABEL_COLUMN = "Label"  # Column name for actual labels in labeled batches
-
-# Session folder naming format
-CLASSIFICATION_SESSION_FOLDER_FORMAT = "{mode}_{model}_{timestamp}"  # Used by report generator

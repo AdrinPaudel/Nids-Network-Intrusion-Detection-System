@@ -19,7 +19,6 @@ Minute boundaries follow actual clock time, not relative session time.
 
 import os
 import sys
-import threading
 import queue
 import time
 from datetime import datetime
@@ -28,7 +27,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, PROJECT_ROOT)
 
 from config import (
-    CLASSIFICATION_REPORTS_DIR, CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT,
+    CLASSIFICATION_REPORTS_DIR, CLASSIFICATION_QUEUE_TIMEOUT,
     CLASSIFICATION_BENIGN_CLASS, CLASSIFICATION_SUSPICIOUS_THRESHOLD,
     CLASSIFICATION_REPORT_TABLE_WIDTH, CLASSIFICATION_REPORT_TABLE_COLUMNS,
     CLASSIFICATION_REPORT_FLUSH_INTERVAL,
@@ -44,19 +43,16 @@ class ReportGenerator:
     """
 
     def __init__(self, report_queue, stop_event, mode="live", model_name="default",
-                 report_dir=None, duration=None, interface_name=None, has_label=False,
-                 batch_completion_event=None):
+                 report_dir=None, duration=None, interface_name=None):
         """
         Args:
             report_queue: queue.Queue of classification result dicts
             stop_event: threading.Event to signal stop
-            mode: 'live', 'batch', 'csv', or 'simul'
+            mode: 'live'
             model_name: 'default' or 'all'
             report_dir: root reports directory (default: reports/)
             duration: session duration in seconds
-            interface_name: network interface used (or batch filename)
-            has_label: if True, batch has actual labels for comparison
-            batch_completion_event: threading.Event to signal batch completion
+            interface_name: network interface used
         """
         self.report_queue = report_queue
         self.stop_event = stop_event
@@ -64,8 +60,6 @@ class ReportGenerator:
         self.model_name = model_name
         self.duration = duration
         self.interface_name = interface_name
-        self.has_label = has_label
-        self.batch_completion_event = batch_completion_event
         self.report_count = 0
 
         # Root reports directory
@@ -82,21 +76,15 @@ class ReportGenerator:
         # Report path exposed for the orchestrator to display
         self.report_path = self.session_folder
 
-        # Batch mode processing
-        if self.mode == "batch":
-            self._batch_results_file = None
-            self._batch_results_path = os.path.join(self.session_folder, "batch_results.txt")
-            self._batch_log_rows = []  # Collect rows for batch_results.txt
-        else:
-            # Current minute file tracking (for live mode)
-            self._current_minute_key = None  # "HH-MM" string of current minute
-            self._current_file = None
-            self._current_minute_count = 0
-            self._current_minute_start = None
-            self._current_minute_stats = {"threats": 0, "suspicious": 0, "clean": 0, "by_class": {}}
+        # Current minute file tracking
+        self._current_minute_key = None  # "HH-MM" string of current minute
+        self._current_file = None
+        self._current_minute_count = 0
+        self._current_minute_start = None
+        self._current_minute_stats = {"threats": 0, "suspicious": 0, "clean": 0, "by_class": {}}
 
-            # Per-minute stats for summary
-            self._minute_stats = []  # list of dicts, one per minute file
+        # Per-minute stats for summary
+        self._minute_stats = []  # list of dicts, one per minute file
 
         # Overall session stats
         self.stats = {
@@ -106,12 +94,6 @@ class ReportGenerator:
             "clean": 0,
             "by_class": {},
         }
-        
-        # Accuracy tracking for labeled batches
-        if self.mode == "batch" and self.has_label:
-            self.stats["correct_predictions"] = 0
-            self.stats["accuracy"] = 0.0
-            self.stats["by_class_accuracy"] = {}  # {predicted_class: {correct, total}}
 
     def _get_minute_key(self, ts_str=None):
         """Get the minute key (HH-MM) for the current or given time."""
@@ -126,11 +108,6 @@ class ReportGenerator:
     def _build_table_header(self):
         """Build the table header row."""
         cols = list(CLASSIFICATION_REPORT_TABLE_COLUMNS)
-        
-        # Add "Actual Label" column if this is a labeled batch
-        if self.mode == "batch" and self.has_label:
-            cols.append(("Actual Label", 14))
-        
         header = " | ".join(name.ljust(width) for name, width in cols)
         separator = "-+-".join("-" * width for _, width in cols)
         return header, separator
@@ -165,12 +142,6 @@ class ReportGenerator:
             (top3[2][0], 14),
             (f"{top3[2][1]*100:.1f}%", 8),
         ]
-        
-        # Add actual label if this is a labeled batch
-        if self.mode == "batch" and self.has_label:
-            actual_label = result.get("actual_label", "?")
-            cols.append((str(actual_label), 14))
-        
         return " | ".join(str(val).ljust(width) for val, width in cols)
 
     def _open_minute_file(self, minute_key):
@@ -250,7 +221,7 @@ class ReportGenerator:
         return "clean"
 
     def _update_stats(self, result):
-        """Update both session-level and minute-level stats (or batch stats)."""
+        """Update both session-level and minute-level stats."""
         top3 = result["top3"]
         predicted = top3[0][0]
         level = self._classify_threat_level(result)
@@ -268,174 +239,38 @@ class ReportGenerator:
             self.stats["by_class"][predicted] = 0
         self.stats["by_class"][predicted] += 1
 
-        # Accuracy tracking for labeled batches
-        if self.mode == "batch" and self.has_label:
-            actual_label = result.get("actual_label")
-            if actual_label is not None:
-                if predicted == actual_label:
-                    self.stats["correct_predictions"] += 1
-                
-                # Track per-class precision (of flows predicted as X, how many are actually X)
-                if predicted not in self.stats["by_class_accuracy"]:
-                    self.stats["by_class_accuracy"][predicted] = {"correct": 0, "total": 0}
-                self.stats["by_class_accuracy"][predicted]["total"] += 1
-                if predicted == actual_label:
-                    self.stats["by_class_accuracy"][predicted]["correct"] += 1
-                
-                # Calculate overall accuracy
-                if self.stats["total"] > 0:
-                    self.stats["accuracy"] = (self.stats["correct_predictions"] / self.stats["total"]) * 100
+        # Minute stats
+        if level == "threat":
+            self._current_minute_stats["threats"] += 1
+        elif level == "suspicious":
+            self._current_minute_stats["suspicious"] += 1
+        else:
+            self._current_minute_stats["clean"] += 1
 
-        # Minute stats (only for live mode)
-        if self.mode != "batch":
-            if level == "threat":
-                self._current_minute_stats["threats"] += 1
-            elif level == "suspicious":
-                self._current_minute_stats["suspicious"] += 1
-            else:
-                self._current_minute_stats["clean"] += 1
-
-            if predicted not in self._current_minute_stats["by_class"]:
-                self._current_minute_stats["by_class"][predicted] = 0
-            self._current_minute_stats["by_class"][predicted] += 1
+        if predicted not in self._current_minute_stats["by_class"]:
+            self._current_minute_stats["by_class"][predicted] = 0
+        self._current_minute_stats["by_class"][predicted] += 1
 
     def _write_result(self, result):
-        """Write a single result to the appropriate file.
-        
-        For live mode: writes to minute files
-        For batch mode: collects rows in memory for batch_results.txt
-        """
-        if self.mode == "batch":
-            # Batch mode: collect rows
-            row = self._format_row(result)
-            self._batch_log_rows.append(row)
-            self.report_count += 1
-        else:
-            # Live mode: write to minute file
-            minute_key = self._get_minute_key(result.get("timestamp"))
+        """Write a single result to the appropriate minute file."""
+        minute_key = self._get_minute_key(result.get("timestamp"))
 
-            # Open new minute file if needed
-            if minute_key != self._current_minute_key:
-                self._open_minute_file(minute_key)
+        # Open new minute file if needed
+        if minute_key != self._current_minute_key:
+            self._open_minute_file(minute_key)
 
-            # Write table row
-            row = self._format_row(result)
-            self._current_file.write(row + "\n")
-            self._current_minute_count += 1
-            self.report_count += 1
+        # Write table row
+        row = self._format_row(result)
+        self._current_file.write(row + "\n")
+        self._current_minute_count += 1
+        self.report_count += 1
 
-            # Flush periodically
-            if self.report_count % 10 == 0:
-                self._current_file.flush()
+        # Flush periodically
+        if self.report_count % CLASSIFICATION_REPORT_FLUSH_INTERVAL == 0:
+            self._current_file.flush()
 
-        # Update stats (works for both modes)
+        # Update stats
         self._update_stats(result)
-
-    def _write_batch_reports(self):
-        """Write batch mode reports: batch_results.txt and batch_summary.txt.
-        
-        batch_results.txt: Detailed log of all classified flows
-        batch_summary.txt: Summary statistics
-        """
-        session_end = datetime.now()
-        model_display = "All (with Infilteration)" if self.model_name == "all" else "Default"
-        
-        # Write batch_results.txt with all collected flows
-        with open(self._batch_results_path, "w", encoding="utf-8") as f:
-            f.write("=" * CLASSIFICATION_REPORT_TABLE_WIDTH + "\n")
-            f.write("  NIDS CLASSIFICATION - BATCH RESULTS\n")
-            f.write("=" * CLASSIFICATION_REPORT_TABLE_WIDTH + "\n")
-            f.write(f"  Session Mode:      {self.mode.upper()}\n")
-            f.write(f"  Model:             {model_display}\n")
-            f.write(f"  Batch File:        {self.interface_name}\n")
-            f.write(f"  Session Started:   {self.session_start.strftime(CLASSIFICATION_TIMESTAMP_FORMAT)}\n")
-            f.write(f"  Session Ended:     {session_end.strftime(CLASSIFICATION_TIMESTAMP_FORMAT)}\n")
-            elapsed = (session_end - self.session_start).total_seconds()
-            f.write(f"  Processing Time:   {int(elapsed)}s\n")
-            f.write(f"  Total Flows:       {self.stats['total']}\n")
-            f.write("=" * CLASSIFICATION_REPORT_TABLE_WIDTH + "\n\n")
-
-            # Write table header
-            header, separator = self._build_table_header()
-            f.write(header + "\n")
-            f.write(separator + "\n")
-
-            # Write all collected rows
-            for row in self._batch_log_rows:
-                f.write(row + "\n")
-
-            # Write footer with summary
-            f.write("\n" + "-" * CLASSIFICATION_REPORT_TABLE_WIDTH + "\n")
-            f.write(f"  Total Flows:    {self.stats['total']}")
-            f.write(f"  |  Threats: {self.stats['threats']}")
-            f.write(f"  |  Suspicious: {self.stats['suspicious']}")
-            f.write(f"  |  Clean: {self.stats['clean']}\n")
-            if self.stats["by_class"]:
-                breakdown = ", ".join(f"{cls}: {cnt}" for cls, cnt in
-                                     sorted(self.stats["by_class"].items(), key=lambda x: -x[1]))
-                f.write(f"  Breakdown: {breakdown}\n")
-            f.write("-" * CLASSIFICATION_REPORT_TABLE_WIDTH + "\n")
-
-        # Write batch_summary.txt with statistics
-        summary_path = os.path.join(self.session_folder, "batch_summary.txt")
-        with open(summary_path, "w", encoding="utf-8") as f:
-            f.write("=" * 100 + "\n")
-            f.write("  NIDS CLASSIFICATION - BATCH SUMMARY\n")
-            f.write("=" * 100 + "\n\n")
-            f.write(f"  Session Mode:      {self.mode.upper()}\n")
-            f.write(f"  Model:             {model_display}\n")
-            f.write(f"  Batch File:        {self.interface_name}\n")
-            f.write(f"  Session Started:   {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"  Session Ended:     {session_end.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            elapsed = (session_end - self.session_start).total_seconds()
-            f.write(f"  Processing Time:   {int(elapsed)}s\n")
-            f.write(f"  Report Folder:     {self.session_folder_name}\n")
-            f.write(f"  Report Files:      batch_results.txt, batch_summary.txt\n")
-            f.write("\n" + "=" * 100 + "\n\n")
-
-            # Overall statistics
-            f.write("  CLASSIFICATION STATISTICS\n")
-            f.write("  " + "-" * 96 + "\n\n")
-            f.write(f"  Total Flows Classified: {self.stats['total']}\n")
-            
-            # Accuracy metrics for labeled batches
-            if self.has_label and "accuracy" in self.stats:
-                f.write(f"  Accuracy:               {self.stats['accuracy']:.2f}% ({self.stats['correct_predictions']}/{self.stats['total']})\n\n")
-            else:
-                f.write(f"  Threats Detected:       {self.stats['threats']}")
-                if self.stats['total'] > 0:
-                    pct = (self.stats['threats'] / self.stats['total'] * 100)
-                    f.write(f" ({pct:.1f}%)")
-                f.write("\n")
-                f.write(f"  Suspicious Flows:       {self.stats['suspicious']}")
-                if self.stats['total'] > 0:
-                    pct = (self.stats['suspicious'] / self.stats['total'] * 100)
-                    f.write(f" ({pct:.1f}%)")
-                f.write("\n")
-                f.write(f"  Clean Flows:            {self.stats['clean']}")
-                if self.stats['total'] > 0:
-                    pct = (self.stats['clean'] / self.stats['total'] * 100)
-                    f.write(f" ({pct:.1f}%)")
-                f.write("\n\n")
-
-            if self.stats["by_class"]:
-                if self.has_label and "by_class_accuracy" in self.stats:
-                    f.write("  Per-Class Precision (of predicted, how many correct):\n")
-                    for cls in sorted(self.stats["by_class"].keys()):
-                        count = self.stats["by_class"].get(cls, 0)
-                        if cls in self.stats["by_class_accuracy"]:
-                            acc_info = self.stats["by_class_accuracy"][cls]
-                            accuracy = (acc_info["correct"] / acc_info["total"] * 100) if acc_info["total"] > 0 else 0
-                            f.write(f"    {cls:20s}: {accuracy:6.2f}% ({acc_info['correct']}/{acc_info['total']})  |  Predicted: {count:6d}\n")
-                        else:
-                            f.write(f"    {cls:20s}: N/A  |  Predicted: {count:6d}\n")
-                else:
-                    f.write("  Classification Breakdown:\n")
-                    for cls, count in sorted(self.stats["by_class"].items(), key=lambda x: -x[1]):
-                        pct = (count / self.stats["total"] * 100) if self.stats["total"] > 0 else 0
-                        f.write(f"    {cls:20s}: {count:6d} ({pct:5.1f}%)\n")
-
-            f.write("\n" + "=" * 100 + "\n")
 
     def _write_session_summary(self):
         """Write the session_summary.txt file."""
@@ -502,19 +337,13 @@ class ReportGenerator:
             f.write("\n" + "=" * 100 + "\n")
 
     def run(self):
-        """Main loop: read from report_queue and write results.
-        
-        For live mode: writes to minute files
-        For batch mode: collects results and writes batch_results.txt and batch_summary.txt
-        """
+        """Main loop: read from report_queue and write results to minute files."""
         print(f"{COLOR_GREEN}[REPORT] Started. Writing to: {self.session_folder}{COLOR_RESET}")
 
         try:
             while True:
                 try:
-                    # Use faster timeout for batch mode
-                    timeout = CLASSIFICATION_BATCH_QUEUE_TIMEOUT if self.mode == "batch" else CLASSIFICATION_QUEUE_TIMEOUT
-                    result = self.report_queue.get(timeout=timeout)
+                    result = self.report_queue.get(timeout=CLASSIFICATION_QUEUE_TIMEOUT)
 
                     # Sentinel: end of pipeline input
                     if result is None:
@@ -542,34 +371,17 @@ class ReportGenerator:
                 except queue.Empty:
                     break
 
-            # Close files and write summary based on mode
-            if self.mode == "batch":
-                # Batch mode: write batch reports
-                print(f"{COLOR_GREEN}[REPORT] Writing batch reports...{COLOR_RESET}")
-                self._write_batch_reports()
-                # Signal that batch processing is complete
-                if self.batch_completion_event:
-                    print(f"{COLOR_GREEN}[REPORT] Setting batch completion event...{COLOR_RESET}")
-                    self.batch_completion_event.set()
-                    print(f"{COLOR_GREEN}[REPORT] Batch completion event set!{COLOR_RESET}")
-                else:
-                    print(f"{COLOR_RED}[REPORT] ERROR: batch_completion_event is None!{COLOR_RESET}")
-            else:
-                # Live mode: close minute file and write session summary
-                self._close_minute_file()
-                self._write_session_summary()
+            # Close minute file and write session summary
+            self._close_minute_file()
+            self._write_session_summary()
 
         except Exception as e:
             print(f"{COLOR_RED}[REPORT] Fatal error: {e}{COLOR_RESET}")
             import traceback
             traceback.print_exc()
         finally:
-            if self.mode != "batch" and hasattr(self, '_current_file') and self._current_file:
+            if hasattr(self, '_current_file') and self._current_file:
                 self._current_file.close()
 
-        if self.mode == "batch":
-            print(f"{COLOR_GREEN}[REPORT] Stopped. {self.report_count} entries in batch mode. "
-                  f"Reports in: {self.session_folder}{COLOR_RESET}")
-        else:
-            print(f"{COLOR_GREEN}[REPORT] Stopped. {self.report_count} entries across "
-                  f"{len(self._minute_stats)} minute file(s) in: {self.session_folder}{COLOR_RESET}")
+        print(f"{COLOR_GREEN}[REPORT] Stopped. {self.report_count} entries across "
+              f"{len(self._minute_stats)} minute file(s) in: {self.session_folder}{COLOR_RESET}")

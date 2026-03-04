@@ -8,7 +8,6 @@ threat_handler_queue and report_queue.
 
 import os
 import sys
-import threading
 import queue
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -23,7 +22,7 @@ sys.path.insert(0, PROJECT_ROOT)
 from config import (
     CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT,
     CLASSIFICATION_CLASSIFIER_BATCH_SIZE, CLASSIFICATION_CLASSIFIER_BATCH_TIMEOUT,
-    COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_RESET
+    COLOR_CYAN, COLOR_RED, COLOR_GREEN, COLOR_YELLOW, COLOR_RESET
 )
 
 
@@ -143,7 +142,7 @@ class Classifier:
             return results
 
         except Exception as e:
-            print(f"\033[93m[CLASSIFIER] Batch classification error: {e}\033[0m")
+            print(f"{COLOR_YELLOW}[CLASSIFIER] Batch classification error: {e}{COLOR_RESET}")
             # Fallback: try individually
             results = []
             for p in preprocessed_list:

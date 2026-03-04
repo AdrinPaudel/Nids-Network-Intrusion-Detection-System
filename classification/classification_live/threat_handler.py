@@ -12,9 +12,7 @@ Only RED and YELLOW are displayed in terminal.
 
 import os
 import sys
-import threading
 import queue
-import time
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
@@ -25,10 +23,6 @@ from config import (
     COLOR_RED, COLOR_RED_BOLD, COLOR_YELLOW,
     COLOR_YELLOW_BOLD, COLOR_GREEN, COLOR_RESET
 )
-
-# Backward compatibility aliases
-BENIGN_CLASS = CLASSIFICATION_BENIGN_CLASS
-SUSPICIOUS_THRESHOLD = CLASSIFICATION_SUSPICIOUS_THRESHOLD
 
 
 class ThreatHandler:
@@ -62,10 +56,9 @@ class ThreatHandler:
         """
         top3 = result["top3"]
         top_class = top3[0][0]
-        top_conf = top3[0][1]
 
         # If highest confidence is an attack (not Benign) → RED
-        if top_class != BENIGN_CLASS:
+        if top_class != CLASSIFICATION_BENIGN_CLASS:
             return "RED"
 
         # Highest is Benign. Check 2nd highest confidence
@@ -73,7 +66,7 @@ class ThreatHandler:
             second_class = top3[1][0]
             second_conf = top3[1][1]
 
-            if second_class != BENIGN_CLASS and second_conf >= SUSPICIOUS_THRESHOLD:
+            if second_class != CLASSIFICATION_BENIGN_CLASS and second_conf >= CLASSIFICATION_SUSPICIOUS_THRESHOLD:
                 return "YELLOW"
 
         return "GREEN"

@@ -39,74 +39,10 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from config import (
     CLASSIFICATION_IDENTIFIER_COLUMNS,
-    CLASSIFICATION_SIMUL_TEMP_DIR,
     CLASSIFICATION_SIMUL_FLOWS_PER_SECOND,
-    COLOR_CYAN, COLOR_CYAN_BOLD, COLOR_GREEN, COLOR_YELLOW, COLOR_RED, COLOR_RESET,
+    COLOR_CYAN, COLOR_GREEN, COLOR_YELLOW, COLOR_RED, COLOR_RESET,
     COLOR_DARK_GRAY,
 )
-
-
-# ============================================================
-# Interactive file selection  (kept for manual / debug use)
-# ============================================================
-
-def select_simul_file():
-    """
-    Prompt the user to choose one of the pre-shuffled CSV files in temp/simul/.
-
-    Returns:
-        tuple: (file_path, has_label)  or  (None, None)  if cancelled.
-
-    ``has_label`` is True when the filename contains ``lable`` (the
-    dataset's original spelling for *labeled* variants).
-    """
-    source_dir = CLASSIFICATION_SIMUL_TEMP_DIR
-
-    if not os.path.isdir(source_dir):
-        print(f"{COLOR_RED}[SIMUL] Source directory not found: {source_dir}{COLOR_RESET}")
-        return None, None
-
-    csv_files = sorted(
-        f for f in os.listdir(source_dir)
-        if f.lower().endswith(".csv") and os.path.isfile(os.path.join(source_dir, f))
-    )
-
-    if not csv_files:
-        print(f"{COLOR_RED}[SIMUL] No CSV files found in {source_dir}{COLOR_RESET}")
-        return None, None
-
-    print(f"\n{COLOR_CYAN_BOLD}Simulation File Selection{COLOR_RESET}")
-    print(f"{COLOR_CYAN}{'=' * 80}{COLOR_RESET}")
-    print(f"\n{COLOR_CYAN}Available simulation files  ({source_dir}):{COLOR_RESET}\n")
-
-    for idx, fname in enumerate(csv_files, 1):
-        fpath = os.path.join(source_dir, fname)
-        size_mb = os.path.getsize(fpath) / (1024 * 1024)
-        label_tag = f"  {COLOR_GREEN}[labeled]{COLOR_RESET}" if "lable" in fname.lower() else ""
-        infiltration_tag = f"  {COLOR_YELLOW}[+infilteration]{COLOR_RESET}" if "infiltration" in fname.lower() else ""
-        print(f"  [{idx}] {fname}  ({size_mb:,.1f} MB){label_tag}{infiltration_tag}")
-
-    print(f"\n{COLOR_CYAN}{'=' * 80}{COLOR_RESET}")
-
-    while True:
-        try:
-            choice = input(
-                f"\n{COLOR_CYAN_BOLD}Enter file number (1-{len(csv_files)}){COLOR_RESET}: "
-            ).strip()
-            choice_idx = int(choice) - 1
-            if 0 <= choice_idx < len(csv_files):
-                selected = csv_files[choice_idx]
-                has_label = "lable" in selected.lower()
-                print(f"\n{COLOR_GREEN}Selected: {selected}"
-                      f"  ({'labeled' if has_label else 'unlabeled'}){COLOR_RESET}\n")
-                return os.path.join(source_dir, selected), has_label
-            else:
-                print(f"{COLOR_RED}Invalid choice. Enter 1-{len(csv_files)}.{COLOR_RESET}")
-        except ValueError:
-            print(f"{COLOR_RED}Invalid input. Enter a number.{COLOR_RESET}")
-        except (EOFError, KeyboardInterrupt):
-            print(f"\n{COLOR_RED}No file selected.{COLOR_RESET}")
-            return None, None
 
 
 # ============================================================

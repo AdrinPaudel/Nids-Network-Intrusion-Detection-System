@@ -7,7 +7,6 @@ preprocessed data to the classifier_queue.
 
 import os
 import sys
-import threading
 import queue
 import numpy as np
 import pandas as pd
@@ -22,9 +21,6 @@ from config import (
     CLASSIFICATION_BATCH_SIZE, CLASSIFICATION_BATCH_TIMEOUT,
     COLOR_CYAN, COLOR_YELLOW, COLOR_GREEN, COLOR_RESET
 )
-
-# Keep backward compatibility
-DROP_COLUMNS = CLASSIFICATION_DROP_COLUMNS
 
 
 class Preprocessor:
@@ -141,7 +137,7 @@ class Preprocessor:
 
             # 2. Create ONE DataFrame for all flows and drop identifier columns
             df = pd.DataFrame(clean_dicts)
-            cols_to_drop = [c for c in DROP_COLUMNS if c in df.columns]
+            cols_to_drop = [c for c in CLASSIFICATION_DROP_COLUMNS if c in df.columns]
             df = df.drop(columns=cols_to_drop, errors='ignore')
 
             # 3. Extract protocol values before dropping, then convert all to numeric

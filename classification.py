@@ -39,64 +39,7 @@ import signal
 # ============================================================
 # VENV CHECK - Verify virtual environment is active
 # ============================================================
-def check_venv():
-    """Check that venv is active and required packages are importable; exit if not."""
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    venv_dir = os.path.join(project_root, "venv")
-    is_win = sys.platform.startswith('win')
-
-    # 1. Check if venv directory exists at all
-    if not os.path.isdir(venv_dir):
-        print("\n" + "="*80)
-        print("ERROR: Virtual environment not found.")
-        print("="*80)
-        print("\n  Run the setup script first (it will create everything):\n")
-        if is_win:
-            print("      setup\\setup.bat")
-        else:
-            print("      source setup/setup.sh")
-        print("\n  This will create the venv and install all dependencies.")
-        print("="*80 + "\n")
-        sys.exit(1)
-
-    # 2. Check if venv is activated
-    in_venv = (
-        hasattr(sys, 'real_prefix') or  # virtualenv
-        (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)  # venv
-    )
-    if not in_venv:
-        print("\n" + "="*80)
-        print("ERROR: Virtual environment is not activated.")
-        print("="*80)
-        print("\n  Activate it first, then run again:\n")
-        if is_win:
-            print("      venv\\Scripts\\activate")
-            print("      python classification.py\n")
-        else:
-            print("      source venv/bin/activate")
-            print("      python classification.py\n")
-        print("="*80 + "\n")
-        sys.exit(1)
-
-    # 3. Check if required packages are installed
-    required = ["sklearn", "pandas", "numpy", "joblib"]
-    missing = []
-    for pkg in required:
-        try:
-            __import__(pkg)
-        except ImportError:
-            missing.append(pkg)
-
-    if missing:
-        print("\n" + "="*80)
-        print("ERROR: Missing required packages: " + ", ".join(missing))
-        print("="*80)
-        print("\n  venv is active but dependencies are not installed.")
-        print("  Run:\n")
-        print("      pip install -r requirements.txt")
-        print("      python classification.py\n")
-        print("="*80 + "\n")
-        sys.exit(1)
+from check_venv import check_venv
 
 
 # Add project root to path
@@ -104,7 +47,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
 # Check venv early
-check_venv()
+check_venv("classification.py")
 
 from config import (
     CLASSIFICATION_DEFAULT_DURATION, CLASSIFICATION_DEFAULT_MODEL,
@@ -123,9 +66,6 @@ from classification.classification_live.classifier import Classifier
 from classification.classification_live.threat_handler import ThreatHandler
 from classification.classification_live.report_generator import ReportGenerator
 
-# Aliases for backward compatibility
-DEFAULT_DURATION = CLASSIFICATION_DEFAULT_DURATION
-DEFAULT_MODEL = CLASSIFICATION_DEFAULT_MODEL
 
 
 # ============================================================
@@ -266,7 +206,7 @@ class ClassificationSession:
     Multiple sessions can run independently in separate thread groups.
     """
 
-    def __init__(self, mode="live", interface_name=None, duration=DEFAULT_DURATION,
+    def __init__(self, mode="live", interface_name=None, duration=CLASSIFICATION_DEFAULT_DURATION,
                  use_all_classes=False, session_id=1, batch_file_path=None, has_batch_label=False,
                  save_flows=False, simul_file_path=None, has_simul_label=False):
         """
@@ -464,7 +404,6 @@ class ClassificationSession:
             model_name=model_label,
             duration=self.duration,
             interface_name=iface_display,
-            batch_completion_event=self.batch_completion_event,
         )
 
         # Start flow capture source (Scapy-based, not a subprocess)
@@ -554,7 +493,6 @@ class ClassificationSession:
             duration=self.duration,
             interface_name="simulation",
             has_label=self.has_simul_label,
-            batch_completion_event=self.batch_completion_event,
         )
 
         # Start simulation source (streams CSV with random offset)
@@ -928,11 +866,11 @@ Examples:
 
     # ── Common options ───────────────────────────────────────────
     parser.add_argument(
-        "--duration", type=int, default=DEFAULT_DURATION,
-        help=f"Capture / simulation duration in seconds (default: {DEFAULT_DURATION})"
+        "--duration", type=int, default=CLASSIFICATION_DEFAULT_DURATION,
+        help=f"Capture / simulation duration in seconds (default: {CLASSIFICATION_DEFAULT_DURATION})"
     )
     parser.add_argument(
-        "--model", choices=["default", "all"], default=DEFAULT_MODEL,
+        "--model", choices=["default", "all"], default=CLASSIFICATION_DEFAULT_MODEL,
         help="Model variant: 'default' (5-class) or 'all' (6-class with Infilteration)"
     )
 
@@ -1032,7 +970,7 @@ Examples:
                 sys.exit(1)
             has_batch_label, detected_all = detect_model_from_path(batch_file_path)
             # Only override model if user didn't explicitly pass --model
-            if args.model == DEFAULT_MODEL:
+            if args.model == CLASSIFICATION_DEFAULT_MODEL:
                 use_all = detected_all
     else:
         # Live mode - always show interactive interface selection menu

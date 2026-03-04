@@ -163,9 +163,15 @@ def save_figure(fig, filepath, dpi=None):
     if dpi is None:
         dpi = config.FIGURE_DPI
     
-    fig.savefig(filepath, dpi=dpi, bbox_inches='tight', format=config.FIGURE_FORMAT)
-    plt.close(fig)
-    log_message(f"Saved figure: {os.path.basename(filepath)}", level="SUCCESS")
+    try:
+        fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor='white',
+                    format=config.FIGURE_FORMAT)
+        file_size = os.path.getsize(filepath) / 1024  # KB
+        log_message(f"Saved figure: {os.path.basename(filepath)} ({file_size:.1f} KB)", level="SUCCESS")
+        plt.close(fig)
+    except Exception as e:
+        log_message(f"Failed to save figure {filepath}: {e}", level="ERROR")
+        plt.close(fig)
 
 
 def print_separator(char='=', length=80):

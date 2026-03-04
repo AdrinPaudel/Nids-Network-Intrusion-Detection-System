@@ -11,7 +11,6 @@ This module handles:
 """
 
 import os
-import sys
 import time
 import json
 import joblib
@@ -28,11 +27,11 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, train_test_split
 from joblib import parallel_backend
 from sklearn.metrics import (
-    f1_score, accuracy_score, precision_score, recall_score,
-    classification_report, confusion_matrix, make_scorer
+    f1_score, make_scorer
 )
 
 import config
+from ml_model.utils import log_message as log_step, save_figure
 
 # Configure warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -41,34 +40,6 @@ warnings.filterwarnings('ignore', category=UserWarning)
 # Configure matplotlib
 plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
-
-
-def log_step(message, level="INFO"):
-    """Log a message with timestamp and level."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    level_colors = {
-        "INFO": "\033[94m",      # Blue
-        "SUCCESS": "\033[92m",   # Green
-        "WARNING": "\033[93m",   # Yellow
-        "ERROR": "\033[91m",     # Red
-        "STEP": "\033[95m",      # Magenta
-        "SUBSTEP": "\033[96m"    # Cyan
-    }
-    reset_color = "\033[0m"
-    color = level_colors.get(level, "")
-    print(f"[{timestamp}] {color}[{level}]{reset_color} {message}")
-
-
-def save_figure(fig, filepath):
-    """Save figure with consistent settings."""
-    try:
-        fig.savefig(filepath, dpi=300, bbox_inches='tight', facecolor='white')
-        file_size = os.path.getsize(filepath) / 1024  # KB
-        log_step(f"Saved figure: {os.path.basename(filepath)} ({file_size:.1f} KB)", "SUCCESS")
-        plt.close(fig)
-    except Exception as e:
-        log_step(f"Failed to save figure {filepath}: {e}", "ERROR")
-        plt.close(fig)
 
 
 def load_cached_hyperparameters():

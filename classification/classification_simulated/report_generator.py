@@ -19,7 +19,6 @@ Minute boundaries follow actual clock time, not relative session time.
 
 import os
 import sys
-import threading
 import queue
 import time
 from datetime import datetime
@@ -28,7 +27,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, PROJECT_ROOT)
 
 from config import (
-    CLASSIFICATION_REPORTS_DIR, CLASSIFICATION_QUEUE_TIMEOUT, CLASSIFICATION_BATCH_QUEUE_TIMEOUT,
+    CLASSIFICATION_REPORTS_DIR, CLASSIFICATION_QUEUE_TIMEOUT,
     CLASSIFICATION_BENIGN_CLASS, CLASSIFICATION_SUSPICIOUS_THRESHOLD,
     CLASSIFICATION_REPORT_TABLE_WIDTH, CLASSIFICATION_REPORT_TABLE_COLUMNS,
     CLASSIFICATION_REPORT_FLUSH_INTERVAL,
@@ -44,8 +43,7 @@ class ReportGenerator:
     """
 
     def __init__(self, report_queue, stop_event, mode="simul", model_name="default",
-                 report_dir=None, duration=None, interface_name=None, has_label=False,
-                 batch_completion_event=None):
+                 report_dir=None, duration=None, interface_name=None, has_label=False):
         """
         Args:
             report_queue: queue.Queue of classification result dicts
@@ -56,7 +54,6 @@ class ReportGenerator:
             duration: session duration in seconds
             interface_name: display label (e.g. 'simulation')
             has_label: if True, data has actual labels for accuracy comparison
-            batch_completion_event: threading.Event (unused in simul, kept for API compat)
         """
         self.report_queue = report_queue
         self.stop_event = stop_event
@@ -65,7 +62,6 @@ class ReportGenerator:
         self.duration = duration
         self.interface_name = interface_name
         self.has_label = has_label
-        self.batch_completion_event = batch_completion_event
         self.report_count = 0
 
         # Root reports directory
