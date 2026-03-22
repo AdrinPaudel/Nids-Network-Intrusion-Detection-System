@@ -1,0 +1,368 @@
+/* ===== TRAINING PIPELINE ===== */
+
+/* Module list */
+.module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.module-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1.25rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--primary);
+  transition: all 0.25s ease;
+}
+
+.module-active {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.15);
+}
+
+.module-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.module-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+/* Status badges */
+.module-status-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+}
+
+.status-pending   { color: var(--text-secondary); background: rgba(255,255,255,0.05); }
+.status-running   { color: #FFC107; background: rgba(255,193,7,0.15); }
+.status-completed { color: #28A745; background: rgba(40,167,69,0.15); }
+.status-failed    { color: #DC3545; background: rgba(220,53,69,0.15); }
+.status-cancelled { color: var(--text-secondary); background: rgba(255,255,255,0.05); }
+
+/* Status dot next to message */
+.training-message {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-running   { background: #FFC107; animation: pulse 1.2s ease-in-out infinite; }
+.status-dot-completed { background: #28A745; }
+.status-dot-failed    { background: #DC3545; }
+.status-dot-cancelled { background: var(--text-secondary); }
+
+/* Spinner for running module */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,193,7,0.3);
+  border-top-color: #FFC107;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* Train Again Panel */
+.train-again-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.train-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--primary);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.train-section-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.train-section-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.train-radio-label,
+.train-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  padding: 0.2rem 0;
+}
+
+.train-radio-label:hover,
+.train-check-label:hover {
+  color: var(--text-primary);
+}
+
+.train-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.25rem 1rem;
+  margin-top: 0.25rem;
+}
+
+.train-params-row {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.train-number-input {
+  width: 100px;
+  padding: 0.4rem 0.6rem;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.upload-dropzone {
+  margin-top: 0.75rem;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.upload-dropzone:hover {
+  border-color: var(--accent-red);
+}
+
+.upload-dropzone-hint {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.upload-dropzone-filename {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.config-summary {
+  padding: 1rem;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.config-summary-title {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+}
+
+.train-error {
+  color: #ef4444;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* ── Simulation Panel ─────────────────────────────────────────────────────── */
+.sim-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: var(--primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.sim-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Rotating spinner ring */
+@keyframes sim-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sim-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sim-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* Progress bar */
+.sim-progress-bar-track {
+  height: 10px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sim-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #22d3ee);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.sim-progress-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-align: right;
+  margin-top: -0.75rem;
+}
+
+/* Step list */
+.sim-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sim-step-done {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+  color: #22c55e;
+}
+
+.sim-step-check {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.sim-step-active {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+@keyframes sim-step-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sim-step-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sim-step-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.sim-step-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.sim-step-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  margin-left: 3px;
+}
+
+.sim-step-counter {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+/* Completion banner */
+.sim-complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #22c55e;
+}
+
+.sim-complete-icon {
+  font-size: 1.25rem;
+}
