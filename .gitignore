@@ -1,0 +1,120 @@
+# ============================================================
+# Python — pycache covers root and ALL subdirectories
+# (classification/, classification_batch/, classification_live/,
+#  classification_simulated/, routes/, ml_model/, etc.)
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# ============================================================
+# Environment / secrets
+# ============================================================
+.env
+.env.*
+*.env
+
+# ============================================================
+# Claude Code local settings + project notes
+# ============================================================
+.claude/
+RULES.txt
+readme_temp/
+
+# ============================================================
+# Models
+# trained_model_default/ IS committed (5-class, ready to use)
+# trained_model_all/ — keep folder via .gitkeep, ignore all files
+# ============================================================
+trained_models/trained_model_all/*
+!trained_models/trained_model_all/.gitkeep
+
+# ============================================================
+# Training data — ignore all contents, keep folder structure
+# ============================================================
+data/data_model_training/raw/*
+!data/data_model_training/raw/.gitkeep
+
+data/data_model_training/combined/*
+!data/data_model_training/combined/.gitkeep
+
+data/data_model_training/preprocessed/*
+!data/data_model_training/preprocessed/.gitkeep
+
+data/data_model_training/preprocessed_all/*
+!data/data_model_training/preprocessed_all/.gitkeep
+
+# ============================================================
+# Simulation source data — keep folder, ignore data files
+# ============================================================
+data/simul/*
+!data/simul/.gitkeep
+
+# ============================================================
+# Temp directory — keep folder structure, ignore all data
+# ============================================================
+temp/*
+!temp/.gitkeep
+!temp/simul/
+
+temp/simul/*
+!temp/simul/.gitkeep
+
+# ============================================================
+# reports_temp_backup — drop entirely (no folder kept)
+# ============================================================
+reports_temp_backup/
+
+# ============================================================
+# Node / Frontend
+# ============================================================
+node_modules/
+frontend/node_modules/
+frontend/build/
+frontend/.cache/
+frontend/.git/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# ============================================================
+# OS / Editor
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ============================================================
+# Jupyter
+# ============================================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ============================================================
+# Misc
+# ============================================================
+*.log
+*.bak
+*.tmp

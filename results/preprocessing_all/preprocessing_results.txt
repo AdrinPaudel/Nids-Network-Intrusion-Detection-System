@@ -1,0 +1,308 @@
+================================================================================
+                    DATA PREPROCESSING REPORT
+                    CICIDS2018 Dataset
+               Generated: 2026-03-04 19:21:06
+================================================================================
+
+1. DATA CLEANING
+   ======================================================================
+
+   Initial Dataset:
+     Rows: 16,232,943
+     Columns: 80
+     Memory: 11.01 GB
+
+   Data Quality Issues Found:
+     Rows with NaN: 59,721 (0.368%)
+     Columns with NaN: 1
+     Rows with Inf: 36,039 (0.222%)
+     Columns with Inf: 2
+     Duplicate rows: 4,157,778 (25.613%)
+
+   Cleaning Actions:
+     ✓ Removed useless columns: Timestamp
+     ✓ Removed bad 'Label' class: 0 rows (header misplacement)
+     ✓ Removed all NaN rows: 59,721
+     ✓ Removed all Inf rows: 36,039
+     ✓ Removed duplicate rows: 4,157,778
+
+   Final Clean Dataset:
+     Rows: 11,979,405
+     Columns: 79
+     Memory: 7.91 GB
+     Total removed: 4,253,538 rows (26.203%)
+     Memory saved: 3.10 GB
+
+   Quality Assessment: ⚠ WARNING - HIGH DATA LOSS
+   Data loss >5% (EXCEEDS THRESHOLD): 26.203%
+
+2. LABEL CONSOLIDATION
+   ======================================================================
+
+   Consolidation Strategy: Merge attack subcategories into parent classes
+     Original classes: 14
+     Consolidated classes: 6
+     Reduction: 8 classes
+
+   Consolidation Mapping (from config.LABEL_MAPPING):
+     • BENIGN → Benign
+     • Bot → Botnet
+     • FTP-BruteForce, FTP-Patator, SSH-Bruteforce, SSH-Patator, Brute Force -Web, Brute Force -XSS → Brute Force
+     • DDoS attacks-LOIC-HTTP, DDoS attacks-LOIC-UDP, DDOS attack-LOIC-UDP, DDOS attack-HOIC, DDoS attacks-HOIC → DDoS
+     • DoS attacks-Hulk, DoS attacks-SlowHTTPTest, DoS attacks-GoldenEye, DoS attacks-Slowloris, DoS GoldenEye, DoS Hulk, DoS Slowhttptest, DoS slowloris → DoS
+     • Infiltration → Infilteration
+     • SQL Injection, Heartbleed → DROPPED
+
+   Final Class Distribution:
+     Benign              :   10,628,038 ( 88.72%)
+     DDoS                :      775,955 (  6.48%)
+     DoS                 :      196,568 (  1.64%)
+     Botnet              :      144,535 (  1.21%)
+     Infilteration       :      139,341 (  1.16%)
+     Brute Force         :       94,884 (  0.79%)
+
+3. CATEGORICAL ENCODING
+   ======================================================================
+
+   Encoding Methods Applied:
+     • Protocol column: One-hot encoding (creates binary columns)
+     • Target (Label): Label encoding (6 classes → integers 0-5)
+
+   Protocol One-Hot Encoding:
+     ✓ Created: Protocol_0
+     ✓ Created: Protocol_17
+     ✓ Created: Protocol_6
+     Total columns created: 3
+
+   Target Label Encoding:
+     Classes encoded: 6
+       0: Benign
+       1: Botnet
+       2: Brute Force
+       3: DDoS
+       4: DoS
+       5: Infilteration
+
+   Columns After Encoding:
+     Before: 79
+     After: 81
+     Added: +2
+     ✓ All categorical features converted to numerical
+
+4. TRAIN-TEST SPLIT
+   ======================================================================
+
+   Split Configuration:
+     Method: Stratified split (maintains class proportions)
+     Ratio: 80.0% train / 20.0% test
+     Random seed: 42
+
+   Dataset Sizes:
+     Total samples: 11,979,321
+     Features: 80
+     Training set: 9,583,456 samples
+     Test set: 2,395,865 samples
+
+   Stratification Verification:
+     Stratified: ✓ Yes
+     Max class distribution difference: 0.000%
+     ✓ VERIFIED: Train and test have same class proportions
+
+5. FEATURE SCALING
+   ======================================================================
+
+   Scaling Method: STANDARD
+     StandardScaler: Transforms features to mean=0, std=1
+     Formula: (x - mean) / std
+
+   Scaling Process:
+     1. Scaler fitted on TRAINING data ONLY
+     2. Training data transformed using learned parameters
+     3. Test data transformed using TRAINING parameters
+     ✓ Data leakage PREVENTED (test data never influenced scaler)
+
+   Features Scaled:
+     Number: 80
+     Training samples: 9,583,456
+     Test samples: 2,395,865
+
+6. CLASS IMBALANCE HANDLING (SMOTE)
+   ======================================================================
+
+   SMOTE Configuration:
+     Strategy: Dynamic oversampling (bring minorities halfway to 2nd largest class)
+     k_neighbors: 5
+     Applied to: TRAINING data only (test remains imbalanced)
+     Reason: Simulates real-world deployment conditions
+
+   Class Distribution Changes:
+     Classes oversampled: 4
+
+     Before SMOTE:
+       Class 0:  8,502,430 ( 88.72%)
+       Class 1:    115,628 (  1.21%)
+       Class 2:     75,907 (  0.79%)
+       Class 3:    620,764 (  6.48%)
+       Class 4:    157,254 (  1.64%)
+       Class 5:    111,473 (  1.16%)
+
+     After SMOTE:
+       Class 0:  8,502,430 ( 80.25%)
+       Class 1:    368,196 (  3.48%) [+252,568, 3.2x]
+       Class 2:    348,335 (  3.29%) [+272,428, 4.6x]
+       Class 3:    620,764 (  5.86%)
+       Class 4:    389,009 (  3.67%) [+231,755, 2.5x]
+       Class 5:    366,118 (  3.46%) [+254,645, 3.3x]
+
+   SMOTE Summary:
+     Samples before: 9,583,456
+     Samples after: 10,594,852
+     Synthetic samples: 1,011,396
+     Increase: 10.55%
+
+6.5. CORRELATION-BASED FEATURE ELIMINATION
+   ======================================================================
+
+   Correlation Elimination Configuration:
+     Method: Remove highly correlated feature pairs
+     Correlation threshold: 0.99
+     Strategy: Remove one feature from each |r| ≥ 0.99 pair
+
+   Correlation Analysis Results:
+     Highly correlated pairs found: 29
+     Features analyzed: 80
+     Features removed: 20
+     Features retained: 60
+     Reduction: 25.0%
+
+   Top Removed Features (redundant):
+      1. Bwd Header Len
+      2. Bwd Seg Size Avg
+      3. CWE Flag Count
+      4. ECE Flag Cnt
+      5. Fwd Act Data Pkts
+      6. Fwd Header Len
+      7. Fwd IAT Max
+      8. Fwd IAT Mean
+      9. Fwd IAT Min
+     10. Fwd IAT Std
+     ... and 10 more
+
+   Top Correlated Pairs (highest |r|):
+      1. Tot Fwd Pkts ↔ Subflow Fwd Pkts: r = 1.00000
+      2. Tot Bwd Pkts ↔ Subflow Bwd Pkts: r = 1.00000
+      3. TotLen Fwd Pkts ↔ Subflow Fwd Byts: r = 1.00000
+      4. Fwd Pkt Len Mean ↔ Fwd Seg Size Avg: r = 1.00000
+      5. Bwd Pkt Len Mean ↔ Bwd Seg Size Avg: r = 1.00000
+      6. Fwd PSH Flags ↔ SYN Flag Cnt: r = 1.00000
+      7. Fwd URG Flags ↔ CWE Flag Count: r = 1.00000
+      8. TotLen Bwd Pkts ↔ Subflow Bwd Byts: r = 1.00000
+      9. Flow IAT Min ↔ Fwd IAT Min: r = 1.00000
+     10. Flow IAT Max ↔ Fwd IAT Max: r = 0.99999
+     ... and 19 more pairs
+
+7. FEATURE SELECTION (RANDOM FOREST IMPORTANCE)
+   ======================================================================
+
+   RF Importance Configuration:
+     Method: Random Forest Gini Importance
+     Estimator: Random Forest (n_estimators=100, max_depth=15)
+     Target features: 40-45 (moderate selection)
+
+   Feature Selection Results:
+     Original features: 60
+     Selected features: 40
+     Reduction: 33.3%
+     Importance threshold: 0.005000
+
+   Selected Features (40):
+      1. Fwd Seg Size Min
+      2. Dst Port
+      3. Init Fwd Win Byts
+      4. TotLen Fwd Pkts
+      5. Tot Fwd Pkts
+      6. Bwd Pkt Len Max
+      7. Fwd Pkt Len Mean
+      8. Tot Bwd Pkts
+      9. Fwd Pkt Len Std
+     10. Pkt Len Max
+     11. Bwd Pkt Len Mean
+     12. Pkt Len Mean
+     13. Pkt Len Std
+     14. Flow IAT Max
+     15. Bwd Pkt Len Std
+     16. Bwd Pkts/s
+     17. Init Bwd Win Byts
+     18. Fwd Pkt Len Max
+     19. Flow IAT Mean
+     20. Flow Duration
+     ... and 20 more
+
+   Performance Impact:
+     ✓ Reduced model complexity by 33.3%
+     ✓ Removed low-importance features (threshold < 0.005000)
+     ✓ Faster inference time (fewer features)
+
+================================================================================
+                         FINAL PREPROCESSED DATASET
+================================================================================
+
+Training Set:
+  Samples: 10,594,852 (after SMOTE)
+  Features: 40 (after feature selection)
+  Classes: 6
+
+Test Set:
+  Samples: 2,395,865 (original distribution)
+  Features: 40 (same as train)
+  Classes: 6
+
+================================================================================
+                      PREPROCESSING QUALITY ASSESSMENT
+================================================================================
+
+Data Cleaning:
+  ✓ NaN values removed (0.368%)
+  ✓ Inf values removed (0.222%)
+  ✓ Duplicates removed (25.613%)
+  ⚠ Data loss: 26.203% (high)
+
+Label Consolidation:
+  ✓ 14 classes → 6 classes
+  ✓ Consistent naming applied
+  ✓ No unmapped labels
+
+Encoding:
+  ✓ All categorical features converted to numerical
+  ✓ Protocol one-hot encoded (3 columns)
+  ✓ Target label encoded (6 classes)
+
+Train-Test Split:
+  ✓ 80:20 ratio achieved
+  ✓ Stratification verified (max diff 0.000%)
+  ✓ Reproducible (random_state=42)
+
+Feature Scaling:
+  ✓ StandardScaler applied
+  ✓ Fitted on training data only
+  ✓ No data leakage
+
+Class Imbalance:
+  ✓ SMOTE applied to training set
+  ✓ Dynamic oversampling (1,011,396 synthetic samples)
+  ✓ Test set remains imbalanced (real-world simulation)
+
+Feature Selection:
+  ✓ RF Gini Importance completed
+  ✓ 40 optimal features selected
+  ✓ Reduced complexity by 33.3%
+
+================================================================================
+Overall Assessment: ✓✓ GOOD
+Data Quality: Ready for model training
+Expected Performance: >85% macro F1-score (target)
+================================================================================
+
+Report generated: 2026-03-04 19:21:06
+Module: Data Preprocessing (Module 3)
+Next step: Model Training (Module 4)

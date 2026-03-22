@@ -1,0 +1,35 @@
+# NIDS CICIDS2018 Project Requirements
+# Python 3.12+
+
+# Core Data Processing
+pandas>=1.5.0
+numpy>=1.23.0
+
+# Machine Learning
+scikit-learn>=1.2.0
+imbalanced-learn>=0.10.0
+
+# Visualization
+matplotlib>=3.6.0
+seaborn>=0.12.0
+
+# Model Persistence
+joblib>=1.2.0
+
+# Progress Bars
+tqdm>=4.64.0
+
+# File Format Support
+pyarrow>=10.0.0  # For parquet files
+
+# System Utilities
+psutil>=5.9.0  # For memory monitoring
+
+# Network Flow Capture (replaces Java CICFlowMeter)
+cicflowmeter>=0.2.0  # Python CICFlowMeter — flow feature extraction via Scapy
+
+# API & Web Framework
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+python-dotenv>=1.0.0

@@ -1,0 +1,143 @@
+================================================================================
+                    MODEL TRAINING REPORT
+                    CICIDS2018 Dataset
+               Generated: 2026-03-04 19:23:15
+================================================================================
+
+1. TRAINING OVERVIEW
+   ======================================================================
+
+   Model Type: Random Forest Classifier
+   Training Approach: Hyperparameter Tuning → Final Training
+
+   Preprocessing Feature Selection:
+     Features evaluated during preprocessing: 60
+     Top 5 features from preprocessing:
+       - Fwd Seg Size Min: 0.093484
+       - Dst Port: 0.086096
+       - TotLen Fwd Pkts: 0.060117
+       - Init Fwd Win Byts: 0.057772
+       - Pkt Len Max: 0.041619
+
+   Timeline:
+     Hyperparameter Tuning: 31.7 minutes
+     Final Model Training: 12.5 minutes
+     Total Training Time: 44.3 minutes (0.7 hours)
+
+2. HYPERPARAMETER TUNING
+   ======================================================================
+
+   2.1 Tuning Configuration
+       Method: RandomizedSearchCV
+       Iterations: 15 random combinations
+       Cross-Validation: 3-fold stratified
+       Scoring Metric: f1_macro (balanced performance)
+       Total model fits: 45
+
+   2.2 Best Hyperparameters Found
+       n_estimators: 150
+       min_samples_split: 5
+       min_samples_leaf: 1
+       max_features: sqrt
+       max_depth: 20
+       class_weight: None
+       bootstrap: True
+
+   2.3 Best Cross-Validation Score
+       Macro F1-Score: 0.9993
+       Standard Deviation: 0.0000
+       95% CI: [0.9992, 0.9994]
+
+3. FINAL MODEL TRAINING
+   ======================================================================
+
+   3.1 Training Configuration
+       Training samples: 10,228,735
+       Features: 40
+       Classes: 5
+
+   3.2 Model Architecture
+       Number of Trees: 150
+       Total Nodes: 186,498
+       Total Leaves: 93,324
+       Average Tree Depth: 20.0
+       Maximum Tree Depth: 20
+
+4. FEATURE IMPORTANCES
+   ======================================================================
+
+   Top 30 Features:
+
+   Rank | Feature Name                          | Importance | Cumulative
+   --------------------------------------------------------------------------
+     1  | Dst Port                                 |   0.1055   | 10.55%
+     2  | Fwd Seg Size Min                         |   0.0943   | 19.98%
+     3  | Init Fwd Win Byts                        |   0.0737   | 27.35%
+     4  | TotLen Fwd Pkts                          |   0.0566   | 33.01%
+     5  | Bwd Pkt Len Std                          |   0.0435   | 37.36%
+     6  | Bwd Pkt Len Max                          |   0.0409   | 41.44%
+     7  | Fwd Pkt Len Max                          |   0.0394   | 45.38%
+     8  | Bwd Pkt Len Mean                         |   0.0370   | 49.08%
+     9  | Tot Bwd Pkts                             |   0.0364   | 52.72%
+    10  | Pkt Len Max                              |   0.0347   | 56.20%
+    11  | Tot Fwd Pkts                             |   0.0310   | 59.30%
+    12  | Fwd Pkt Len Mean                         |   0.0302   | 62.31%
+    13  | Fwd Pkt Len Std                          |   0.0291   | 65.22%
+    14  | Flow Duration                            |   0.0256   | 67.78%
+    15  | Init Bwd Win Byts                        |   0.0244   | 70.22%
+    16  | Pkt Len Std                              |   0.0237   | 72.59%
+    17  | Flow IAT Max                             |   0.0231   | 74.91%
+    18  | Pkt Len Mean                             |   0.0201   | 76.92%
+    19  | Pkt Len Var                              |   0.0201   | 78.93%
+    20  | Flow Pkts/s                              |   0.0200   | 80.93%
+    21  | Bwd Pkts/s                               |   0.0178   | 82.71%
+    22  | Flow IAT Min                             |   0.0177   | 84.48%
+    23  | Flow Byts/s                              |   0.0172   | 86.20%
+    24  | RST Flag Cnt                             |   0.0157   | 87.77%
+    25  | Bwd IAT Std                              |   0.0138   | 89.15%
+    26  | Flow IAT Mean                            |   0.0138   | 90.53%
+    27  | Fwd Pkts/s                               |   0.0117   | 91.70%
+    28  | Idle Min                                 |   0.0114   | 92.84%
+    29  | Flow IAT Std                             |   0.0101   | 93.85%
+    30  | ACK Flag Cnt                             |   0.0094   | 94.79%
+
+   Feature Importance Summary:
+     Top 10 features: 56.20% of total importance
+     Top 20 features: 80.93% of total importance
+
+5. TRAINING QUALITY ASSESSMENT
+   ======================================================================
+
+   Hyperparameter Tuning:
+     ✓ Search space: 216 combinations
+     ✓ Iterations: 15 samples
+     ✓ Evaluation: 3-fold CV
+     ✓ Best parameters found (F1=0.9993)
+
+   Final Model:
+     ✓ Trained on balanced data (SMOTE applied)
+     ✓ 40 features used
+     ✓ Model complexity: 150 trees
+     ✓ Training time: 12.5 minutes
+     ✓ Reproducible (random_state=42)
+
+6. NEXT STEPS
+   ======================================================================
+
+   Module 5: Model Testing
+     - Evaluate model on held-out test set
+     - Generate confusion matrix and classification report
+     - Calculate per-class metrics (precision, recall, F1)
+     - Generate ROC curves and AUC scores
+     - Assess model generalization performance
+
+   Expected Test Performance: >85% macro F1-score
+
+================================================================================
+                      END OF TRAINING REPORT
+================================================================================
+
+Report generated: 2026-03-04 19:23:15
+Module: Model Training (Module 4)
+Next step: Model Testing (Module 5)
+================================================================================

@@ -1,0 +1,98 @@
+================================================================================
+                      MODULE 5: MODEL TESTING & EVALUATION
+                         STEP-BY-STEP LOG
+                    Generated: 2026-03-04 21:11:12
+================================================================================
+
+STEP 1: LOAD TRAINED MODEL
+--------------------------------------------------------------------------------
+• Loaded Random Forest model: random_forest_model.joblib
+• Loaded preprocessing objects:
+  - Label encoder
+  - Feature scaler
+  - Selected features list
+✓ Model and preprocessing objects loaded successfully
+
+STEP 2: LOAD TEST DATA
+--------------------------------------------------------------------------------
+• Test samples: 2,395,865
+• Classes: 6
+  Classes: Benign, Botnet, Brute Force, DDoS, DoS, Infilteration
+• Test set uses ORIGINAL class distribution (imbalanced, no SMOTE)
+✓ Test data loaded successfully
+
+STEP 3: GENERATE PREDICTIONS
+--------------------------------------------------------------------------------
+• Prediction time: 13.56 seconds
+• Prediction speed: 176672 samples/second
+• Prediction types:
+  - Class predictions (hard labels)
+  - Probability predictions (confidence scores)
+✓ Predictions generated successfully
+
+STEP 4: MULTICLASS EVALUATION (6 Classes)
+--------------------------------------------------------------------------------
+• Evaluation metrics: Precision, Recall, F1-score per class
+• Aggregation methods:
+  - Macro: unweighted mean (all classes equal)
+  - Weighted: weighted by class support (handles imbalance)
+• Macro F1-score: 0.8430 (primary metric)
+• Weighted F1-score: 0.9420
+• Accuracy: 0.9088
+✓ Multiclass evaluation completed
+
+STEP 5: BINARY EVALUATION (Attack vs Benign)
+--------------------------------------------------------------------------------
+• Converts multiclass to binary:
+  - Benign = 0 (negative class)
+  - Any Attack = 1 (positive class)
+• Precision: 0.5558 (attack detection accuracy)
+• Recall: 0.9565 (attack catch rate)
+• F1-score: 0.7031
+• False Positive Rate: 0.0972 (benign misclassified as attack)
+• False Negative Rate: 0.0435 (attack missed)
+✓ Binary evaluation completed
+
+STEP 6: ERROR ANALYSIS
+--------------------------------------------------------------------------------
+• Total misclassifications: 218,404
+• Overall error rate: 9.12%
+• Most commonly confused class pairs:
+  - Benign → Infilteration: 205,945 errors
+  - Infilteration → Benign: 11,735 errors
+  - Benign → Brute Force: 609 errors
+  - Benign → DDoS: 72 errors
+  - Brute Force → DoS: 16 errors
+✓ Error analysis completed
+
+STEP 7: GENERATE VISUALIZATIONS
+--------------------------------------------------------------------------------
+• Generated confusion matrix (6x6 multiclass + binary)
+• Generated ROC curves (per-class and binary)
+• Generated per-class metrics bar chart (precision/recall/F1)
+• Generated F1-score comparison chart
+✓ All visualizations created
+
+STEP 8: GENERATE COMPREHENSIVE TEXT REPORT
+--------------------------------------------------------------------------------
+• Created testing_results.txt with:
+  - Model metadata
+  - Multiclass evaluation metrics (per-class summary)
+  - Binary evaluation metrics
+  - Attack detection performance
+  - Error analysis and common misclassifications
+  - Model production readiness assessment
+✓ Report generation completed
+
+================================================================================
+                         TESTING SUMMARY
+================================================================================
+Test Samples: 2,395,865
+Classes: 6
+Macro F1-Score: 0.8430
+Binary F1-Score: 0.7031
+
+Overall Model Performance:
+  ⚠️  REVIEW - Model may need improvement
+
+================================================================================

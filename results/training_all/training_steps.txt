@@ -1,0 +1,117 @@
+================================================================================
+                      MODULE 4: MODEL TRAINING
+                         STEP-BY-STEP LOG
+                    Generated: 2026-03-04 21:00:49
+================================================================================
+
+STEP 1: LOAD PREPROCESSED DATA
+--------------------------------------------------------------------------------
+• Loaded preprocessed training data (after SMOTE & feature selection)
+• Loaded preprocessed test data (original distribution, no SMOTE)
+• Loaded scaler, label encoder, selected features
+✓ Preprocessing artifacts loaded successfully
+
+STEP 2: ANALYZE TRAINING DATA
+--------------------------------------------------------------------------------
+• Training samples: 10,594,852
+• Training features: 40
+• Label classes: 6 classes
+  Classes: Benign, Botnet, Brute Force, DDoS, DoS, Infilteration
+✓ Training data analysis completed
+
+STEP 3: HYPERPARAMETER TUNING (RandomizedSearchCV)
+--------------------------------------------------------------------------------
+• Method: RandomizedSearchCV
+• Estimator: Random Forest Classifier
+• Iterations: 15
+• Cross-validation folds: 3
+• Scoring metric: F1-macro (handles class imbalance)
+• ⏱️  Expected time: 30-60 minutes (depends on hardware)
+
+• Best hyperparameters found:
+    - n_estimators: 150
+    - min_samples_split: 2
+    - min_samples_leaf: 1
+    - max_features: sqrt
+    - max_depth: 30
+    - class_weight: balanced_subsample
+    - bootstrap: True
+• Best CV F1-score: 0.8886
+✓ Hyperparameter tuning completed
+
+STEP 4: TRAIN FINAL MODEL
+--------------------------------------------------------------------------------
+• Using best hyperparameters from tuning
+• Training on complete training set (with SMOTE)
+• Training time: 1014.5 seconds (16.9 minutes)
+✓ Final model trained successfully
+
+STEP 5: EVALUATE ON TEST SET (Original Distribution)
+--------------------------------------------------------------------------------
+• Test set has ORIGINAL class distribution (imbalanced)
+• No SMOTE applied to test set (real-world scenario)
+✓ Test set evaluation completed
+
+STEP 6: FEATURE IMPORTANCE ANALYSIS
+--------------------------------------------------------------------------------
+• Method: Random Forest Gini Importance
+• Total features in model: 40
+• Top 10 Most Important Features:
+     1. Dst Port                                 0.121441
+     2. Fwd Seg Size Min                         0.117644
+     3. TotLen Fwd Pkts                          0.057273
+     4. Init Fwd Win Byts                        0.054739
+     5. Fwd Pkt Len Max                          0.048035
+     6. Pkt Len Max                              0.043807
+     7. Bwd Pkt Len Max                          0.042281
+     8. Tot Bwd Pkts                             0.038425
+     9. Tot Fwd Pkts                             0.037534
+    10. Fwd Pkt Len Mean                         0.034327
+✓ Feature importance analysis completed
+
+STEP 7: SAVE TRAINING ARTIFACTS (INFERENCE-READY)
+--------------------------------------------------------------------------------
+[SAVED FOR INFERENCE - Minimal Deployment]
+• Saved trained model: random_forest_model.joblib
+• Saved label encoder: label_encoder.joblib
+• Saved scaler: scaler.joblib
+• Saved selected features: selected_features.joblib
+• Saved training metadata: training_metadata.json
+✓ All inference artifacts saved successfully
+
+STEP 8: GENERATE VISUALIZATIONS
+--------------------------------------------------------------------------------
+• Generated hyperparameter tuning analysis charts
+• Generated feature importance plots (top 30 features)
+• Generated cumulative feature importance curve
+• Generated cross-validation performance analysis
+✓ All visualizations created
+
+STEP 9: GENERATE COMPREHENSIVE TEXT REPORT
+--------------------------------------------------------------------------------
+• Created training_results.txt with:
+  - Hyperparameter tuning summary
+  - Best parameters and CV score
+  - Training statistics and performance
+  - Feature importance rankings
+  - Model architecture and configuration
+✓ Report generation completed
+
+================================================================================
+                         TRAINING SUMMARY
+================================================================================
+Training Samples: 10,594,852
+Test Samples: 2,395,865
+Features Used: 40
+Classes: 6
+Best CV F1-score: 0.8886
+
+Next Step: Module 5 - Model Testing & Evaluation
+  1. Load trained model and test data
+  2. Generate predictions on test set
+  3. Evaluate multiclass performance (macro/weighted/per-class metrics)
+  4. Evaluate binary performance (Attack vs Benign)
+  5. Analyze prediction errors by class
+  6. Generate ROC curves, confusion matrices, and visualizations
+  7. Generate comprehensive testing report
+================================================================================

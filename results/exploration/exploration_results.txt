@@ -1,0 +1,1532 @@
+================================================================================
+                    DATA EXPLORATION REPORT
+                         CICIDS2018 Dataset
+                    Generated: 2026-03-04 17:39:46
+================================================================================
+
+1. DATASET OVERVIEW
+   ----------------
+   Total Rows:          16,232,943
+   Total Columns:       80
+   Memory Usage:        11.66 GB
+
+   Data Types Distribution:
+     - float64: 76 columns (95.0%)
+     - object: 2 columns (2.5%)
+     - str: 2 columns (2.5%)
+
+   Numeric Columns:     76
+   Categorical Columns: 4
+
+2. CLASS DISTRIBUTION
+   ------------------
+   Total Classes: 15
+
+   Class Name                    Count         Percentage    Imbalance Ratio
+   -------------------------------------------------------------------------
+   Benign                       13,484,708       83.07%            1.00
+   DDOS attack-HOIC                686,012        4.23%           19.66
+   DDoS attacks-LOIC-HTTP          576,191        3.55%           23.40
+   DoS attacks-Hulk                461,912        2.85%           29.19
+   Bot                             286,191        1.76%           47.12
+   FTP-BruteForce                  193,360        1.19%           69.74
+   SSH-Bruteforce                  187,589        1.16%           71.88
+   Infilteration                   161,934        1.00%           83.27
+   DoS attacks-SlowHTTPTest        139,890        0.86%           96.40
+   DoS attacks-GoldenEye            41,508        0.26%          324.87
+   DoS attacks-Slowloris            10,990        0.07%         1227.00
+   DDOS attack-LOIC-UDP              1,730        0.01%         7794.63
+   Brute Force -Web                    611        0.00%        22069.90
+   Brute Force -XSS                    230        0.00%        58629.17
+   SQL Injection                        87        0.00%       154996.64
+
+   Imbalance Severity: EXTREME
+   Gini Coefficient: 0.305
+   Classes requiring SMOTE (<1%): 8
+
+2.5 LABEL CONSOLIDATION IMPACT
+   ------------------------------
+
+   BEFORE Consolidation:
+     Classes: 15
+     Gini Coefficient: 0.3053
+
+     Original Class Distribution:
+     Class Name                    Count         Percentage
+     -----------------------------------------------------------------
+     Benign                       13,484,708       83.07%
+     DDOS attack-HOIC                686,012        4.23%
+     DDoS attacks-LOIC-HTTP          576,191        3.55%
+     DoS attacks-Hulk                461,912        2.85%
+     Bot                             286,191        1.76%
+     FTP-BruteForce                  193,360        1.19%
+     SSH-Bruteforce                  187,589        1.16%
+     Infilteration                   161,934        1.00%
+     DoS attacks-SlowHTTPTest        139,890        0.86%
+     DoS attacks-GoldenEye            41,508        0.26%
+     DoS attacks-Slowloris            10,990        0.07%
+     DDOS attack-LOIC-UDP              1,730        0.01%
+     Brute Force -Web                    611        0.00%
+     Brute Force -XSS                    230        0.00%
+     SQL Injection                        87        0.00%
+
+   AFTER Consolidation (SQL Injection, Heartbleed dropped):
+     Classes: 6
+     Gini Coefficient: 0.3013
+
+     Consolidated Class Distribution:
+     Class Name                    Count         Percentage    Imbalance Ratio
+     -------------------------------------------------------------------------
+     Benign                       13,484,708       83.07%            1.00
+     DDoS                          1,263,933        7.79%           10.67
+     DoS                             654,300        4.03%           20.61
+     Brute Force                     381,790        2.35%           35.32
+     Botnet                          286,191        1.76%           47.12
+     Infilteration                   161,934        1.00%           83.27
+
+   Consolidation Summary:
+     Classes Reduced: 9 (15 → 6)
+     Rows Removed (SQL Injection, etc): 87 (0.00%)
+     Gini Improvement: +1.32%
+
+3. DATA QUALITY ASSESSMENT
+   ------------------------
+
+   3.1 Missing Values (NaN)
+       Total NaN cells: 59,721
+       Percentage of dataset: 0.005%
+       Columns with NaN: 1/80 (1.2%)
+       Rows with NaN: 59,721 (0.37%)
+
+       NaN Distribution (rows by NaN count):
+         1 NaN(s): 59,721 rows (0.368%)
+
+   3.2 Infinite Values (Inf/-Inf)
+       Total Inf cells: 131,799
+       Columns with Inf: 2/76 numeric (2.5%)
+       Rows with Inf: 95,760 (0.59%)
+
+       Inf Distribution (rows by Inf count):
+         1 Inf(s): 59,721 rows (0.368%)
+         2 Inf(s): 36,039 rows (0.222%)
+
+   3.3 Duplicate Rows
+       Duplicate count: 433,195
+       Percentage: 2.669%
+
+   Total rows to be removed: ~588,676 (3.63%)
+   Expected clean dataset size: ~15,644,267 rows
+
+4. FEATURE CORRELATION ANALYSIS
+   ----------------------------
+   Total numeric features: 76
+   Top features analyzed (by variance): 30
+
+   Top 30 Most Variable Features:
+    1. Fwd IAT Min
+    2. Flow IAT Min
+    3. Flow IAT Max
+    4. Fwd IAT Max
+    5. Idle Max
+    6. Flow Duration
+    7. Fwd IAT Tot
+    8. Fwd IAT Std
+    9. Flow IAT Std
+   10. Idle Mean
+   11. Fwd IAT Mean
+   12. Flow IAT Mean
+   13. Idle Std
+   14. Idle Min
+   15. Bwd IAT Tot
+   16. Bwd IAT Max
+   17. Bwd IAT Mean
+   18. Bwd IAT Min
+   19. Bwd IAT Std
+   20. Active Max
+   21. Active Mean
+   22. Active Min
+   23. Active Std
+   24. TotLen Bwd Pkts
+   25. Subflow Bwd Byts
+   26. Fwd Pkts/s
+   27. Pkt Len Var
+   28. Bwd Pkts/s
+   29. TotLen Fwd Pkts
+   30. Subflow Fwd Byts
+
+   Correlation Matrix Values (Top 20 Features):
+   Range from -1 (perfect negative) to +1 (perfect positive)
+
+   Strongest Positive Correlations:
+    1. TotLen Fwd Pkts                <-> Subflow Fwd Byts                 1.000
+    2. TotLen Bwd Pkts                <-> Subflow Bwd Byts                 1.000
+    3. Fwd IAT Min                    <-> Flow IAT Min                     1.000
+    4. Flow IAT Max                   <-> Fwd IAT Max                      1.000
+    5. Flow Duration                  <-> Fwd IAT Tot                      1.000
+    6. Fwd IAT Std                    <-> Flow IAT Std                     1.000
+    7. Fwd IAT Mean                   <-> Flow IAT Mean                    1.000
+    8. Idle Max                       <-> Idle Std                         0.992
+    9. Idle Max                       <-> Idle Mean                        0.982
+   10. Idle Mean                      <-> Idle Std                         0.981
+
+   Strongest Negative Correlations:
+    1. Flow IAT Min                   <-> Flow IAT Std                    -0.958
+    2. Fwd IAT Min                    <-> Flow IAT Std                    -0.958
+    3. Flow IAT Min                   <-> Fwd IAT Std                     -0.958
+    4. Fwd IAT Min                    <-> Fwd IAT Std                     -0.958
+    5. Flow IAT Min                   <-> Idle Mean                       -0.937
+    6. Fwd IAT Min                    <-> Idle Mean                       -0.937
+    7. Flow IAT Min                   <-> Idle Max                        -0.928
+    8. Fwd IAT Min                    <-> Idle Max                        -0.928
+    9. Flow IAT Min                   <-> Idle Std                        -0.924
+   10. Fwd IAT Min                    <-> Idle Std                        -0.924
+
+   Highly Correlated Feature Pairs in Top 30 (|r| > 0.9):
+   ---------------------------------------------------------------------------
+   Fwd IAT Min                    <-> Flow IAT Min                   :  1.000
+   Fwd IAT Min                    <-> Idle Max                       : -0.928
+   Fwd IAT Min                    <-> Fwd IAT Std                    : -0.958
+   Fwd IAT Min                    <-> Flow IAT Std                   : -0.958
+   Fwd IAT Min                    <-> Idle Mean                      : -0.937
+   Fwd IAT Min                    <-> Idle Std                       : -0.924
+   Flow IAT Min                   <-> Idle Max                       : -0.928
+   Flow IAT Min                   <-> Fwd IAT Std                    : -0.958
+   Flow IAT Min                   <-> Flow IAT Std                   : -0.958
+   Flow IAT Min                   <-> Idle Mean                      : -0.937
+
+   ALL Highly Correlated Feature Pairs in 76 Features (|r| > 0.9):
+   Total found: 68
+   ---------------------------------------------------------------------------
+
+   COMPLETE LIST (for feature reduction strategy):
+   ---------------------------------------------------------------------------
+   Perfect Correlations (|r| >= 0.99): 29 pairs
+   ---------------------------------------------------------------------------
+   Tot Fwd Pkts                   <-> Subflow Fwd Pkts               :  1.0000
+   Tot Bwd Pkts                   <-> Subflow Bwd Pkts               :  1.0000
+   TotLen Fwd Pkts                <-> Subflow Fwd Byts               :  1.0000
+   Fwd Pkt Len Mean               <-> Fwd Seg Size Avg               :  1.0000
+   Bwd Pkt Len Mean               <-> Bwd Seg Size Avg               :  1.0000
+   Fwd PSH Flags                  <-> SYN Flag Cnt                   :  1.0000
+   Fwd URG Flags                  <-> CWE Flag Count                 :  1.0000
+   TotLen Bwd Pkts                <-> Subflow Bwd Byts               :  1.0000
+   Flow IAT Min                   <-> Fwd IAT Min                    :  1.0000
+   Flow IAT Max                   <-> Fwd IAT Max                    :  1.0000
+   RST Flag Cnt                   <-> ECE Flag Cnt                   :  1.0000
+   Flow Duration                  <-> Fwd IAT Tot                    :  1.0000
+   Flow IAT Std                   <-> Fwd IAT Std                    :  1.0000
+   Flow IAT Mean                  <-> Fwd IAT Mean                   :  1.0000
+   Tot Fwd Pkts                   <-> Fwd Act Data Pkts              :  0.9992
+   Subflow Fwd Pkts               <-> Fwd Act Data Pkts              :  0.9992
+   Bwd Header Len                 <-> Subflow Bwd Pkts               :  0.9978
+   Tot Bwd Pkts                   <-> Bwd Header Len                 :  0.9978
+   Bwd Header Len                 <-> Subflow Bwd Byts               :  0.9960
+   TotLen Bwd Pkts                <-> Bwd Header Len                 :  0.9960
+   Tot Fwd Pkts                   <-> Fwd Header Len                 :  0.9956
+   Fwd Header Len                 <-> Subflow Fwd Pkts               :  0.9956
+   Tot Bwd Pkts                   <-> Subflow Bwd Byts               :  0.9935
+   Subflow Bwd Pkts               <-> Subflow Bwd Byts               :  0.9935
+   Tot Bwd Pkts                   <-> TotLen Bwd Pkts                :  0.9935
+   TotLen Bwd Pkts                <-> Subflow Bwd Pkts               :  0.9935
+   Pkt Len Mean                   <-> Pkt Size Avg                   :  0.9929
+   Idle Std                       <-> Idle Max                       :  0.9923
+   Fwd Header Len                 <-> Fwd Act Data Pkts              :  0.9915
+
+   Strong Correlations (0.95 <= |r| < 0.99): 17 pairs
+   ---------------------------------------------------------------------------
+   Idle Mean                      <-> Idle Max                       :  0.9818
+   Idle Mean                      <-> Idle Std                       :  0.9806
+   Fwd IAT Std                    <-> Idle Mean                      :  0.9746
+   Flow IAT Std                   <-> Idle Mean                      :  0.9746
+   Bwd Pkt Len Max                <-> Bwd Pkt Len Std                :  0.9698
+   Pkt Len Max                    <-> Pkt Len Std                    :  0.9656
+   Fwd Pkt Len Max                <-> Fwd Pkt Len Std                :  0.9601
+   Bwd Pkt Len Max                <-> Pkt Len Max                    :  0.9578
+   Flow IAT Std                   <-> Flow IAT Min                   : -0.9576
+   Flow IAT Std                   <-> Fwd IAT Min                    : -0.9576
+   Flow IAT Min                   <-> Fwd IAT Std                    : -0.9576
+   Fwd IAT Std                    <-> Fwd IAT Min                    : -0.9576
+   Flow IAT Std                   <-> Idle Std                       :  0.9568
+   Fwd IAT Std                    <-> Idle Std                       :  0.9568
+   Fwd IAT Std                    <-> Idle Max                       :  0.9565
+   Flow IAT Std                   <-> Idle Max                       :  0.9565
+   Bwd Pkt Len Std                <-> Pkt Len Max                    :  0.9522
+
+   High Correlations (0.90 <= |r| < 0.95): 22 pairs
+   ---------------------------------------------------------------------------
+   Flow IAT Max                   <-> Idle Max                       :  0.9482
+   Fwd IAT Max                    <-> Idle Max                       :  0.9482
+   Active Mean                    <-> Active Max                     :  0.9479
+   Pkt Len Mean                   <-> Bwd Seg Size Avg               :  0.9475
+   Bwd Pkt Len Mean               <-> Pkt Len Mean                   :  0.9475
+   Flow Pkts/s                    <-> Fwd Pkts/s                     :  0.9469
+   Bwd Pkt Len Std                <-> Pkt Len Std                    :  0.9461
+   Pkt Size Avg                   <-> Bwd Seg Size Avg               :  0.9410
+   Bwd Pkt Len Mean               <-> Pkt Size Avg                   :  0.9410
+   Fwd IAT Max                    <-> Idle Std                       :  0.9409
+   Flow IAT Max                   <-> Idle Std                       :  0.9409
+   Flow IAT Min                   <-> Idle Mean                      : -0.9370
+   Fwd IAT Min                    <-> Idle Mean                      : -0.9370
+   Fwd Pkt Len Min                <-> Pkt Len Min                    :  0.9363
+   Flow IAT Max                   <-> Idle Mean                      :  0.9310
+   Fwd IAT Max                    <-> Idle Mean                      :  0.9309
+   Flow IAT Min                   <-> Idle Max                       : -0.9278
+   Fwd IAT Min                    <-> Idle Max                       : -0.9277
+   Flow IAT Min                   <-> Idle Std                       : -0.9236
+   Fwd IAT Min                    <-> Idle Std                       : -0.9236
+   Bwd Pkt Len Max                <-> Pkt Len Std                    :  0.9160
+   Active Mean                    <-> Active Min                     :  0.9079
+
+
+   ===========================================================================
+   COMPLETE CORRELATION MATRIX - ALL 76 FEATURES
+   Showing ALL correlations where |r| > 0.01
+   Total correlations: 1089
+   ===========================================================================
+
+   Feature 1                           Feature 2                             Correlation
+   ---------------------------------------------------------------------------
+   Tot Fwd Pkts                        Subflow Fwd Pkts                         1.000000
+   Tot Bwd Pkts                        Subflow Bwd Pkts                         1.000000
+   TotLen Fwd Pkts                     Subflow Fwd Byts                         1.000000
+   Fwd Pkt Len Mean                    Fwd Seg Size Avg                         1.000000
+   Bwd Pkt Len Mean                    Bwd Seg Size Avg                         1.000000
+   Fwd PSH Flags                       SYN Flag Cnt                             1.000000
+   Fwd URG Flags                       CWE Flag Count                           1.000000
+   TotLen Bwd Pkts                     Subflow Bwd Byts                         1.000000
+   Flow IAT Min                        Fwd IAT Min                              0.999996
+   Flow IAT Max                        Fwd IAT Max                              0.999994
+   RST Flag Cnt                        ECE Flag Cnt                             0.999987
+   Flow Duration                       Fwd IAT Tot                              0.999986
+   Flow IAT Std                        Fwd IAT Std                              0.999981
+   Flow IAT Mean                       Fwd IAT Mean                             0.999963
+   Tot Fwd Pkts                        Fwd Act Data Pkts                        0.999189
+   Subflow Fwd Pkts                    Fwd Act Data Pkts                        0.999189
+   Bwd Header Len                      Subflow Bwd Pkts                         0.997798
+   Tot Bwd Pkts                        Bwd Header Len                           0.997798
+   Bwd Header Len                      Subflow Bwd Byts                         0.996040
+   TotLen Bwd Pkts                     Bwd Header Len                           0.996038
+   Tot Fwd Pkts                        Fwd Header Len                           0.995571
+   Fwd Header Len                      Subflow Fwd Pkts                         0.995571
+   Tot Bwd Pkts                        Subflow Bwd Byts                         0.993508
+   Subflow Bwd Pkts                    Subflow Bwd Byts                         0.993508
+   Tot Bwd Pkts                        TotLen Bwd Pkts                          0.993507
+   TotLen Bwd Pkts                     Subflow Bwd Pkts                         0.993507
+   Pkt Len Mean                        Pkt Size Avg                             0.992937
+   Idle Std                            Idle Max                                 0.992282
+   Fwd Header Len                      Fwd Act Data Pkts                        0.991466
+   Idle Mean                           Idle Max                                 0.981809
+   Idle Mean                           Idle Std                                 0.980647
+   Fwd IAT Std                         Idle Mean                                0.974598
+   Flow IAT Std                        Idle Mean                                0.974562
+   Bwd Pkt Len Max                     Bwd Pkt Len Std                          0.969805
+   Pkt Len Max                         Pkt Len Std                              0.965556
+   Fwd Pkt Len Max                     Fwd Pkt Len Std                          0.960132
+   Bwd Pkt Len Max                     Pkt Len Max                              0.957785
+   Flow IAT Std                        Flow IAT Min                            -0.957612
+   Flow IAT Std                        Fwd IAT Min                             -0.957597
+   Flow IAT Min                        Fwd IAT Std                             -0.957595
+   Fwd IAT Std                         Fwd IAT Min                             -0.957591
+   Flow IAT Std                        Idle Std                                 0.956770
+   Fwd IAT Std                         Idle Std                                 0.956756
+   Fwd IAT Std                         Idle Max                                 0.956540
+   Flow IAT Std                        Idle Max                                 0.956535
+   Bwd Pkt Len Std                     Pkt Len Max                              0.952218
+   Flow IAT Max                        Idle Max                                 0.948219
+   Fwd IAT Max                         Idle Max                                 0.948214
+   Active Mean                         Active Max                               0.947891
+   Pkt Len Mean                        Bwd Seg Size Avg                         0.947487
+   Bwd Pkt Len Mean                    Pkt Len Mean                             0.947487
+   Flow Pkts/s                         Fwd Pkts/s                               0.946929
+   Bwd Pkt Len Std                     Pkt Len Std                              0.946080
+   Pkt Size Avg                        Bwd Seg Size Avg                         0.941024
+   Bwd Pkt Len Mean                    Pkt Size Avg                             0.941024
+   Fwd IAT Max                         Idle Std                                 0.940914
+   Flow IAT Max                        Idle Std                                 0.940913
+   Flow IAT Min                        Idle Mean                               -0.937020
+   Fwd IAT Min                         Idle Mean                               -0.936994
+   Fwd Pkt Len Min                     Pkt Len Min                              0.936270
+   Flow IAT Max                        Idle Mean                                0.930951
+   Fwd IAT Max                         Idle Mean                                0.930937
+   Flow IAT Min                        Idle Max                                -0.927754
+   Fwd IAT Min                         Idle Max                                -0.927741
+   Flow IAT Min                        Idle Std                                -0.923615
+   Fwd IAT Min                         Idle Std                                -0.923611
+   Bwd Pkt Len Max                     Pkt Len Std                              0.915972
+   Active Mean                         Active Min                               0.907860
+   Fwd IAT Std                         Fwd IAT Max                              0.895749
+   Flow IAT Max                        Fwd IAT Std                              0.895745
+   Flow IAT Std                        Flow IAT Max                             0.895736
+   Flow IAT Std                        Fwd IAT Max                              0.895729
+   Bwd IAT Mean                        Bwd IAT Min                              0.893595
+   Bwd IAT Std                         Bwd IAT Max                              0.878564
+   Fwd Pkt Len Mean                    Fwd Pkt Len Std                          0.877572
+   Fwd Pkt Len Std                     Fwd Seg Size Avg                         0.877572
+   Fwd Pkt Len Max                     Fwd Pkt Len Mean                         0.877540
+   Fwd Pkt Len Max                     Fwd Seg Size Avg                         0.877540
+   Pkt Len Mean                        Pkt Len Std                              0.865838
+   Bwd Pkt Len Mean                    Pkt Len Std                              0.851521
+   Pkt Len Std                         Bwd Seg Size Avg                         0.851521
+   Pkt Len Std                         Pkt Size Avg                             0.844944
+   Fwd IAT Tot                         Fwd IAT Min                              0.814424
+   Flow Duration                       Fwd IAT Min                              0.814414
+   Flow IAT Min                        Fwd IAT Tot                              0.814411
+   Flow Duration                       Flow IAT Min                             0.814401
+   Fwd Pkt Len Max                     Pkt Len Max                              0.808898
+   TotLen Fwd Pkts                     Fwd Act Data Pkts                        0.794780
+   Subflow Fwd Byts                    Fwd Act Data Pkts                        0.794780
+   Tot Fwd Pkts                        TotLen Fwd Pkts                          0.794220
+   Tot Fwd Pkts                        Subflow Fwd Byts                         0.794220
+   TotLen Fwd Pkts                     Subflow Fwd Pkts                         0.794220
+   Subflow Fwd Pkts                    Subflow Fwd Byts                         0.794220
+   TotLen Fwd Pkts                     Fwd Header Len                           0.788504
+   Fwd Header Len                      Subflow Fwd Byts                         0.788504
+   Flow IAT Min                        Fwd IAT Max                             -0.783545
+   Flow IAT Max                        Flow IAT Min                            -0.783543
+   Fwd IAT Max                         Fwd IAT Min                             -0.783532
+   Flow IAT Max                        Fwd IAT Min                             -0.783531
+   Bwd Pkt Len Max                     Bwd Pkt Len Mean                         0.780571
+   Bwd Pkt Len Max                     Bwd Seg Size Avg                         0.780571
+   Pkt Len Max                         Pkt Len Mean                             0.779724
+   Bwd Pkt Len Mean                    Bwd Pkt Len Std                          0.777479
+   Bwd Pkt Len Std                     Bwd Seg Size Avg                         0.777479
+   Active Std                          Active Max                               0.772791
+   Bwd IAT Tot                         Bwd IAT Max                              0.764839
+   Pkt Len Max                         Pkt Size Avg                             0.757145
+   Bwd Pkt Len Max                     Pkt Len Mean                             0.756532
+   Bwd Pkt Len Mean                    Pkt Len Max                              0.753499
+   Pkt Len Max                         Bwd Seg Size Avg                         0.753499
+   Fwd Pkt Len Max                     Pkt Len Std                              0.750980
+   Bwd IAT Tot                         Bwd IAT Std                              0.747906
+   Bwd Pkt Len Std                     Pkt Len Mean                             0.746968
+   Fwd Pkt Len Std                     Pkt Len Max                              0.744317
+   Bwd Pkt Len Min                     Pkt Len Min                              0.740185
+   Active Max                          Active Min                               0.736894
+   Bwd Pkt Len Std                     PSH Flag Cnt                             0.732623
+   Bwd Pkt Len Max                     Pkt Size Avg                             0.730660
+   Fwd Pkt Len Std                     Pkt Len Std                              0.719934
+   Bwd Pkt Len Std                     Pkt Size Avg                             0.717365
+   Flow IAT Std                        Fwd IAT Tot                             -0.715150
+   Flow Duration                       Flow IAT Std                            -0.715128
+   Fwd IAT Tot                         Fwd IAT Std                             -0.715047
+   Flow Duration                       Fwd IAT Std                             -0.715040
+   Bwd Pkt Len Max                     PSH Flag Cnt                             0.711331
+   Pkt Len Max                         PSH Flag Cnt                             0.704397
+   Fwd Pkt Len Min                     Bwd Pkt Len Min                          0.690529
+   Fwd IAT Tot                         Idle Max                                -0.683497
+   Flow Duration                       Idle Max                                -0.683477
+   Fwd Pkt Len Mean                    Pkt Len Max                              0.680002
+   Pkt Len Max                         Fwd Seg Size Avg                         0.680002
+   Pkt Len Std                         PSH Flag Cnt                             0.671802
+   Flow Pkts/s                         Bwd Pkts/s                               0.670452
+   Fwd IAT Tot                         Idle Std                                -0.667920
+   Flow Duration                       Idle Std                                -0.667909
+   Fwd IAT Tot                         Idle Mean                               -0.665144
+   Flow Duration                       Idle Mean                               -0.665109
+   Fwd Pkt Len Max                     Bwd Pkt Len Max                          0.658643
+   Bwd Pkt Len Min                     Fwd Seg Size Min                        -0.656283
+   Fwd Pkt Len Max                     Bwd Pkt Len Std                          0.649852
+   Pkt Len Std                         Fwd Seg Size Avg                         0.641474
+   Fwd Pkt Len Mean                    Pkt Len Std                              0.641474
+   Bwd IAT Mean                        Bwd IAT Max                              0.640901
+   Pkt Len Min                         Fwd Seg Size Min                        -0.624774
+   RST Flag Cnt                        PSH Flag Cnt                             0.597965
+   PSH Flag Cnt                        ECE Flag Cnt                             0.597954
+   Fwd Pkt Len Std                     Bwd Pkt Len Std                          0.596562
+   Fwd Pkt Len Max                     Init Bwd Win Byts                        0.595205
+   Pkt Len Max                         RST Flag Cnt                             0.582577
+   Pkt Len Max                         ECE Flag Cnt                             0.582574
+   Fwd Pkt Len Mean                    Pkt Size Avg                             0.582472
+   Pkt Size Avg                        Fwd Seg Size Avg                         0.582472
+   Fwd Pkt Len Min                     Fwd Seg Size Min                        -0.582255
+   Bwd Pkt Len Std                     RST Flag Cnt                             0.578636
+   Bwd Pkt Len Std                     ECE Flag Cnt                             0.578634
+   Fwd Pkt Len Max                     Pkt Len Mean                             0.574845
+   PSH Flag Cnt                        ACK Flag Cnt                            -0.565227
+   Fwd Pkt Len Mean                    Pkt Len Mean                             0.563301
+   Pkt Len Mean                        Fwd Seg Size Avg                         0.563301
+   Fwd Pkt Len Std                     Bwd Pkt Len Max                          0.561062
+   Fwd Pkt Len Max                     Pkt Size Avg                             0.558918
+   Pkt Len Std                         RST Flag Cnt                             0.556047
+   Pkt Len Std                         ECE Flag Cnt                             0.556044
+   Active Mean                         Active Std                               0.550452
+   Bwd Pkt Len Max                     RST Flag Cnt                             0.548790
+   Bwd Pkt Len Max                     ECE Flag Cnt                             0.548787
+   Bwd Pkt Len Max                     Init Bwd Win Byts                        0.543415
+   Fwd IAT Tot                         Fwd IAT Mean                             0.543131
+   Flow Duration                       Fwd IAT Mean                             0.543119
+   Flow IAT Mean                       Fwd IAT Tot                              0.542920
+   Flow Duration                       Flow IAT Mean                            0.542920
+   Pkt Len Max                         Init Bwd Win Byts                        0.540771
+   Fwd Pkt Len Max                     PSH Flag Cnt                             0.537188
+   Fwd Pkt Len Mean                    Bwd Pkt Len Max                          0.520395
+   Bwd Pkt Len Max                     Fwd Seg Size Avg                         0.520395
+   Fwd Pkt Len Mean                    Bwd Pkt Len Std                          0.518514
+   Bwd Pkt Len Std                     Fwd Seg Size Avg                         0.518514
+   Fwd Pkt Len Std                     Pkt Len Mean                             0.515359
+   Bwd IAT Tot                         Bwd IAT Mean                             0.513517
+   Fwd Pkt Len Std                     Init Bwd Win Byts                        0.507898
+   Fwd Pkt Len Std                     PSH Flag Cnt                             0.507115
+   Fwd Pkt Len Std                     Pkt Size Avg                             0.500427
+   Flow IAT Max                        Fwd IAT Tot                             -0.497739
+   Fwd IAT Tot                         Fwd IAT Max                             -0.497733
+   Flow Duration                       Fwd IAT Max                             -0.497731
+   Flow Duration                       Flow IAT Max                            -0.497720
+   PSH Flag Cnt                        Init Bwd Win Byts                        0.496694
+   Fwd Pkt Len Mean                    Init Bwd Win Byts                        0.495314
+   Fwd Seg Size Avg                    Init Bwd Win Byts                        0.495314
+   Bwd Pkt Len Std                     Init Bwd Win Byts                        0.485065
+   Fwd IAT Std                         Idle Min                                 0.484944
+   Flow IAT Std                        Idle Min                                 0.484736
+   Pkt Len Mean                        PSH Flag Cnt                             0.477980
+   Fwd Pkt Len Max                     RST Flag Cnt                             0.471781
+   Fwd Pkt Len Max                     ECE Flag Cnt                             0.471778
+   Bwd Pkt Len Mean                    PSH Flag Cnt                             0.470445
+   PSH Flag Cnt                        Bwd Seg Size Avg                         0.470445
+   Fwd Pkt Len Std                     RST Flag Cnt                             0.459160
+   Fwd Pkt Len Std                     ECE Flag Cnt                             0.459157
+   Idle Mean                           Idle Min                                 0.443697
+   PSH Flag Cnt                        Pkt Size Avg                             0.438665
+   RST Flag Cnt                        Init Bwd Win Byts                        0.436710
+   ECE Flag Cnt                        Init Bwd Win Byts                        0.436709
+   Bwd Pkt Len Max                     ACK Flag Cnt                            -0.435690
+   Bwd Pkt Len Max                     Bwd IAT Tot                              0.431950
+   ACK Flag Cnt                        Pkt Size Avg                            -0.431588
+   Fwd Pkt Len Max                     Bwd Pkt Len Mean                         0.430526
+   Fwd Pkt Len Max                     Bwd Seg Size Avg                         0.430526
+   Pkt Len Std                         Init Bwd Win Byts                        0.427938
+   Flow Byts/s                         Fwd Pkts/s                               0.426322
+   Flow IAT Min                        Idle Min                                -0.424685
+   Fwd IAT Min                         Idle Min                                -0.424589
+   Bwd Pkt Len Mean                    ACK Flag Cnt                            -0.419244
+   ACK Flag Cnt                        Bwd Seg Size Avg                        -0.419244
+   Bwd Pkt Len Min                     PSH Flag Cnt                            -0.417120
+   Fwd Pkt Len Mean                    PSH Flag Cnt                             0.414092
+   PSH Flag Cnt                        Fwd Seg Size Avg                         0.414092
+   Bwd IAT Tot                         Pkt Len Max                              0.412680
+   Bwd Pkt Len Mean                    Pkt Len Var                              0.403059
+   Pkt Len Var                         Bwd Seg Size Avg                         0.403059
+   Bwd IAT Mean                        Bwd IAT Std                              0.400946
+   Pkt Len Std                         Pkt Len Var                              0.399779
+   Bwd IAT Tot                         Pkt Len Std                              0.398437
+   Fwd Pkts/s                          Bwd Pkts/s                               0.396477
+   Pkt Len Max                         ACK Flag Cnt                            -0.395117
+   Pkt Len Mean                        Pkt Len Var                              0.391824
+   ACK Flag Cnt                        Fwd Seg Size Min                         0.389936
+   Pkt Len Mean                        ACK Flag Cnt                            -0.389719
+   Pkt Len Min                         PSH Flag Cnt                            -0.388513
+   Flow Byts/s                         Flow Pkts/s                              0.384573
+   Bwd Pkt Len Max                     Bwd IAT Std                              0.384431
+   Bwd Pkt Len Std                     ACK Flag Cnt                            -0.382583
+   Bwd Pkt Len Std                     Bwd IAT Tot                              0.380796
+   PSH Flag Cnt                        Fwd Seg Size Min                         0.379494
+   Pkt Len Var                         Pkt Size Avg                             0.378989
+   Fwd Pkt Len Mean                    RST Flag Cnt                             0.376000
+   RST Flag Cnt                        Fwd Seg Size Avg                         0.376000
+   Fwd Pkt Len Mean                    ECE Flag Cnt                             0.375998
+   ECE Flag Cnt                        Fwd Seg Size Avg                         0.375998
+   Bwd IAT Max                         Bwd IAT Min                              0.373967
+   Pkt Len Std                         ACK Flag Cnt                            -0.373481
+   Pkt Len Max                         Pkt Len Var                              0.373023
+   Bwd IAT Tot                         Bwd Seg Size Avg                         0.370428
+   Bwd Pkt Len Mean                    Bwd IAT Tot                              0.370428
+   Bwd IAT Std                         Pkt Len Max                              0.370416
+   Bwd Pkt Len Mean                    Fwd Seg Size Avg                         0.369791
+   Fwd Pkt Len Mean                    Bwd Pkt Len Mean                         0.369791
+   Fwd Pkt Len Mean                    Bwd Seg Size Avg                         0.369791
+   Fwd Seg Size Avg                    Bwd Seg Size Avg                         0.369791
+   Bwd Pkt Len Max                     Bwd IAT Max                              0.369279
+   Fwd Pkt Len Min                     PSH Flag Cnt                            -0.367120
+   Bwd IAT Tot                         Pkt Len Mean                             0.366878
+   Pkt Len Mean                        RST Flag Cnt                             0.365887
+   Pkt Len Mean                        ECE Flag Cnt                             0.365885
+   Fwd Pkt Len Std                     Bwd Pkt Len Mean                         0.363962
+   Fwd Pkt Len Std                     Bwd Seg Size Avg                         0.363962
+   Bwd Pkt Len Mean                    Bwd IAT Max                              0.361462
+   Bwd IAT Max                         Bwd Seg Size Avg                         0.361462
+   Bwd Pkt Len Std                     Bwd IAT Std                              0.360550
+   Bwd Pkt Len Mean                    RST Flag Cnt                             0.357162
+   RST Flag Cnt                        Bwd Seg Size Avg                         0.357162
+   Bwd Pkt Len Mean                    ECE Flag Cnt                             0.357160
+   ECE Flag Cnt                        Bwd Seg Size Avg                         0.357160
+   Bwd Pkt Len Std                     Pkt Len Var                              0.357148
+   Bwd IAT Max                         Pkt Len Mean                             0.352750
+   Bwd IAT Max                         Pkt Len Std                              0.352324
+   Bwd IAT Std                         Pkt Len Std                              0.351919
+   Bwd Pkt Len Max                     Pkt Len Var                              0.351304
+   Bwd IAT Max                         Pkt Len Max                              0.350967
+   RST Flag Cnt                        Pkt Size Avg                             0.350542
+   ECE Flag Cnt                        Pkt Size Avg                             0.350541
+   Bwd Pkts/s                          Fwd Seg Size Min                         0.349339
+   Flow IAT Mean                       Fwd IAT Min                              0.347883
+   Fwd IAT Mean                        Fwd IAT Min                              0.347878
+   Flow IAT Mean                       Flow IAT Min                             0.347875
+   Flow IAT Min                        Fwd IAT Mean                             0.347851
+   Bwd Pkt Len Min                     ACK Flag Cnt                            -0.341051
+   RST Flag Cnt                        ACK Flag Cnt                            -0.338238
+   ACK Flag Cnt                        ECE Flag Cnt                            -0.338235
+   Bwd Pkt Len Std                     Bwd IAT Max                              0.336273
+   Pkt Len Min                         ACK Flag Cnt                            -0.335932
+   Bwd IAT Tot                         Pkt Size Avg                             0.333941
+   Bwd Pkt Len Min                     Bwd Pkt Len Std                         -0.333697
+   Fwd Pkt Len Std                     Fwd Seg Size Min                         0.332079
+   Idle Max                            Idle Min                                 0.329048
+   Bwd IAT Max                         Pkt Size Avg                             0.326662
+   Fwd Pkt Len Mean                    ACK Flag Cnt                            -0.324241
+   ACK Flag Cnt                        Fwd Seg Size Avg                        -0.324241
+   Flow IAT Max                        Idle Min                                 0.311887
+   Fwd IAT Max                         Idle Min                                 0.311816
+   Bwd Pkt Len Std                     Pkt Len Min                             -0.311232
+   Fwd Pkt Len Std                     Bwd Pkt Len Min                         -0.310802
+   Fwd Pkt Len Min                     ACK Flag Cnt                            -0.306678
+   Idle Std                            Idle Min                                 0.305250
+   PSH Flag Cnt                        Init Fwd Win Byts                        0.304733
+   Bwd Pkt Len Mean                    Bwd IAT Std                              0.304492
+   Bwd IAT Std                         Bwd Seg Size Avg                         0.304492
+   Fwd PSH Flags                       ACK Flag Cnt                             0.302506
+   SYN Flag Cnt                        ACK Flag Cnt                             0.302506
+   Fwd Pkt Len Std                     Init Fwd Win Byts                        0.295980
+   ACK Flag Cnt                        URG Flag Cnt                             0.294468
+   Fwd Pkt Len Std                     Pkt Len Min                             -0.293878
+   Fwd Pkt Len Min                     Bwd Pkt Len Std                         -0.293665
+   Bwd IAT Std                         Pkt Len Mean                             0.290069
+   Fwd IAT Mean                        Fwd IAT Max                              0.287253
+   Flow IAT Max                        Fwd IAT Mean                             0.287248
+   Flow IAT Mean                       Flow IAT Max                             0.287197
+   Flow IAT Mean                       Fwd IAT Max                              0.287193
+   Pkt Len Mean                        Init Bwd Win Byts                        0.284225
+   Bwd IAT Tot                         PSH Flag Cnt                             0.282866
+   Bwd Pkt Len Min                     Init Fwd Win Byts                       -0.279986
+   Fwd Pkt Len Min                     Fwd Pkt Len Std                         -0.276183
+   RST Flag Cnt                        Init Fwd Win Byts                        0.274063
+   ECE Flag Cnt                        Init Fwd Win Byts                        0.274058
+   Fwd Pkt Len Max                     Fwd Seg Size Min                         0.273926
+   ACK Flag Cnt                        Init Bwd Win Byts                       -0.267696
+   Init Fwd Win Byts                   Fwd Seg Size Min                         0.267380
+   Bwd IAT Std                         Pkt Size Avg                             0.266728
+   Flow Pkts/s                         Fwd Seg Size Min                         0.266228
+   Bwd Pkt Len Min                     Pkt Len Max                             -0.266139
+   Fwd Pkt Len Max                     Bwd Pkt Len Min                         -0.265662
+   Pkt Size Avg                        Init Bwd Win Byts                        0.264057
+   Pkt Len Min                         Pkt Len Std                             -0.262786
+   Pkt Len Min                         Init Fwd Win Byts                       -0.261262
+   Bwd IAT Std                         PSH Flag Cnt                             0.258319
+   Pkt Len Min                         Pkt Len Max                             -0.257289
+   Bwd Pkt Len Min                     Down/Up Ratio                            0.252009
+   Bwd Pkt Len Min                     ECE Flag Cnt                            -0.249425
+   Bwd Pkt Len Min                     RST Flag Cnt                            -0.249425
+   Fwd Pkt Len Min                     Init Fwd Win Byts                       -0.245631
+   Fwd Pkt Len Max                     ACK Flag Cnt                            -0.245256
+   Fwd Pkt Len Max                     Bwd IAT Tot                              0.243725
+   Fwd Pkt Len Min                     Pkt Len Std                             -0.242193
+   Bwd Pkt Len Min                     Pkt Len Std                             -0.239403
+   Fwd Pkt Len Max                     Pkt Len Var                              0.239397
+   Bwd Pkt Len Max                     Pkt Len Min                             -0.238677
+   ACK Flag Cnt                        Down/Up Ratio                           -0.237844
+   Fwd Pkt Len Min                     Pkt Len Max                             -0.237022
+   Fwd Pkt Len Max                     Init Fwd Win Byts                        0.235095
+   Bwd Pkt Len Max                     Bwd Pkt Len Min                         -0.234445
+   Pkt Len Min                         ECE Flag Cnt                            -0.232318
+   Pkt Len Min                         RST Flag Cnt                            -0.232317
+   Bwd Pkt Len Std                     Fwd Seg Size Min                         0.231823
+   Bwd IAT Max                         PSH Flag Cnt                             0.229491
+   Fwd Pkt Len Max                     Pkt Len Min                             -0.227304
+   Fwd Pkt Len Min                     Bwd Pkt Len Max                         -0.226144
+   Pkt Len Min                         Down/Up Ratio                            0.225173
+   Pkt Len Max                         Fwd Seg Size Min                         0.221942
+   Bwd Pkt Len Mean                    Init Bwd Win Byts                        0.221822
+   Bwd Seg Size Avg                    Init Bwd Win Byts                        0.221822
+   Fwd Pkt Len Min                     RST Flag Cnt                            -0.219525
+   Fwd Pkt Len Min                     ECE Flag Cnt                            -0.219523
+   Fwd Pkt Len Std                     Pkt Len Var                              0.216402
+   Fwd Pkt Len Min                     Down/Up Ratio                            0.215528
+   Bwd Pkt Len Min                     Init Bwd Win Byts                       -0.215262
+   Pkt Len Std                         Fwd Seg Size Min                         0.214951
+   Bwd IAT Min                         Fwd PSH Flags                            0.209678
+   Bwd IAT Min                         SYN Flag Cnt                             0.209678
+   Pkt Len Min                         Init Bwd Win Byts                       -0.203882
+   Fwd Pkt Len Max                     Fwd Pkt Len Min                         -0.203524
+   Pkt Len Var                         PSH Flag Cnt                             0.202892
+   Fwd Pkt Len Mean                    Pkt Len Var                              0.201541
+   Pkt Len Var                         Fwd Seg Size Avg                         0.201541
+   Bwd IAT Mean                        Fwd PSH Flags                            0.200244
+   Bwd IAT Mean                        SYN Flag Cnt                             0.200244
+   Fwd Pkt Len Min                     Init Bwd Win Byts                       -0.192509
+   Pkt Len Std                         Init Fwd Win Byts                        0.187111
+   Flow Byts/s                         Fwd PSH Flags                            0.186736
+   Flow Byts/s                         SYN Flag Cnt                             0.186736
+   Down/Up Ratio                       Fwd Seg Size Min                        -0.181690
+   Bwd IAT Tot                         RST Flag Cnt                             0.181689
+   Bwd IAT Tot                         ECE Flag Cnt                             0.181688
+   Fwd Pkt Len Max                     Bwd IAT Std                              0.181456
+   Bwd Header Len                      Pkt Len Mean                             0.181433
+   Pkt Len Mean                        Subflow Bwd Pkts                         0.178447
+   Tot Bwd Pkts                        Pkt Len Mean                             0.178447
+   Bwd IAT Std                         RST Flag Cnt                             0.177985
+   Bwd IAT Std                         ECE Flag Cnt                             0.177984
+   Fwd Pkts/s                          Fwd Seg Size Min                         0.177609
+   Fwd Seg Size Avg                    Init Fwd Win Byts                        0.172908
+   Fwd Pkt Len Mean                    Init Fwd Win Byts                        0.172908
+   Pkt Len Max                         Init Fwd Win Byts                        0.172323
+   Bwd Header Len                      Pkt Size Avg                             0.171449
+   Fwd PSH Flags                       PSH Flag Cnt                            -0.171162
+   SYN Flag Cnt                        PSH Flag Cnt                            -0.171162
+   Init Fwd Win Byts                   Init Bwd Win Byts                        0.169681
+   Bwd IAT Tot                         Bwd IAT Min                              0.169119
+   Fwd Pkt Len Std                     ACK Flag Cnt                            -0.169053
+   Tot Bwd Pkts                        Pkt Size Avg                             0.168871
+   Pkt Size Avg                        Subflow Bwd Pkts                         0.168871
+   PSH Flag Cnt                        URG Flag Cnt                            -0.166617
+   Bwd Pkt Len Std                     Init Fwd Win Byts                        0.165818
+   Pkt Len Mean                        Subflow Bwd Byts                         0.165264
+   TotLen Bwd Pkts                     Pkt Len Mean                             0.165258
+   Fwd Pkt Len Std                     Bwd IAT Tot                              0.162788
+   Fwd Pkt Len Max                     Bwd IAT Max                              0.161938
+   Bwd Pkt Len Max                     Fwd Seg Size Min                         0.159497
+   Pkt Len Var                         RST Flag Cnt                             0.159157
+   Pkt Len Var                         ECE Flag Cnt                             0.159156
+   URG Flag Cnt                        Pkt Size Avg                            -0.158625
+   Pkt Size Avg                        Subflow Bwd Byts                         0.156672
+   TotLen Bwd Pkts                     Pkt Size Avg                             0.156666
+   Bwd IAT Max                         RST Flag Cnt                             0.156126
+   Bwd IAT Max                         ECE Flag Cnt                             0.156126
+   Fwd IAT Tot                         Idle Min                                -0.153307
+   Flow Duration                       Idle Min                                -0.153196
+   Bwd IAT Tot                         Pkt Len Var                              0.151855
+   Bwd Header Len                      Bwd Seg Size Avg                         0.151838
+   Bwd Pkt Len Mean                    Bwd Header Len                           0.151838
+   Active Std                          Active Min                               0.150637
+   Flow Pkts/s                         Pkt Size Avg                            -0.150572
+   URG Flag Cnt                        Fwd Seg Size Avg                        -0.149767
+   Fwd Pkt Len Mean                    URG Flag Cnt                            -0.149767
+   Tot Bwd Pkts                        Bwd Seg Size Avg                         0.149237
+   Bwd Seg Size Avg                    Subflow Bwd Pkts                         0.149237
+   Tot Bwd Pkts                        Bwd Pkt Len Mean                         0.149237
+   Bwd Pkt Len Mean                    Subflow Bwd Pkts                         0.149237
+   Fwd Pkt Len Mean                    Flow Pkts/s                             -0.148638
+   Flow Pkts/s                         Fwd Seg Size Avg                        -0.148638
+   Flow Pkts/s                         Pkt Len Max                             -0.145762
+   Pkt Len Mean                        URG Flag Cnt                            -0.143871
+   Pkt Len Max                         URG Flag Cnt                            -0.143709
+   Flow Pkts/s                         Pkt Len Std                             -0.141951
+   Down/Up Ratio                       Pkt Size Avg                             0.141862
+   Pkt Len Std                         URG Flag Cnt                            -0.141639
+   Bwd IAT Max                         Pkt Len Var                              0.139063
+   Flow Pkts/s                         Pkt Len Mean                            -0.138245
+   Bwd Pkt Len Max                     Flow Pkts/s                             -0.138107
+   Bwd Pkt Len Max                     URG Flag Cnt                            -0.138038
+   Bwd Pkt Len Mean                    URG Flag Cnt                            -0.137769
+   URG Flag Cnt                        Bwd Seg Size Avg                        -0.137769
+   Bwd Seg Size Avg                    Subflow Bwd Byts                         0.137736
+   Bwd Pkt Len Mean                    Subflow Bwd Byts                         0.137736
+   TotLen Bwd Pkts                     Bwd Seg Size Avg                         0.137731
+   TotLen Bwd Pkts                     Bwd Pkt Len Mean                         0.137731
+   Bwd IAT Tot                         Pkt Len Min                             -0.136931
+   Bwd IAT Max                         Idle Min                                 0.135822
+   Fwd Pkt Len Std                     Bwd IAT Std                              0.134483
+   Bwd Pkt Len Mean                    Flow Pkts/s                             -0.134199
+   Flow Pkts/s                         Bwd Seg Size Avg                        -0.134199
+   RST Flag Cnt                        Fwd Seg Size Min                         0.132566
+   ECE Flag Cnt                        Fwd Seg Size Min                         0.132562
+   Bwd IAT Tot                         ACK Flag Cnt                            -0.130042
+   Bwd Pkts/s                          Pkt Size Avg                            -0.129657
+   Bwd Pkt Len Max                     Fwd PSH Flags                           -0.129567
+   Bwd Pkt Len Max                     SYN Flag Cnt                            -0.129567
+   Bwd Pkt Len Max                     Bwd IAT Mean                             0.129473
+   Fwd Pkts/s                          Pkt Size Avg                            -0.128799
+   Fwd Pkt Len Min                     Bwd IAT Tot                             -0.128543
+   Bwd Pkts/s                          PSH Flag Cnt                             0.127953
+   Bwd IAT Std                         Pkt Len Var                              0.127792
+   Bwd Pkt Len Min                     Bwd IAT Tot                             -0.127770
+   Fwd Pkt Len Mean                    Fwd Pkts/s                              -0.127436
+   Fwd Pkts/s                          Fwd Seg Size Avg                        -0.127436
+   Fwd Pkt Len Mean                    Bwd Pkts/s                              -0.127240
+   Bwd Pkts/s                          Fwd Seg Size Avg                        -0.127240
+   Down/Up Ratio                       Init Bwd Win Byts                       -0.126647
+   Bwd Pkt Len Std                     Flow Pkts/s                             -0.126270
+   Fwd Pkts/s                          Pkt Len Max                             -0.125963
+   Down/Up Ratio                       Subflow Bwd Pkts                         0.125267
+   Tot Bwd Pkts                        Down/Up Ratio                            0.125267
+   Bwd Header Len                      Down/Up Ratio                            0.125063
+   Fwd Pkt Len Max                     Flow Pkts/s                             -0.124753
+   Bwd Pkt Len Std                     URG Flag Cnt                            -0.124332
+   Bwd Pkt Len Min                     Bwd IAT Std                             -0.124311
+   Bwd IAT Std                         ACK Flag Cnt                            -0.124201
+   Bwd Pkt Len Std                     Fwd PSH Flags                           -0.124011
+   Bwd Pkt Len Std                     SYN Flag Cnt                            -0.124011
+   Fwd PSH Flags                       Pkt Len Max                             -0.123114
+   Pkt Len Max                         SYN Flag Cnt                            -0.123114
+   Bwd Pkts/s                          Pkt Len Max                             -0.122427
+   Fwd Pkts/s                          Pkt Len Std                             -0.122279
+   Bwd IAT Mean                        Pkt Len Max                              0.122015
+   Down/Up Ratio                       Bwd Seg Size Avg                         0.121490
+   Bwd Pkt Len Mean                    Down/Up Ratio                            0.121490
+   Bwd Pkts/s                          Pkt Len Std                             -0.120211
+   Bwd Pkt Len Max                     Fwd Pkts/s                              -0.120087
+   Fwd Pkt Len Max                     URG Flag Cnt                            -0.119813
+   Bwd IAT Std                         Pkt Len Min                             -0.118655
+   Fwd Pkts/s                          Pkt Len Mean                            -0.118595
+   Pkt Len Mean                        Down/Up Ratio                            0.118309
+   Bwd Pkts/s                          Pkt Len Mean                            -0.118304
+   Bwd IAT Std                         Idle Min                                 0.117811
+   Bwd IAT Max                         Pkt Len Min                             -0.117176
+   Bwd Pkt Len Mean                    Fwd Pkts/s                              -0.116920
+   Fwd Pkts/s                          Bwd Seg Size Avg                        -0.116920
+   Fwd Pkt Len Min                     Pkt Size Avg                             0.116296
+   URG Flag Cnt                        Fwd Seg Size Min                         0.115750
+   Flow Byts/s                         Bwd Pkts/s                               0.114365
+   Bwd Pkt Len Max                     Bwd Pkts/s                              -0.114307
+   Fwd Pkt Len Min                     Fwd Pkt Len Mean                         0.113341
+   Fwd Pkt Len Min                     Fwd Seg Size Avg                         0.113341
+   Fwd Pkt Len Std                     Flow Pkts/s                             -0.112560
+   Init Bwd Win Byts                   Fwd Seg Size Min                         0.112318
+   Fwd Pkt Len Min                     Bwd IAT Std                             -0.111763
+   Fwd Pkt Len Std                     Bwd IAT Max                              0.111743
+   Fwd Pkts/s                          ACK Flag Cnt                             0.111449
+   Bwd Pkt Len Mean                    Bwd Pkts/s                              -0.110545
+   Bwd Pkts/s                          Bwd Seg Size Avg                        -0.110545
+   Bwd Pkt Len Mean                    Fwd PSH Flags                           -0.110330
+   Bwd Pkt Len Mean                    SYN Flag Cnt                            -0.110330
+   Fwd PSH Flags                       Bwd Seg Size Avg                        -0.110330
+   SYN Flag Cnt                        Bwd Seg Size Avg                        -0.110330
+   Fwd Pkt Len Min                     Bwd IAT Max                             -0.109958
+   Bwd Pkt Len Std                     Fwd Pkts/s                              -0.109843
+   Bwd Pkt Len Std                     Bwd IAT Mean                             0.108966
+   Bwd Pkt Len Min                     URG Flag Cnt                            -0.108343
+   Pkt Len Std                         SYN Flag Cnt                            -0.107895
+   Fwd PSH Flags                       Pkt Len Std                             -0.107895
+   Fwd Pkt Len Max                     Fwd Pkts/s                              -0.107239
+   Fwd Pkt Len Max                     Bwd Pkts/s                              -0.106276
+   Fwd Pkt Len Std                     URG Flag Cnt                            -0.106240
+   Bwd IAT Mean                        Pkt Len Std                              0.105960
+   Bwd Pkt Len Std                     Bwd Pkts/s                              -0.104480
+   Fwd PSH Flags                       RST Flag Cnt                            -0.102896
+   SYN Flag Cnt                        RST Flag Cnt                            -0.102896
+   Fwd PSH Flags                       ECE Flag Cnt                            -0.102877
+   SYN Flag Cnt                        ECE Flag Cnt                            -0.102877
+   Bwd Pkts/s                          Init Fwd Win Byts                        0.101765
+   Pkt Len Var                         ACK Flag Cnt                            -0.101721
+   Flow IAT Mean                       Fwd IAT Std                             -0.101084
+   Flow IAT Mean                       Flow IAT Std                            -0.101068
+   Bwd IAT Tot                         Idle Min                                 0.101062
+   Fwd IAT Mean                        Fwd IAT Std                             -0.101029
+   Flow IAT Std                        Fwd IAT Mean                            -0.101013
+   RST Flag Cnt                        URG Flag Cnt                            -0.100192
+   URG Flag Cnt                        ECE Flag Cnt                            -0.100182
+   Bwd IAT Max                         ACK Flag Cnt                            -0.099819
+   Pkt Len Var                         Init Bwd Win Byts                        0.099107
+   Fwd PSH Flags                       Fwd Pkts/s                               0.098725
+   Fwd Pkts/s                          SYN Flag Cnt                             0.098725
+   Fwd Pkt Len Std                     Bwd Pkts/s                              -0.098504
+   Bwd Pkt Len Min                     Flow Pkts/s                             -0.098474
+   Fwd Pkt Len Mean                    Bwd IAT Std                              0.098179
+   Bwd IAT Std                         Fwd Seg Size Avg                         0.098179
+   Bwd Pkt Len Max                     Init Fwd Win Byts                        0.097958
+   Fwd PSH Flags                       Init Fwd Win Byts                       -0.097725
+   SYN Flag Cnt                        Init Fwd Win Byts                       -0.097725
+   Pkt Len Min                         Pkt Size Avg                             0.097634
+   Tot Bwd Pkts                        Fwd Header Len                           0.096069
+   Fwd Header Len                      Subflow Bwd Pkts                         0.096069
+   Fwd Pkt Len Std                     Fwd Pkts/s                              -0.095694
+   Fwd Header Len                      Bwd Header Len                           0.095343
+   TotLen Bwd Pkts                     Fwd Header Len                           0.094418
+   Fwd Header Len                      Subflow Bwd Byts                         0.094417
+   Bwd Pkts/s                          URG Flag Cnt                             0.094072
+   Flow Pkts/s                         RST Flag Cnt                            -0.093757
+   Flow Pkts/s                         ECE Flag Cnt                            -0.093749
+   Down/Up Ratio                       Init Fwd Win Byts                       -0.093295
+   Fwd PSH Flags                       Pkt Len Min                             -0.093115
+   Pkt Len Min                         SYN Flag Cnt                            -0.093115
+   Fwd Pkt Len Mean                    Fwd Seg Size Min                         0.092350
+   Fwd Seg Size Avg                    Fwd Seg Size Min                         0.092350
+   Bwd Pkt Len Min                     Pkt Len Var                             -0.092290
+   Fwd Seg Size Min                    Active Max                              -0.091717
+   Pkt Len Min                         URG Flag Cnt                            -0.091180
+   Fwd Pkt Len Std                     Down/Up Ratio                           -0.090896
+   Flow Pkts/s                         Pkt Len Min                             -0.090477
+   Pkt Len Min                         Pkt Len Var                             -0.089452
+   Bwd Pkt Len Min                     Bwd IAT Max                             -0.088893
+   URG Flag Cnt                        Down/Up Ratio                            0.088884
+   Fwd Pkt Len Max                     Fwd PSH Flags                           -0.088527
+   Fwd Pkt Len Max                     SYN Flag Cnt                            -0.088527
+   Bwd IAT Mean                        PSH Flag Cnt                             0.088467
+   Bwd Pkts/s                          Down/Up Ratio                            0.086666
+   Bwd Pkt Len Min                     Fwd Pkts/s                              -0.086492
+   Bwd IAT Mean                        Idle Min                                 0.086248
+   Fwd Pkt Len Mean                    Bwd IAT Tot                              0.084776
+   Bwd IAT Tot                         Fwd Seg Size Avg                         0.084776
+   Fwd Pkt Len Min                     URG Flag Cnt                            -0.084624
+   Fwd Seg Size Min                    Active Std                              -0.084003
+   Fwd Seg Size Min                    Active Mean                             -0.083590
+   Bwd IAT Max                         Fwd PSH Flags                            0.083564
+   Bwd IAT Max                         SYN Flag Cnt                             0.083564
+   Flow Pkts/s                         Fwd PSH Flags                            0.083487
+   Flow Pkts/s                         SYN Flag Cnt                             0.083487
+   Fwd PSH Flags                       Down/Up Ratio                           -0.083484
+   SYN Flag Cnt                        Down/Up Ratio                           -0.083484
+   Fwd Pkt Len Mean                    Bwd IAT Max                              0.083014
+   Bwd IAT Max                         Fwd Seg Size Avg                         0.083014
+   Fwd Pkt Len Min                     Pkt Len Var                             -0.082293
+   Bwd IAT Std                         Fwd Seg Size Min                         0.081768
+   Fwd Pkts/s                          RST Flag Cnt                            -0.081502
+   Fwd Pkts/s                          ECE Flag Cnt                            -0.081493
+   Bwd Pkt Len Mean                    Bwd IAT Mean                             0.081171
+   Bwd IAT Mean                        Bwd Seg Size Avg                         0.081171
+   Down/Up Ratio                       Subflow Bwd Byts                         0.080728
+   TotLen Bwd Pkts                     Down/Up Ratio                            0.080724
+   Flow Pkts/s                         Init Bwd Win Byts                       -0.080185
+   Fwd PSH Flags                       Init Bwd Win Byts                       -0.080148
+   SYN Flag Cnt                        Init Bwd Win Byts                       -0.080148
+   Bwd IAT Mean                        Pkt Len Min                             -0.079930
+   Bwd Pkt Len Min                     Bwd Pkts/s                              -0.079637
+   Fwd Pkts/s                          Pkt Len Min                             -0.079602
+   Fwd Pkt Len Max                     Down/Up Ratio                           -0.079480
+   Bwd IAT Tot                         Bwd Header Len                           0.078759
+   Fwd Pkt Len Min                     Flow Pkts/s                             -0.077934
+   Bwd Pkts/s                          RST Flag Cnt                            -0.077852
+   Bwd Pkts/s                          ECE Flag Cnt                            -0.077851
+   Flow Pkts/s                         ACK Flag Cnt                             0.076872
+   Bwd IAT Tot                         Fwd Seg Size Min                         0.075887
+   Bwd Header Len                      Pkt Len Std                              0.075620
+   Bwd IAT Mean                        Pkt Len Mean                             0.074403
+   Tot Bwd Pkts                        Bwd IAT Tot                              0.074289
+   Bwd IAT Tot                         Subflow Bwd Pkts                         0.074289
+   Fwd Pkt Len Min                     Bwd IAT Mean                            -0.074020
+   Bwd IAT Tot                         Active Max                               0.073886
+   Bwd Pkts/s                          Pkt Len Min                             -0.072871
+   URG Flag Cnt                        Init Fwd Win Byts                       -0.072390
+   Bwd Pkt Len Min                     Pkt Size Avg                             0.072325
+   Fwd Pkt Len Min                     Fwd PSH Flags                           -0.072158
+   Fwd Pkt Len Min                     SYN Flag Cnt                            -0.072158
+   Fwd Pkt Len Min                     Fwd Pkts/s                              -0.071711
+   Pkt Len Var                         Fwd Seg Size Min                         0.071616
+   Pkt Len Std                         Subflow Bwd Pkts                         0.071436
+   Tot Bwd Pkts                        Pkt Len Std                              0.071436
+   Bwd IAT Max                         Fwd Seg Size Min                         0.071399
+   Fwd Pkts/s                          Init Bwd Win Byts                       -0.070244
+   Fwd PSH Flags                       Pkt Size Avg                            -0.069926
+   SYN Flag Cnt                        Pkt Size Avg                            -0.069926
+   Fwd Pkt Len Max                     Bwd IAT Mean                             0.069557
+   Pkt Len Mean                        Init Fwd Win Byts                        0.069305
+   Fwd Pkts/s                          FIN Flag Cnt                             0.068803
+   Fwd PSH Flags                       Pkt Len Mean                            -0.068707
+   Pkt Len Mean                        SYN Flag Cnt                            -0.068707
+   Bwd Pkt Len Max                     Bwd Header Len                           0.067040
+   Bwd Header Len                      Pkt Len Max                              0.065557
+   Bwd Pkts/s                          Init Bwd Win Byts                       -0.065340
+   Bwd Pkt Len Min                     Bwd IAT Min                              0.065320
+   Fwd Pkt Len Std                     Fwd PSH Flags                           -0.063405
+   Fwd Pkt Len Std                     SYN Flag Cnt                            -0.063405
+   Init Fwd Win Byts                   Idle Min                                 0.063013
+   Tot Bwd Pkts                        Bwd Pkt Len Max                          0.062625
+   Bwd Pkt Len Max                     Subflow Bwd Pkts                         0.062625
+   Bwd IAT Mean                        Pkt Size Avg                             0.062402
+   Fwd Pkt Len Mean                    Pkt Len Min                              0.061922
+   Pkt Len Min                         Fwd Seg Size Avg                         0.061922
+   URG Flag Cnt                        CWE Flag Count                           0.061349
+   Fwd URG Flags                       URG Flag Cnt                             0.061349
+   Tot Bwd Pkts                        Pkt Len Max                              0.060719
+   Pkt Len Max                         Subflow Bwd Pkts                         0.060719
+   Fwd PSH Flags                       Fwd Seg Size Min                         0.059838
+   SYN Flag Cnt                        Fwd Seg Size Min                         0.059838
+   Fwd PSH Flags                       Fwd URG Flags                            0.059736
+   Fwd PSH Flags                       CWE Flag Count                           0.059736
+   Fwd URG Flags                       SYN Flag Cnt                             0.059736
+   SYN Flag Cnt                        CWE Flag Count                           0.059736
+   Flow Pkts/s                         Bwd IAT Tot                             -0.058218
+   Bwd IAT Min                         ACK Flag Cnt                             0.057824
+   Tot Bwd Pkts                        TotLen Fwd Pkts                          0.057099
+   Tot Bwd Pkts                        Subflow Fwd Byts                         0.057099
+   TotLen Fwd Pkts                     Subflow Bwd Pkts                         0.057099
+   Subflow Fwd Byts                    Subflow Bwd Pkts                         0.057099
+   Bwd Pkt Len Min                     Fwd PSH Flags                           -0.056995
+   Bwd Pkt Len Min                     SYN Flag Cnt                            -0.056995
+   Fwd Pkt Len Mean                    Fwd PSH Flags                           -0.056656
+   Fwd Pkt Len Mean                    SYN Flag Cnt                            -0.056656
+   Fwd PSH Flags                       Fwd Seg Size Avg                        -0.056656
+   SYN Flag Cnt                        Fwd Seg Size Avg                        -0.056656
+   Flow Pkts/s                         FIN Flag Cnt                             0.056542
+   Fwd Seg Size Min                    Active Min                              -0.056319
+   Fwd Pkt Len Mean                    FIN Flag Cnt                            -0.056027
+   FIN Flag Cnt                        Fwd Seg Size Avg                        -0.056027
+   FIN Flag Cnt                        PSH Flag Cnt                            -0.055742
+   FIN Flag Cnt                        Pkt Size Avg                            -0.055695
+   Fwd Pkt Len Min                     Bwd Pkts/s                              -0.055457
+   Bwd IAT Tot                         URG Flag Cnt                            -0.055138
+   Bwd IAT Max                         Bwd Header Len                           0.054963
+   Flow Byts/s                         ACK Flag Cnt                             0.054616
+   Pkt Len Std                         Subflow Bwd Byts                         0.054494
+   TotLen Bwd Pkts                     Pkt Len Std                              0.054492
+   Bwd IAT Tot                         Subflow Bwd Byts                         0.054304
+   TotLen Bwd Pkts                     Bwd IAT Tot                              0.054302
+   Bwd IAT Mean                        ECE Flag Cnt                             0.053509
+   Bwd IAT Mean                        RST Flag Cnt                             0.053507
+   Tot Bwd Pkts                        Bwd IAT Max                              0.053393
+   Bwd IAT Max                         Subflow Bwd Pkts                         0.053393
+   Pkt Len Var                         Init Fwd Win Byts                        0.053301
+   Bwd IAT Min                         Idle Min                                 0.053284
+   Bwd IAT Tot                         Active Std                               0.053086
+   Fwd Pkt Len Mean                    Bwd Pkt Len Min                         -0.052358
+   Bwd Pkt Len Min                     Fwd Seg Size Avg                        -0.052358
+   Fwd Pkt Len Std                     Bwd IAT Mean                             0.051888
+   Flow Duration                       Bwd IAT Tot                              0.051065
+   Fwd IAT Tot                         Bwd IAT Tot                              0.050625
+   Flow Pkts/s                         Bwd IAT Max                             -0.050546
+   Bwd IAT Tot                         Fwd Pkts/s                              -0.050499
+   Pkt Len Max                         FIN Flag Cnt                            -0.050487
+   Pkt Len Mean                        FIN Flag Cnt                            -0.050349
+   Flow Pkts/s                         Bwd IAT Std                             -0.049950
+   Pkt Size Avg                        Init Fwd Win Byts                        0.049692
+   Pkt Len Std                         FIN Flag Cnt                            -0.049645
+   Flow Pkts/s                         URG Flag Cnt                             0.049553
+   Bwd IAT Tot                         Bwd Pkts/s                              -0.048679
+   Bwd IAT Max                         Active Max                               0.048344
+   Bwd IAT Mean                        Fwd Seg Size Min                         0.047033
+   Bwd Pkt Len Max                     FIN Flag Cnt                            -0.046726
+   Bwd Pkt Len Mean                    FIN Flag Cnt                            -0.046162
+   FIN Flag Cnt                        Bwd Seg Size Avg                        -0.046162
+   Fwd Pkt Len Max                     FIN Flag Cnt                            -0.044606
+   Bwd IAT Max                         Fwd Pkts/s                              -0.043847
+   Bwd Pkt Len Max                     Subflow Bwd Byts                         0.043718
+   TotLen Bwd Pkts                     Bwd Pkt Len Max                          0.043717
+   Bwd IAT Tot                         Init Bwd Win Byts                       -0.043574
+   Bwd IAT Std                         Fwd Pkts/s                              -0.043330
+   Bwd Pkts/s                          ACK Flag Cnt                            -0.043123
+   ACK Flag Cnt                        Active Max                              -0.042950
+   URG Flag Cnt                        Init Bwd Win Byts                       -0.042934
+   Pkt Size Avg                        Fwd Seg Size Min                        -0.042575
+   Bwd IAT Max                         Bwd Pkts/s                              -0.042267
+   Bwd Pkt Len Std                     FIN Flag Cnt                            -0.042107
+   Bwd IAT Std                         Active Max                               0.042036
+   Bwd IAT Std                         Bwd Pkts/s                              -0.041769
+   Fwd Pkt Len Max                     Bwd Header Len                           0.041168
+   Bwd IAT Max                         Down/Up Ratio                            0.040985
+   Bwd IAT Max                         Subflow Bwd Byts                         0.040933
+   TotLen Bwd Pkts                     Bwd IAT Max                              0.040931
+   Pkt Len Max                         Subflow Bwd Byts                         0.040896
+   TotLen Bwd Pkts                     Pkt Len Max                              0.040894
+   Bwd IAT Max                         Active Mean                              0.040625
+   Fwd Pkt Len Std                     FIN Flag Cnt                            -0.040533
+   Bwd IAT Tot                         Active Mean                              0.039931
+   Bwd Pkt Len Min                     Bwd Pkt Len Mean                         0.038921
+   Bwd Pkt Len Min                     Bwd Seg Size Avg                         0.038921
+   Flow Pkts/s                         Init Fwd Win Byts                        0.038832
+   Flow Duration                       Bwd IAT Max                              0.038734
+   Bwd Pkt Len Std                     Bwd IAT Min                             -0.038612
+   Bwd Pkt Len Min                     Active Max                              -0.038337
+   Bwd Header Len                      Pkt Len Var                              0.037946
+   Fwd IAT Tot                         Bwd IAT Max                              0.037895
+   Flow Duration                       Bwd IAT Std                              0.037884
+   Flow Pkts/s                         Pkt Len Var                             -0.037864
+   Bwd Pkt Len Max                     Flow Byts/s                             -0.037838
+   Bwd IAT Max                         URG Flag Cnt                            -0.037815
+   Flow Pkts/s                         Bwd IAT Mean                            -0.037627
+   Bwd IAT Max                         Active Std                               0.037566
+   FIN Flag Cnt                        Init Fwd Win Byts                       -0.037559
+   Flow Byts/s                         PSH Flag Cnt                            -0.037335
+   ACK Flag Cnt                        Active Mean                             -0.037170
+   Fwd IAT Tot                         Bwd IAT Std                              0.037159
+   Pkt Len Var                         URG Flag Cnt                            -0.037140
+   Fwd URG Flags                       Fwd Seg Size Min                         0.036612
+   CWE Flag Count                      Fwd Seg Size Min                         0.036612
+   Tot Bwd Pkts                        Fwd Pkt Len Max                          0.036558
+   Fwd Pkt Len Max                     Subflow Bwd Pkts                         0.036558
+   Bwd IAT Min                         PSH Flag Cnt                            -0.036179
+   Pkt Len Var                         Subflow Bwd Pkts                         0.036021
+   Tot Bwd Pkts                        Pkt Len Var                              0.036021
+   Bwd Pkt Len Min                     FIN Flag Cnt                            -0.035941
+   Bwd IAT Min                         Pkt Len Max                             -0.035094
+   Bwd IAT Tot                         Fwd PSH Flags                            0.034699
+   Bwd IAT Tot                         SYN Flag Cnt                             0.034699
+   Fwd PSH Flags                       Pkt Len Var                             -0.034576
+   Pkt Len Var                         SYN Flag Cnt                            -0.034576
+   Tot Fwd Pkts                        Tot Bwd Pkts                             0.034468
+   Tot Fwd Pkts                        Subflow Bwd Pkts                         0.034468
+   Tot Bwd Pkts                        Subflow Fwd Pkts                         0.034468
+   Subflow Fwd Pkts                    Subflow Bwd Pkts                         0.034468
+   ACK Flag Cnt                        Active Std                              -0.034338
+   Bwd IAT Std                         Active Std                               0.034282
+   Bwd IAT Max                         Idle Mean                                0.034153
+   Bwd Pkt Len Min                     Active Mean                             -0.034084
+   Pkt Len Var                         Subflow Bwd Byts                         0.033815
+   TotLen Bwd Pkts                     Pkt Len Var                              0.033814
+   Bwd Header Len                      PSH Flag Cnt                             0.033746
+   Pkt Len Min                         FIN Flag Cnt                            -0.033581
+   Tot Fwd Pkts                        Bwd Header Len                           0.033389
+   Bwd Header Len                      Subflow Fwd Pkts                         0.033389
+   FIN Flag Cnt                        ECE Flag Cnt                            -0.033335
+   FIN Flag Cnt                        RST Flag Cnt                            -0.033335
+   Bwd Pkt Len Std                     Flow Byts/s                             -0.033259
+   Fwd Pkts/s                          Pkt Len Var                             -0.032860
+   Tot Fwd Pkts                        TotLen Bwd Pkts                          0.032759
+   TotLen Bwd Pkts                     Subflow Fwd Pkts                         0.032759
+   Tot Fwd Pkts                        Subflow Bwd Byts                         0.032758
+   Subflow Fwd Pkts                    Subflow Bwd Byts                         0.032758
+   Bwd IAT Mean                        Fwd Pkts/s                              -0.032643
+   Bwd Pkt Len Mean                    Init Fwd Win Byts                        0.032206
+   Bwd Seg Size Avg                    Init Fwd Win Byts                        0.032206
+   Bwd Pkt Len Max                     Bwd IAT Min                             -0.032127
+   Fwd Pkt Len Min                     FIN Flag Cnt                            -0.031732
+   Bwd IAT Std                         Active Mean                              0.031717
+   Bwd Pkts/s                          Pkt Len Var                             -0.031636
+   Bwd IAT Mean                        Pkt Len Var                              0.031552
+   Bwd IAT Mean                        Bwd Pkts/s                              -0.031467
+   Bwd IAT Min                         Pkt Len Std                             -0.031434
+   Bwd IAT Max                         Init Bwd Win Byts                       -0.031404
+   Fwd Pkt Len Mean                    Subflow Fwd Byts                         0.031340
+   TotLen Fwd Pkts                     Fwd Pkt Len Mean                         0.031340
+   TotLen Fwd Pkts                     Fwd Seg Size Avg                         0.031340
+   Fwd Seg Size Avg                    Subflow Fwd Byts                         0.031340
+   Pkt Len Min                         Idle Min                                -0.031125
+   Bwd Pkt Len Std                     Bwd Header Len                           0.030876
+   Bwd Pkt Len Mean                    Flow Byts/s                             -0.030762
+   Flow Byts/s                         Bwd Seg Size Avg                        -0.030762
+   Bwd IAT Mean                        Init Fwd Win Byts                       -0.030522
+   Bwd IAT Max                         Active Min                               0.030450
+   Bwd Pkt Len Min                     Idle Min                                -0.030034
+   Bwd IAT Min                         RST Flag Cnt                            -0.029825
+   Bwd IAT Min                         ECE Flag Cnt                            -0.029823
+   Tot Bwd Pkts                        Active Max                               0.029755
+   Subflow Bwd Pkts                    Active Max                               0.029755
+   Bwd Header Len                      Active Max                               0.029627
+   Bwd IAT Std                         Idle Mean                                0.029574
+   Tot Bwd Pkts                        PSH Flag Cnt                             0.029535
+   PSH Flag Cnt                        Subflow Bwd Pkts                         0.029535
+   Fwd Pkt Len Min                     Idle Min                                -0.029336
+   Flow Byts/s                         Pkt Len Max                             -0.029188
+   Bwd IAT Min                         Init Fwd Win Byts                       -0.029141
+   Fwd Pkt Len Mean                    Bwd IAT Mean                             0.028424
+   Bwd IAT Mean                        Fwd Seg Size Avg                         0.028424
+   Bwd IAT Mean                        URG Flag Cnt                            -0.027971
+   ACK Flag Cnt                        Active Min                              -0.027808
+   Bwd IAT Std                         URG Flag Cnt                            -0.027561
+   Bwd Pkt Len Min                     Active Std                              -0.027511
+   Bwd IAT Std                         Init Bwd Win Byts                       -0.027488
+   Pkt Len Min                         Active Max                              -0.027433
+   Flow IAT Mean                       Idle Std                                -0.027417
+   Fwd IAT Mean                        Idle Std                                -0.027409
+   Bwd Pkt Len Min                     Active Min                              -0.027386
+   Bwd IAT Tot                         Down/Up Ratio                            0.027199
+   Fwd Pkt Len Min                     Flow Byts/s                              0.027182
+   Tot Bwd Pkts                        Bwd Pkt Len Std                          0.026837
+   Bwd Pkt Len Std                     Subflow Bwd Pkts                         0.026837
+   Subflow Bwd Byts                    Active Max                               0.026767
+   TotLen Bwd Pkts                     Active Max                               0.026766
+   Pkt Len Mean                        Fwd Seg Size Min                         0.026666
+   FIN Flag Cnt                        Init Bwd Win Byts                       -0.026652
+   Fwd Pkt Len Max                     Bwd IAT Min                             -0.026496
+   Flow IAT Mean                       Idle Mean                               -0.026483
+   Bwd IAT Tot                         Active Min                               0.026403
+   Bwd Seg Size Avg                    Idle Min                                 0.026359
+   Bwd Pkt Len Mean                    Idle Min                                 0.026359
+   Fwd IAT Mean                        Idle Mean                               -0.026326
+   TotLen Fwd Pkts                     Bwd Header Len                           0.026151
+   Bwd Header Len                      Subflow Fwd Byts                         0.026151
+   Flow Duration                       Bwd IAT Mean                             0.026073
+   Fwd Pkt Len Min                     Bwd Seg Size Avg                        -0.026018
+   Fwd Pkt Len Min                     Bwd Pkt Len Mean                        -0.026018
+   Pkt Len Min                         Active Std                              -0.025966
+   Bwd IAT Tot                         Idle Mean                                0.025514
+   Bwd IAT Min                         Pkt Len Min                             -0.025470
+   Fwd Pkt Len Min                     Active Max                              -0.025411
+   Bwd IAT Std                         Down/Up Ratio                            0.025391
+   Tot Bwd Pkts                        Active Mean                              0.025344
+   Subflow Bwd Pkts                    Active Mean                              0.025344
+   Fwd IAT Tot                         Bwd IAT Mean                             0.025324
+   Init Bwd Win Byts                   Idle Min                                -0.025250
+   ACK Flag Cnt                        Idle Min                                 0.025226
+   Bwd Header Len                      Active Mean                              0.025217
+   Fwd Pkt Len Min                     Pkt Len Mean                             0.025178
+   Pkt Len Min                         Bwd Seg Size Avg                        -0.024978
+   Bwd Pkt Len Mean                    Pkt Len Min                             -0.024978
+   Fwd Pkts/s                          PSH Flag Cnt                            -0.024873
+   Bwd Pkt Len Max                     Idle Min                                 0.024686
+   Bwd Pkt Len Min                     Pkt Len Mean                            -0.024550
+   Flow IAT Mean                       Idle Max                                -0.024503
+   Fwd IAT Mean                        Idle Max                                -0.024436
+   Fwd Pkt Len Min                     Active Std                              -0.024199
+   Init Fwd Win Byts                   Active Max                              -0.024055
+   Flow Pkts/s                         PSH Flag Cnt                             0.023807
+   Subflow Bwd Byts                    Active Mean                              0.023350
+   TotLen Bwd Pkts                     Active Mean                              0.023349
+   Flow Byts/s                         Pkt Len Std                             -0.023335
+   Tot Bwd Pkts                        Active Min                               0.023269
+   Subflow Bwd Pkts                    Active Min                               0.023269
+   Bwd Header Len                      Active Min                               0.023256
+   Flow Byts/s                         Init Bwd Win Byts                       -0.023082
+   Bwd Pkt Len Std                     Down/Up Ratio                           -0.022844
+   Bwd IAT Mean                        Active Max                               0.022771
+   Fwd Pkt Len Min                     Bwd IAT Min                             -0.022685
+   Pkt Len Mean                        Idle Min                                 0.022515
+   TotLen Fwd Pkts                     Fwd Pkt Len Max                          0.022369
+   Fwd Pkt Len Max                     Subflow Fwd Byts                         0.022369
+   Bwd Pkt Len Std                     Idle Min                                 0.022282
+   Bwd IAT Std                         Active Min                               0.022009
+   TotLen Fwd Pkts                     Pkt Len Var                              0.021903
+   Pkt Len Var                         Subflow Fwd Byts                         0.021903
+   Init Fwd Win Byts                   Active Mean                             -0.021687
+   Subflow Bwd Byts                    Active Min                               0.021594
+   TotLen Bwd Pkts                     Active Min                               0.021593
+   Bwd IAT Mean                        Idle Mean                                0.021593
+   Bwd Pkt Len Mean                    Fwd Seg Size Min                        -0.021523
+   Bwd Seg Size Avg                    Fwd Seg Size Min                        -0.021523
+   Pkt Len Std                         Idle Min                                 0.021461
+   Bwd IAT Max                         Init Fwd Win Byts                       -0.021222
+   Init Fwd Win Byts                   Active Std                              -0.021035
+   Fwd Pkts/s                          URG Flag Cnt                             0.020820
+   Fwd Seg Size Avg                    Idle Min                                -0.020661
+   Fwd Pkt Len Mean                    Idle Min                                -0.020661
+   Flow Byts/s                         Bwd IAT Tot                             -0.020604
+   Pkt Len Max                         Idle Min                                 0.020593
+   Fwd PSH Flags                       URG Flag Cnt                            -0.020566
+   SYN Flag Cnt                        URG Flag Cnt                            -0.020566
+   Bwd IAT Tot                         FIN Flag Cnt                            -0.020336
+   Pkt Len Min                         Active Mean                             -0.020291
+   Fwd Pkt Len Std                     Bwd Header Len                           0.020281
+   RST Flag Cnt                        Down/Up Ratio                           -0.019940
+   ECE Flag Cnt                        Down/Up Ratio                           -0.019939
+   Bwd IAT Std                         Bwd Header Len                           0.019619
+   Init Bwd Win Byts                   Active Max                              -0.019547
+   Fwd Pkt Len Std                     Bwd IAT Min                             -0.018852
+   Fwd Pkt Len Min                     Active Mean                             -0.018736
+   Flow Duration                       Bwd Pkt Len Max                          0.018652
+   Flow Byts/s                         RST Flag Cnt                            -0.018569
+   Flow Byts/s                         ECE Flag Cnt                            -0.018557
+   Bwd Header Len                      Pkt Len Min                             -0.018252
+   Bwd Pkt Len Max                     Fwd IAT Tot                              0.018232
+   Init Bwd Win Byts                   Active Std                              -0.018166
+   FIN Flag Cnt                        Fwd Seg Size Min                         0.018114
+   Flow Pkts/s                         Down/Up Ratio                            0.018024
+   Flow Byts/s                         Bwd IAT Max                             -0.017887
+   Flow IAT Mean                       Init Fwd Win Byts                        0.017801
+   Bwd IAT Std                         Fwd PSH Flags                            0.017792
+   Bwd IAT Std                         SYN Flag Cnt                             0.017792
+   Pkt Len Mean                        Active Max                               0.017777
+   Flow Byts/s                         Bwd IAT Std                             -0.017703
+   Bwd IAT Std                         Subflow Bwd Pkts                         0.017694
+   Tot Bwd Pkts                        Bwd IAT Std                              0.017694
+   Fwd Pkt Len Max                     Subflow Bwd Byts                         0.017634
+   TotLen Bwd Pkts                     Fwd Pkt Len Max                          0.017633
+   Bwd IAT Max                         FIN Flag Cnt                            -0.017615
+   Fwd PSH Flags                       Subflow Bwd Byts                         0.017572
+   SYN Flag Cnt                        Subflow Bwd Byts                         0.017572
+   TotLen Bwd Pkts                     Fwd PSH Flags                            0.017571
+   TotLen Bwd Pkts                     SYN Flag Cnt                             0.017571
+   Fwd IAT Mean                        Init Fwd Win Byts                        0.017543
+   Flow Duration                       Pkt Len Max                              0.017523
+   Bwd IAT Std                         FIN Flag Cnt                            -0.017371
+   Fwd Pkt Len Min                     Bwd Header Len                          -0.017172
+   Fwd IAT Tot                         Pkt Len Max                              0.017154
+   Flow Duration                       Pkt Len Std                              0.016964
+   Bwd IAT Min                         Pkt Size Avg                            -0.016699
+   Fwd IAT Tot                         Pkt Len Std                              0.016525
+   Flow Duration                       Bwd Pkt Len Std                          0.016488
+   Tot Bwd Pkts                        Fwd Pkt Len Std                          0.016407
+   Fwd Pkt Len Std                     Subflow Bwd Pkts                         0.016407
+   Pkt Size Avg                        Idle Min                                 0.016170
+   Bwd Pkt Len Std                     Fwd IAT Tot                              0.016031
+   Tot Bwd Pkts                        Fwd PSH Flags                            0.015993
+   Tot Bwd Pkts                        SYN Flag Cnt                             0.015993
+   Fwd PSH Flags                       Subflow Bwd Pkts                         0.015993
+   SYN Flag Cnt                        Subflow Bwd Pkts                         0.015993
+   Fwd URG Flags                       Init Fwd Win Byts                        0.015977
+   CWE Flag Count                      Init Fwd Win Byts                        0.015977
+   Flow Duration                       Bwd Seg Size Avg                         0.015937
+   Flow Duration                       Bwd Pkt Len Mean                         0.015937
+   Flow Duration                       Pkt Len Mean                             0.015782
+   Flow Pkts/s                         Active Max                              -0.015663
+   Fwd PSH Flags                       Bwd Header Len                           0.015650
+   Bwd Header Len                      SYN Flag Cnt                             0.015650
+   Fwd IAT Tot                         Bwd Seg Size Avg                         0.015526
+   Bwd Pkt Len Mean                    Fwd IAT Tot                              0.015526
+   Tot Bwd Pkts                        Active Std                               0.015432
+   Subflow Bwd Pkts                    Active Std                               0.015432
+   Fwd IAT Tot                         Pkt Len Mean                             0.015358
+   Bwd IAT Mean                        Init Bwd Win Byts                       -0.015301
+   Init Fwd Win Byts                   Active Min                              -0.015213
+   Bwd Header Len                      Active Std                               0.015180
+   Init Bwd Win Byts                   Active Mean                             -0.015151
+   Bwd Pkt Len Max                     Down/Up Ratio                            0.015129
+   Flow Pkts/s                         Bwd IAT Min                             -0.015084
+   Bwd IAT Mean                        Active Mean                              0.015058
+   Fwd Act Data Pkts                   Fwd Seg Size Min                        -0.015015
+   Fwd Pkt Len Max                     Flow Byts/s                             -0.015009
+   Tot Bwd Pkts                        Pkt Len Min                             -0.014974
+   Pkt Len Min                         Subflow Bwd Pkts                        -0.014974
+   Bwd IAT Min                         URG Flag Cnt                            -0.014963
+   Bwd IAT Max                         Idle Max                                 0.014932
+   Fwd PSH Flags                       FIN Flag Cnt                            -0.014874
+   FIN Flag Cnt                        SYN Flag Cnt                            -0.014874
+   Bwd IAT Mean                        Active Std                               0.014791
+   Init Fwd Win Byts                   Idle Mean                                0.014776
+   Bwd IAT Mean                        Down/Up Ratio                           -0.014762
+   Down/Up Ratio                       Idle Min                                -0.014752
+   Tot Fwd Pkts                        Fwd Seg Size Min                        -0.014746
+   Subflow Fwd Pkts                    Fwd Seg Size Min                        -0.014746
+   Bwd IAT Min                         Pkt Len Mean                            -0.014675
+   Flow IAT Mean                       ACK Flag Cnt                             0.014654
+   Flow Pkts/s                         Idle Min                                -0.014586
+   Fwd Pkts/s                          Down/Up Ratio                           -0.014566
+   Fwd Pkt Len Mean                    Active Std                              -0.014558
+   Fwd Seg Size Avg                    Active Std                              -0.014558
+   FIN Flag Cnt                        URG Flag Cnt                            -0.014483
+   Fwd IAT Mean                        ACK Flag Cnt                             0.014477
+   PSH Flag Cnt                        Subflow Bwd Byts                         0.014445
+   TotLen Bwd Pkts                     PSH Flag Cnt                             0.014444
+   Flow Byts/s                         URG Flag Cnt                            -0.014368
+   Fwd Pkt Len Min                     Subflow Bwd Pkts                        -0.014107
+   Tot Bwd Pkts                        Fwd Pkt Len Min                         -0.014107
+   Fwd Header Len                      Pkt Len Mean                             0.014005
+   Bwd IAT Min                         Down/Up Ratio                           -0.013993
+   Flow IAT Max                        Bwd IAT Max                              0.013918
+   Bwd Header Len                      RST Flag Cnt                             0.013792
+   Bwd Header Len                      ECE Flag Cnt                             0.013792
+   PSH Flag Cnt                        Active Std                              -0.013790
+   URG Flag Cnt                        Active Max                              -0.013779
+   Subflow Bwd Byts                    Active Std                               0.013694
+   TotLen Bwd Pkts                     Active Std                               0.013694
+   Bwd IAT Std                         Bwd IAT Min                              0.013679
+   Flow Pkts/s                         Active Mean                             -0.013669
+   Bwd Header Len                      Fwd Seg Size Min                         0.013606
+   Fwd Pkts/s                          Active Max                              -0.013590
+   Bwd Pkt Len Min                     Bwd Header Len                          -0.013524
+   Flow Duration                       Pkt Size Avg                             0.013501
+   Pkt Len Max                         Down/Up Ratio                           -0.013494
+   Fwd IAT Max                         Bwd IAT Max                              0.013455
+   Flow Byts/s                         Init Fwd Win Byts                       -0.013424
+   Flow Duration                       Active Max                               0.013358
+   Flow Byts/s                         Bwd IAT Mean                            -0.013339
+   Fwd IAT Tot                         Active Max                               0.013179
+   Bwd IAT Min                         Idle Mean                                0.013148
+   Fwd IAT Tot                         Pkt Size Avg                             0.013112
+   Bwd Pkts/s                          Active Max                              -0.013100
+   Bwd IAT Mean                        FIN Flag Cnt                            -0.013088
+   Bwd IAT Min                         Fwd Pkts/s                              -0.013087
+   URG Flag Cnt                        Idle Min                                -0.013057
+   Bwd IAT Std                         Idle Max                                 0.012893
+   Pkt Len Var                         FIN Flag Cnt                            -0.012884
+   Bwd Header Len                      ACK Flag Cnt                            -0.012817
+   Pkt Len Var                         Idle Min                                 0.012792
+   Fwd Pkts/s                          Idle Min                                -0.012655
+   Bwd IAT Min                         Bwd Pkts/s                              -0.012616
+   Tot Bwd Pkts                        ACK Flag Cnt                            -0.012400
+   ACK Flag Cnt                        Subflow Bwd Pkts                        -0.012400
+   TotLen Fwd Pkts                     Pkt Len Max                              0.012315
+   Pkt Len Max                         Subflow Fwd Byts                         0.012315
+   Fwd PSH Flags                       Idle Min                                 0.012307
+   SYN Flag Cnt                        Idle Min                                 0.012307
+   PSH Flag Cnt                        Active Mean                             -0.012231
+   Bwd Pkts/s                          Idle Min                                -0.012199
+   Bwd IAT Mean                        Active Min                               0.012081
+   Fwd Pkt Len Mean                    Bwd IAT Min                             -0.012046
+   Bwd IAT Min                         Fwd Seg Size Avg                        -0.012046
+   Bwd IAT Min                         Pkt Len Var                             -0.012036
+   Flow IAT Max                        Bwd IAT Std                              0.012031
+   Bwd IAT Tot                         Init Fwd Win Byts                       -0.012015
+   Down/Up Ratio                       Active Std                              -0.011942
+   URG Flag Cnt                        Active Std                              -0.011906
+   Tot Bwd Pkts                        RST Flag Cnt                             0.011903
+   RST Flag Cnt                        Subflow Bwd Pkts                         0.011903
+   ECE Flag Cnt                        Subflow Bwd Pkts                         0.011903
+   Tot Bwd Pkts                        ECE Flag Cnt                             0.011903
+   Bwd Pkt Len Mean                    Bwd IAT Min                             -0.011883
+   Bwd IAT Min                         Bwd Seg Size Avg                        -0.011883
+   Fwd Pkts/s                          Active Mean                             -0.011859
+   Pkt Len Min                         Active Min                              -0.011764
+   TotLen Fwd Pkts                     Fwd Pkt Len Std                          0.011743
+   Fwd Pkt Len Std                     Subflow Fwd Byts                         0.011743
+   Fwd Header Len                      Pkt Size Avg                             0.011704
+   Fwd IAT Max                         Bwd IAT Std                              0.011665
+   Fwd Pkt Len Mean                    Bwd Header Len                           0.011488
+   Bwd Header Len                      Fwd Seg Size Avg                         0.011488
+   Bwd Pkts/s                          Active Mean                             -0.011432
+   Fwd Header Len                      Fwd Seg Size Min                        -0.011425
+   Bwd IAT Std                         Init Fwd Win Byts                       -0.011352
+   Flow Pkts/s                         Active Std                              -0.011308
+   Fwd Pkt Len Mean                    Flow Byts/s                              0.011289
+   Flow Byts/s                         Fwd Seg Size Avg                         0.011289
+   Bwd IAT Tot                         Idle Max                                 0.011017
+   Bwd Pkt Len Min                     Flow Byts/s                             -0.010967
+   Flow Duration                       Active Mean                              0.010858
+   Flow Duration                       Active Std                               0.010854
+   Flow Duration                       Bwd Pkt Len Min                         -0.010848
+   Fwd IAT Tot                         Active Std                               0.010841
+   Flow Pkts/s                         Active Min                              -0.010821
+   URG Flag Cnt                        Active Mean                             -0.010800
+   Fwd Pkt Len Min                     Active Min                              -0.010767
+   Fwd Pkt Len Mean                    Fwd URG Flags                           -0.010643
+   Fwd Pkt Len Mean                    CWE Flag Count                          -0.010643
+   Fwd URG Flags                       Fwd Seg Size Avg                        -0.010643
+   CWE Flag Count                      Fwd Seg Size Avg                        -0.010643
+   Fwd IAT Tot                         Active Mean                              0.010630
+   Fwd URG Flags                       Pkt Size Avg                            -0.010590
+   CWE Flag Count                      Pkt Size Avg                            -0.010590
+   Bwd Seg Size Avg                    Active Max                               0.010577
+   Bwd Pkt Len Mean                    Active Max                               0.010577
+   Active Max                          Idle Min                                 0.010564
+   Bwd Pkt Len Min                     Fwd IAT Tot                             -0.010558
+   Pkt Len Min                         Fwd Act Data Pkts                        0.010543
+   Bwd Pkt Len Std                     Subflow Bwd Byts                         0.010366
+   TotLen Bwd Pkts                     Bwd Pkt Len Std                          0.010366
+   Fwd Header Len                      ACK Flag Cnt                            -0.010272
+   Active Mean                         Idle Min                                 0.010252
+   TotLen Fwd Pkts                     Fwd Seg Size Min                        -0.010174
+   Subflow Fwd Byts                    Fwd Seg Size Min                        -0.010174
+   Pkt Size Avg                        Active Max                               0.010113
+   PSH Flag Cnt                        Down/Up Ratio                           -0.010057
+   Flow IAT Max                        Bwd IAT Tot                              0.010051
+
+
+5. COLUMN-WISE DATA AVAILABILITY
+   ---------------------------------
+
+   Data Availability for All Columns:
+   ------------------------------------------------------------------------------------------
+   Column Name                                Non-Null %       Null % Data Type      
+   ------------------------------------------------------------------------------------------
+   Flow Byts/s                                    99.63%        0.37% float64        
+   Dst Port                                      100.00%        0.00% object         
+   Protocol                                      100.00%        0.00% object         
+   Timestamp                                     100.00%        0.00% str            
+   Flow Duration                                 100.00%        0.00% float64        
+   Tot Fwd Pkts                                  100.00%        0.00% float64        
+   Tot Bwd Pkts                                  100.00%        0.00% float64        
+   TotLen Fwd Pkts                               100.00%        0.00% float64        
+   TotLen Bwd Pkts                               100.00%        0.00% float64        
+   Fwd Pkt Len Max                               100.00%        0.00% float64        
+   Fwd Pkt Len Min                               100.00%        0.00% float64        
+   Fwd Pkt Len Mean                              100.00%        0.00% float64        
+   Fwd Pkt Len Std                               100.00%        0.00% float64        
+   Bwd Pkt Len Max                               100.00%        0.00% float64        
+   Bwd Pkt Len Min                               100.00%        0.00% float64        
+   Bwd Pkt Len Mean                              100.00%        0.00% float64        
+   Bwd Pkt Len Std                               100.00%        0.00% float64        
+   Flow Pkts/s                                   100.00%        0.00% float64        
+   Flow IAT Mean                                 100.00%        0.00% float64        
+   Flow IAT Std                                  100.00%        0.00% float64        
+   Flow IAT Max                                  100.00%        0.00% float64        
+   Flow IAT Min                                  100.00%        0.00% float64        
+   Fwd IAT Tot                                   100.00%        0.00% float64        
+   Fwd IAT Mean                                  100.00%        0.00% float64        
+   Fwd IAT Std                                   100.00%        0.00% float64        
+   Fwd IAT Max                                   100.00%        0.00% float64        
+   Fwd IAT Min                                   100.00%        0.00% float64        
+   Bwd IAT Tot                                   100.00%        0.00% float64        
+   Bwd IAT Mean                                  100.00%        0.00% float64        
+   Bwd IAT Std                                   100.00%        0.00% float64        
+   Bwd IAT Max                                   100.00%        0.00% float64        
+   Bwd IAT Min                                   100.00%        0.00% float64        
+   Fwd PSH Flags                                 100.00%        0.00% float64        
+   Bwd PSH Flags                                 100.00%        0.00% float64        
+   Fwd URG Flags                                 100.00%        0.00% float64        
+   Bwd URG Flags                                 100.00%        0.00% float64        
+   Fwd Header Len                                100.00%        0.00% float64        
+   Bwd Header Len                                100.00%        0.00% float64        
+   Fwd Pkts/s                                    100.00%        0.00% float64        
+   Bwd Pkts/s                                    100.00%        0.00% float64        
+   Pkt Len Min                                   100.00%        0.00% float64        
+   Pkt Len Max                                   100.00%        0.00% float64        
+   Pkt Len Mean                                  100.00%        0.00% float64        
+   Pkt Len Std                                   100.00%        0.00% float64        
+   Pkt Len Var                                   100.00%        0.00% float64        
+   FIN Flag Cnt                                  100.00%        0.00% float64        
+   SYN Flag Cnt                                  100.00%        0.00% float64        
+   RST Flag Cnt                                  100.00%        0.00% float64        
+   PSH Flag Cnt                                  100.00%        0.00% float64        
+   ACK Flag Cnt                                  100.00%        0.00% float64        
+   URG Flag Cnt                                  100.00%        0.00% float64        
+   CWE Flag Count                                100.00%        0.00% float64        
+   ECE Flag Cnt                                  100.00%        0.00% float64        
+   Down/Up Ratio                                 100.00%        0.00% float64        
+   Pkt Size Avg                                  100.00%        0.00% float64        
+   Fwd Seg Size Avg                              100.00%        0.00% float64        
+   Bwd Seg Size Avg                              100.00%        0.00% float64        
+   Fwd Byts/b Avg                                100.00%        0.00% float64        
+   Fwd Pkts/b Avg                                100.00%        0.00% float64        
+   Fwd Blk Rate Avg                              100.00%        0.00% float64        
+   Bwd Byts/b Avg                                100.00%        0.00% float64        
+   Bwd Pkts/b Avg                                100.00%        0.00% float64        
+   Bwd Blk Rate Avg                              100.00%        0.00% float64        
+   Subflow Fwd Pkts                              100.00%        0.00% float64        
+   Subflow Fwd Byts                              100.00%        0.00% float64        
+   Subflow Bwd Pkts                              100.00%        0.00% float64        
+   Subflow Bwd Byts                              100.00%        0.00% float64        
+   Init Fwd Win Byts                             100.00%        0.00% float64        
+   Init Bwd Win Byts                             100.00%        0.00% float64        
+   Fwd Act Data Pkts                             100.00%        0.00% float64        
+   Fwd Seg Size Min                              100.00%        0.00% float64        
+   Active Mean                                   100.00%        0.00% float64        
+   Active Std                                    100.00%        0.00% float64        
+   Active Max                                    100.00%        0.00% float64        
+   Active Min                                    100.00%        0.00% float64        
+   Idle Mean                                     100.00%        0.00% float64        
+   Idle Std                                      100.00%        0.00% float64        
+   Idle Max                                      100.00%        0.00% float64        
+   Idle Min                                      100.00%        0.00% float64        
+   Label                                         100.00%        0.00% str            
+
+   ✓ All columns have <10% missing data - good quality dataset
+
+6. MEMORY USAGE ANALYSIS
+   --------------------
+   Total Memory: 11.66 GB
+   Memory per row: 0.75 KB
+
+   Memory by Data Type:
+     float64: 9.19 GB (78.9%)
+     object: 1.82 GB (15.6%)
+     str: 0.65 GB (5.5%)
+
+7. PREPROCESSING RECOMMENDATIONS
+   ---------------------------------
+
+   Based on exploration findings and CICIDS2018 specification:
+
+   1. Data Cleaning:
+      ✓ REMOVE rows with NaN: 59,721 rows (0.37%)
+      ✓ REMOVE rows with Inf: 95,760 rows (0.59%)
+      ✓ REMOVE duplicate rows: 433,195 rows (2.669%)
+      ✓ DROP SQL Injection, Heartbleed: 87 rows (extremely rare, not useful for model)
+      Expected loss: ~588,676 rows (3.63%) - ACCEPTABLE
+      Expected clean dataset: ~15,644,267 rows
+
+   2. Label Consolidation:
+      ✓ Drop 5 useless columns: Flow ID, Src IP, Dst IP, Src Port, Timestamp (identifiers, not features)
+      ✓ Consolidate 23 attack types → 5 attack categories by merging similar attacks
+      ✓ Keep Benign as separate class
+      Result: 15 classes → 6 classes
+
+   3. Feature Encoding:
+      ✓ One-hot encode Protocol column (categorical)
+      ✓ Label-encode target variable (class indices 0-5)
+
+   4. Feature Scaling:
+      ✓ Use StandardScaler (mean=0, std=1) on training data
+      ✓ Apply training statistics to test data (prevent data leakage)
+      Reason: Features have vastly different scales
+
+   5. Class Imbalance Handling:
+      ✓ Apply SMOTE with DYNAMIC strategy (training data only)
+      Formula: target_count = current + (2nd_largest - current) / 2
+      Effect: Brings each minority class halfway to the 2nd largest class
+      Keep test set imbalanced for realistic evaluation
+
+   6. Correlation-based Feature Reduction:
+      ✓ Remove highly correlated features (|r| ≥ 0.99)
+      Reason: Redundant features add noise without information gain
+
+   7. Feature Selection:
+      ✓ Use Random Forest Gini Importance (fast & effective)
+      Alternative: Recursive Feature Elimination (RFE) if needed
+      Target: 40-45 features (balance complexity vs performance)
+      Criterion: Maximize macro F1-score (handle class imbalance)
+
+================================================================================
+                         END OF EXPLORATION REPORT
+================================================================================
+
+Report generated by: NIDS CICIDS2018 Project
+Module: Data Exploration (Module 2)
+Timestamp: 2026-03-04 17:39:46
+Next step: Data Preprocessing (Module 3)
+================================================================================

@@ -1,0 +1,97 @@
+================================================================================
+              MODEL TESTING & EVALUATION REPORT
+                    CICIDS2018 Dataset
+              Generated: 2026-03-04 21:11:12
+================================================================================
+
+1. TESTING OVERVIEW
+--------------------------------------------------------------------------------
+Model: RandomForestClassifier (150 trees)
+Features: 40
+Classes: 6
+Class Names: Benign, Botnet, Brute Force, DDoS, DoS, Infilteration
+
+2. INFERENCE PERFORMANCE
+--------------------------------------------------------------------------------
+Inference speed: 176,672 samples/second
+Inference time: 13.56 seconds
+Mean confidence: 0.8788
+Low confidence predictions: 3,313
+
+3. MULTICLASS EVALUATION
+--------------------------------------------------------------------------------
+Accuracy:           0.9088 (90.88%)
+Macro Precision:    0.8390
+Macro Recall:       0.9133
+Macro F1-Score:     0.8430
+Weighted F1-Score:  0.9420
+Macro AUC:          0.9787
+
+Per-Class Performance:
+Class                Precision  Recall     F1-Score   AUC        Support
+--------------------------------------------------------------------------------
+Benign               0.9939     0.9028     0.9462     0.9867     2,125,608
+Botnet               1.0000     0.9999     1.0000     1.0000     28,907
+Brute Force          0.9684     0.9985     0.9832     1.0000     18,977
+DDoS                 0.9995     1.0000     0.9998     1.0000     155,191
+DoS                  0.9996     0.9997     0.9997     1.0000     39,314
+Infilteration        0.0726     0.5789     0.1291     0.8853     27,868
+
+4. BINARY EVALUATION (Benign vs Attack)
+--------------------------------------------------------------------------------
+Accuracy:           0.9089 (90.89%)
+Precision:          0.5558
+Recall (TPR):       0.9565
+F1-Score:           0.7031
+Specificity (TNR):  0.9028
+Binary AUC:         0.9867
+False Positive Rate: 0.0972 (9.72%)
+False Negative Rate: 0.0435 (4.35%)
+
+Confusion Matrix:
+  True Negatives:  1,918,982
+  False Positives: 206,626
+  False Negatives: 11,748
+  True Positives:  258,509
+
+5. ERROR ANALYSIS
+--------------------------------------------------------------------------------
+Total Errors: 218,404 (9.12%)
+False Negatives: 11,748 (attacks missed)
+False Positives: 206,626 (false alarms)
+
+Top 10 Confusion Pairs:
+Rank   Confusion Pair                           Count      % of Errors
+--------------------------------------------------------------------------------
+1      Benign → Infilteration                   205,945    94.30%
+2      Infilteration → Benign                   11,735     5.37%
+3      Benign → Brute Force                     609        0.28%
+4      Benign → DDoS                            72         0.03%
+5      Brute Force → DoS                        16         0.01%
+6      DoS → Brute Force                        10         0.00%
+7      Brute Force → Benign                     9          0.00%
+8      DDoS → Benign                            2          0.00%
+9      Botnet → Benign                          2          0.00%
+10     Brute Force → DDoS                       2          0.00%
+
+False Negatives by Attack Type:
+  Botnet              : 2
+  Brute Force         : 9
+  DDoS                : 2
+  Infilteration       : 11,735
+
+False Positives by Attack Type:
+  Brute Force         : 609
+  DDoS                : 72
+  Infilteration       : 205,945
+
+6. CONCLUSION
+--------------------------------------------------------------------------------
+⚠️ Macro F1-Score: 0.8430 (Target: >0.85) [BELOW TARGET]
+⚠️ Accuracy: 0.9088
+⚠️ Binary F1-Score: 0.7031
+⚠️ High False Positive Rate: 0.0972 (9.72%)
+⚠️ High False Negative Rate: 0.0435 (4.35%)
+
+Model Status: REVIEW NEEDED - Below target performance
+================================================================================
